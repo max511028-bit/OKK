@@ -84,7 +84,7 @@ select option{background:#1e293b}
 .chart-title{font-size:14px;font-weight:600;margin-bottom:16px;color:var(--text)}
 .chart-subtitle{font-size:12px;color:var(--text2);margin-top:4px}
 .chart-canvas-wrap{position:relative}
-.chart-canvas-wrap canvas{max-height:350px}
+.chart-canvas-wrap canvas{display:block}
 
 /* === RECRUITER GRID === */
 .recruiter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-bottom:24px}
@@ -118,7 +118,7 @@ select option{background:#1e293b}
 /* === MODAL === */
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 #modal-overlay.open{display:flex}
-.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:900px;width:100%;max-height:90vh;overflow-y:auto;position:relative}
+.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1100px;width:100%;max-height:90vh;overflow-y:auto;position:relative}
 .modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#1E293B;z-index:1}
 .modal-title{font-size:16px;font-weight:600}
 .modal-body{padding:24px}
@@ -364,11 +364,42 @@ select option{background:#1e293b}
       <div class="filters"><span class="filter-label">Период:</span><select id="filter-survey-period"><option value="all">Все</option></select></div>
     </div>
     <div class="kpi-grid" id="survey-kpis"></div>
-    <div class="survey-row">
-      <div class="chart-wrap"><div class="chart-title">CSAT и NPS по складам</div><div class="chart-canvas-wrap" style="overflow-x:auto"><canvas id="chart-survey-bar"></canvas></div></div>
-      <div class="chart-wrap"><div class="chart-title">% прохождения опроса по складам</div><div id="survey-response-bars"></div></div>
+    <div class="sub-tabs" id="survey-subtabs">
+      <button class="sub-tab active" data-surveytab="warehouses">🏭 По складам</button>
+      <button class="sub-tab" data-surveytab="jobs">💼 По должностям</button>
+      <button class="sub-tab" data-surveytab="cities">🏙 По городам</button>
+      <button class="sub-tab" data-surveytab="completion">📊 Прохождение</button>
     </div>
-    <div class="chart-wrap"><div class="chart-title">Сводка по городам</div><div class="heatmap" id="survey-cities-table"></div></div>
+    <div id="survey-tab-warehouses">
+      <div class="grid-2">
+        <div class="chart-wrap">
+          <div class="chart-title">CSAT и NPS по складам</div>
+          <div class="chart-canvas-wrap" id="survey-bar-wrap"><canvas id="chart-survey-bar"></canvas></div>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-title">Детали по складам</div>
+          <div class="heatmap" id="survey-warehouses-table"></div>
+        </div>
+      </div>
+    </div>
+    <div id="survey-tab-jobs" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">CSAT и NPS по должностям</div>
+        <div class="heatmap" id="survey-jobs-table"></div>
+      </div>
+    </div>
+    <div id="survey-tab-cities" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">Сводка по городам</div>
+        <div class="heatmap" id="survey-cities-table"></div>
+      </div>
+    </div>
+    <div id="survey-tab-completion" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">% прохождения опроса</div>
+        <div id="survey-response-bars"></div>
+      </div>
+    </div>
   </div>
 
 </main>
@@ -510,11 +541,20 @@ function parseCallsSheet(rows) {
     if (a && allEmpty) {
       const divName = a.replace(/\n[\s\S]*$/, '').trim();
       // Check if this looks like a month header
-      const m = findMonthInCells([a]);
-      if (m) { currentMonth = m; skipSummary = false; continue; }
+      const mInline = findMonthInCells([a]);
+      if (mInline) { currentMonth = mInline; skipSummary = false; continue; }
       if (divName) {
         currentDivision = divName;
         if (skipSummary) skipSummary = false;
+        // Look-ahead: find month in next header row for this block
+        for (let j = i + 1; j < Math.min(i + 6, rows.length); j++) {
+          const nr = rows[j];
+          if (!nr || !nr.length) continue;
+          const mLook = findMonthInCells(nr);
+          if (mLook) { currentMonth = mLook; break; }
+          // Stop if we hit a data row (non-empty col0 AND col1 non-empty)
+          if ((nr[0]||'').trim() && (nr[1]||'').trim() && (nr[0]||'').trim() !== 'Рекрутеры') break;
+        }
       }
       continue;
     }
@@ -792,7 +832,8 @@ function parseTrainingSheet(rows) {
 const state = {
   activeTab: 'overview',
   filters: { month: 'all', division: 'all', mppMonth: 'all', orpMonth: 'all', surveyPeriod: 'all',
-             recSort: 'score-desc', mppSort: 'score-desc', orpSort: 'score-desc', citySort: 'csat-desc' },
+             recSort: 'score-desc', mppSort: 'score-desc', orpSort: 'score-desc', citySort: 'csat-desc',
+             surveyActiveTab: 'warehouses' },
   data: { calls: [], mpp: [], orp: [], survey: null, training: null, trainingAvail: true },
   charts: {},
   compareMode: false,
@@ -801,6 +842,17 @@ const state = {
 
 function destroyChart(key) {
   if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; }
+}
+
+function prepareBarWrap(canvas, itemCount, minH) {
+  const h = Math.max(minH || 250, itemCount * 38);
+  const wrap = canvas.parentElement;
+  wrap.style.height = h + 'px';
+  wrap.style.overflowY = 'auto';
+  canvas.removeAttribute('height');
+  canvas.removeAttribute('width');
+  canvas.style.height = h + 'px';
+  canvas.style.width = '100%';
 }
 
 function filteredCalls() {
@@ -1052,8 +1104,8 @@ function renderCalls() {
     <div class="kpi-card"><div class="kpi-label">Средний % качества</div><div class="kpi-value" style="color:${scoreColor(totalQ)}">${totalQ.toFixed(1)}%</div></div>
     <div class="kpi-card"><div class="kpi-label">Проверено звонков</div><div class="kpi-value">${totalCalls}</div></div>
     <div class="kpi-card"><div class="kpi-label">Рекрутеров</div><div class="kpi-value">${data.length}</div></div>
-    <div class="kpi-card green"><div class="kpi-label">Лучший рекрутер</div><div class="kpi-value" style="color:var(--green);font-size:20px">${best.name.split(' ')[0]}</div><div class="kpi-sub">${best.total.toFixed(0)}%</div></div>
-    <div class="kpi-card red"><div class="kpi-label">Худший рекрутер</div><div class="kpi-value" style="color:var(--red);font-size:20px">${worst.name.split(' ')[0]}</div><div class="kpi-sub">${worst.total.toFixed(0)}%</div></div>`;
+    <div class="kpi-card green"><div class="kpi-label">Лучший результат</div><div class="kpi-value" style="color:var(--green);font-size:20px">${best.name.split(' ')[0]}</div><div class="kpi-sub">${best.total.toFixed(0)}%</div></div>
+    <div class="kpi-card red"><div class="kpi-label">Худший результат</div><div class="kpi-value" style="color:var(--red);font-size:20px">${worst.name.split(' ')[0]}</div><div class="kpi-sub">${worst.total.toFixed(0)}%</div></div>`;
 
   renderRecruitersBar(sorted);
   renderCriteriaBar(data);
@@ -1064,8 +1116,7 @@ function renderCalls() {
 function renderRecruitersBar(sorted) {
   destroyChart('recruiters-bar');
   const canvas = document.getElementById('chart-recruiters-bar');
-  canvas.style.width = '100%';
-  canvas.height = Math.max(300, sorted.length * 36);
+  prepareBarWrap(canvas, sorted.length, 300);
   state.charts['recruiters-bar'] = new Chart(canvas, {
     type: 'bar',
     data: {
@@ -1077,7 +1128,7 @@ function renderRecruitersBar(sorted) {
       }]
     },
     options: {
-      indexAxis: 'y', responsive: false, maintainAspectRatio: false,
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: { legend:{display:false}, tooltip:{...tooltipPlugin,callbacks:{label:ctx=>`${ctx.raw}%`}} },
       scales: { x: { min:0,max:100,ticks:{callback:v=>v+'%'} }, y: { ticks:{font:{size:11}} } }
     }
@@ -1400,15 +1451,14 @@ function renderMPP() {
 
   destroyChart('mpp-bar');
   const canvas = document.getElementById('chart-mpp-bar');
-  canvas.style.width = '100%';
-  canvas.height = Math.max(250, personAvg.length * 36);
+  prepareBarWrap(canvas, personAvg.length, 250);
   state.charts['mpp-bar'] = new Chart(canvas,{
     type:'bar',
     data:{
       labels:personAvg.map(r=>r.name||'—'),
       datasets:[{label:'Балл',data:personAvg.map(r=>+r.avg.toFixed(1)),backgroundColor:personAvg.map(r=>r.avg>=80?'rgba(16,185,129,0.7)':r.avg>=60?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)'),borderRadius:4}]
     },
-    options:{indexAxis:'y',responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
   });
 
   // Trend
@@ -1499,12 +1549,11 @@ function renderORP() {
 
   destroyChart('orp-bar');
   const canvas = document.getElementById('chart-orp-bar');
-  canvas.style.width = '100%';
-  canvas.height = Math.max(250, personAvg.length * 36);
+  prepareBarWrap(canvas, personAvg.length, 250);
   state.charts['orp-bar'] = new Chart(canvas,{
     type:'bar',
     data:{labels:personAvg.map(r=>r.name||'—'),datasets:[{label:'Балл',data:personAvg.map(r=>+r.avg.toFixed(1)),backgroundColor:personAvg.map(r=>r.avg>=70?'rgba(16,185,129,0.7)':r.avg>=40?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)'),borderRadius:4}]},
-    options:{indexAxis:'y',responsive:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
   });
 
   const byMonth2={};
@@ -1557,27 +1606,43 @@ function renderORPCheckList(data) {
 }
 
 // ========== RENDER: SURVEY ==========
+function setSurveyTab(tab) {
+  document.querySelectorAll('#survey-subtabs .sub-tab').forEach(b=>{
+    b.classList.toggle('active', b.dataset.surveytab === tab);
+  });
+  ['warehouses','jobs','cities','completion'].forEach(t=>{
+    const el = document.getElementById('survey-tab-'+t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  state.filters.surveyActiveTab = tab;
+}
+
 function renderSurvey() {
   const { records, responseRates } = filteredSurvey();
 
-  // Populate period filter
   if (state.data.survey) {
-    const periods = [...new Set(state.data.survey.records.map(r=>r.period))];
+    const periods = [...new Set(state.data.survey.records.map(r=>r.period).filter(Boolean))];
     const pSel = document.getElementById('filter-survey-period');
-    if (pSel.options.length===1) {
+    if (pSel.options.length === 1) {
       periods.forEach(p=>{ const o=document.createElement('option');o.value=p;o.textContent=p;pSel.appendChild(o); });
     }
   }
 
-  if (!records.length) { document.getElementById('survey-kpis').innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+  if (!records.length) {
+    document.getElementById('survey-kpis').innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных по опросам</div>';
+    return;
+  }
 
   const warehouses = records.filter(r=>r.type==='warehouse');
+  const jobs = records.filter(r=>r.type==='job');
   const cities = records.filter(r=>r.type==='city');
-  const avgCSAT = avg(warehouses.map(r=>r.csat));
-  const avgNPS = avg(warehouses.map(r=>r.nps));
-  const totalResp = responseRates.reduce((a,r)=>a+r.done,0);
-  const totalTotal = responseRates.reduce((a,r)=>a+r.total,0);
-  const respPct = totalTotal ? totalResp/totalTotal*100 : NaN;
+  const allForCSAT = warehouses.length ? warehouses : records;
+
+  const avgCSAT = avg(allForCSAT.filter(r=>!isNaN(r.csat)).map(r=>r.csat));
+  const avgNPS  = avg(allForCSAT.filter(r=>!isNaN(r.nps)).map(r=>r.nps));
+  const totalDone  = responseRates.reduce((a,r)=>a+(r.done||0),0);
+  const totalTotal = responseRates.reduce((a,r)=>a+(r.total||0),0);
+  const respPct = totalTotal ? totalDone/totalTotal*100 : NaN;
 
   document.getElementById('survey-kpis').innerHTML=`
     <div class="kpi-card ${avgCSAT>=4?'green':avgCSAT>=3?'yellow':'red'}">
@@ -1593,44 +1658,80 @@ function renderSurvey() {
     <div class="kpi-card">
       <div class="kpi-label">Прохождение опроса</div>
       <div class="kpi-value">${isNaN(respPct)?'—':respPct.toFixed(0)+'%'}</div>
-      <div class="kpi-sub">${totalResp} из ${totalTotal} ответов</div>
+      <div class="kpi-sub">${totalDone} из ${totalTotal} ответов</div>
     </div>
-    <div class="kpi-card"><div class="kpi-label">Складов охвачено</div><div class="kpi-value">${[...new Set(warehouses.map(r=>r.label))].length}</div></div>`;
+    <div class="kpi-card"><div class="kpi-label">Точек охвата</div>
+      <div class="kpi-value">${[...new Set(records.map(r=>r.label))].length}</div>
+      <div class="kpi-sub">${warehouses.length} складов · ${cities.length} городов</div>
+    </div>`;
 
-  // CSAT/NPS bar
-  const wSorted = [...warehouses].sort((a,b)=>b.csat-a.csat);
-  destroyChart('survey-bar');
-  const canvas = document.getElementById('chart-survey-bar');
-  canvas.style.width = '100%';
-  canvas.height = Math.max(280, wSorted.length * 36);
-  state.charts['survey-bar'] = new Chart(canvas,{
+  // ---- По складам ----
+  renderSurveyGroup(warehouses, 'survey-bar-wrap', 'chart-survey-bar', 'survey-warehouses-table');
+
+  // ---- По должностям ----
+  renderSurveyTable(jobs, 'survey-jobs-table');
+
+  // ---- По городам ----
+  renderCitiesTable(cities);
+
+  // ---- Прохождение ----
+  const rrSorted = [...responseRates].sort((a,b)=>b.pct-a.pct);
+  const respBars = document.getElementById('survey-response-bars');
+  if (!rrSorted.length) {
+    respBars.innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных по прохождению</div>';
+  } else {
+    respBars.innerHTML = rrSorted.map(r=>`
+      <div class="bar-row">
+        <div class="bar-label" title="${r.label}">${r.label.length>22?r.label.slice(0,20)+'…':r.label}</div>
+        <div class="bar-track"><div class="bar-fill ${r.pct>=50?'green':r.pct>=25?'yellow':'red'}" style="width:${r.pct}%"></div></div>
+        <div class="bar-val" style="color:${r.pct>=50?'var(--green)':r.pct>=25?'var(--yellow)':'var(--red)'}">${r.pct.toFixed(0)}%</div>
+      </div>`).join('');
+  }
+}
+
+function renderSurveyGroup(items, wrapId, canvasId, tableId) {
+  const sorted = [...items].filter(r=>!isNaN(r.csat)).sort((a,b)=>b.csat-a.csat);
+  destroyChart(canvasId);
+  if (!sorted.length) { document.getElementById(wrapId).innerHTML='<div class="empty" style="padding:24px"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  prepareBarWrap(canvas, sorted.length, 280);
+  state.charts[canvasId] = new Chart(canvas,{
     type:'bar',
     data:{
-      labels:wSorted.map(r=>r.label.length>28?r.label.slice(0,26)+'…':r.label),
+      labels:sorted.map(r=>r.label.length>30?r.label.slice(0,28)+'…':r.label),
       datasets:[
-        {label:'CSAT',data:wSorted.map(r=>r.csat),backgroundColor:'rgba(59,130,246,0.7)',borderRadius:4},
-        {label:'NPS',data:wSorted.map(r=>r.nps),backgroundColor:'rgba(16,185,129,0.5)',borderRadius:4},
+        {label:'CSAT',data:sorted.map(r=>isNaN(r.csat)?null:+r.csat.toFixed(2)),backgroundColor:'rgba(59,130,246,0.75)',borderRadius:4},
+        {label:'NPS', data:sorted.map(r=>isNaN(r.nps)?null:+r.nps.toFixed(2)),backgroundColor:'rgba(16,185,129,0.55)',borderRadius:4},
       ]
     },
-    options:{indexAxis:'y',responsive:false,maintainAspectRatio:false,plugins:{tooltip:{...tooltipPlugin},legend:{position:'bottom'}},scales:{x:{min:0,max:5}}}
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{tooltip:{...tooltipPlugin},legend:{position:'bottom',labels:{boxWidth:12,font:{size:12}}}},
+      scales:{x:{min:0,max:5,ticks:{stepSize:1}}}}
   });
 
-  // Response rate bars
-  const respBars = document.getElementById('survey-response-bars');
-  const rrSorted = [...responseRates].sort((a,b)=>b.pct-a.pct).slice(0,15);
-  respBars.innerHTML = rrSorted.map(r=>`
-    <div class="bar-row">
-      <div class="bar-label" title="${r.label}">${r.label.length>20?r.label.slice(0,18)+'…':r.label}</div>
-      <div class="bar-track"><div class="bar-fill ${r.pct>=50?'green':r.pct>=25?'yellow':'red'}" style="width:${r.pct}%"></div></div>
-      <div class="bar-val" style="color:${r.pct>=50?'var(--green)':r.pct>=25?'var(--yellow)':'var(--red)'}">${r.pct.toFixed(0)}%</div>
-    </div>`).join('');
+  renderSurveyTable(sorted, tableId);
+}
 
-  renderCitiesTable(cities);
+function renderSurveyTable(items, elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!items.length) { el.innerHTML='<div class="empty" style="padding:16px"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+  const sorted = [...items].filter(r=>!isNaN(r.csat)).sort((a,b)=>b.csat-a.csat);
+  el.innerHTML=`<table><thead><tr>
+    <th>Название</th><th style="text-align:center">Ответов</th>
+    <th style="text-align:center">CSAT</th><th style="text-align:center">NPS</th>
+  </tr></thead><tbody>${sorted.map(r=>`<tr>
+    <td>${r.label}</td>
+    <td style="text-align:center">${r.count||'—'}</td>
+    <td style="text-align:center;font-weight:600;color:${!isNaN(r.csat)&&r.csat>=4?'var(--green)':!isNaN(r.csat)&&r.csat>=3?'var(--yellow)':'var(--red)'}">${isNaN(r.csat)?'—':r.csat.toFixed(2)}</td>
+    <td style="text-align:center;font-weight:600;color:${!isNaN(r.nps)&&r.nps>=4?'var(--green)':!isNaN(r.nps)&&r.nps>=3?'var(--yellow)':'var(--red)'}">${isNaN(r.nps)?'—':r.nps.toFixed(2)}</td>
+  </tr>`).join('')}</tbody></table>`;
 }
 
 function setCitySort(field) {
   const cur = state.filters.citySort;
-  // Toggle direction if same field
   if (cur === field + '-desc') state.filters.citySort = field + '-asc';
   else state.filters.citySort = field + '-desc';
   const { records } = filteredSurvey();
@@ -1638,6 +1739,9 @@ function setCitySort(field) {
 }
 
 function renderCitiesTable(cities) {
+  const el = document.getElementById('survey-cities-table');
+  if (!el) return;
+  if (!cities.length) { el.innerHTML='<div class="empty" style="padding:16px"><div class="empty-icon">📭</div>Нет данных по городам</div>'; return; }
   const [field, dir] = state.filters.citySort.split('-');
   const sorted = [...cities].sort((a,b) => {
     const va = field === 'label' ? (a.label||'') : (a[field]||0);
@@ -1645,30 +1749,19 @@ function renderCitiesTable(cities) {
     if (typeof va === 'string') return dir==='asc' ? va.localeCompare(vb,'ru') : vb.localeCompare(va,'ru');
     return dir==='asc' ? va-vb : vb-va;
   });
-
-  const arrow = (f) => {
-    if (state.filters.citySort === f+'-desc') return ' ↓';
-    if (state.filters.citySort === f+'-asc')  return ' ↑';
-    return '';
-  };
-  const thStyle = 'cursor:pointer;user-select:none;white-space:nowrap';
-
-  let cityHtml = `<table><thead><tr>
-    <th style="${thStyle}" onclick="setCitySort('label')">Город${arrow('label')}</th>
-    <th style="${thStyle}" onclick="setCitySort('count')">Ответов${arrow('count')}</th>
-    <th style="${thStyle}" onclick="setCitySort('csat')">CSAT${arrow('csat')}</th>
-    <th style="${thStyle}" onclick="setCitySort('nps')">NPS${arrow('nps')}</th>
-  </tr></thead><tbody>`;
-  for (const c of sorted) {
-    cityHtml+=`<tr>
-      <td>${c.label}</td>
-      <td style="text-align:center">${c.count}</td>
-      <td style="text-align:center;color:${c.csat>=4?'var(--green)':c.csat>=3?'var(--yellow)':'var(--red)'};font-weight:600">${c.csat.toFixed(2)}</td>
-      <td style="text-align:center;color:${c.nps>=4?'var(--green)':c.nps>=3?'var(--yellow)':'var(--red)'};font-weight:600">${c.nps.toFixed(2)}</td>
-    </tr>`;
-  }
-  cityHtml+='</tbody></table>';
-  document.getElementById('survey-cities-table').innerHTML = cityHtml;
+  const arrow = f => state.filters.citySort===f+'-desc'?' ↓':state.filters.citySort===f+'-asc'?' ↑':'';
+  const th = 'cursor:pointer;user-select:none;white-space:nowrap';
+  el.innerHTML=`<table><thead><tr>
+    <th style="${th}" onclick="setCitySort('label')">Город${arrow('label')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('count')">Ответов${arrow('count')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('csat')">CSAT${arrow('csat')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('nps')">NPS${arrow('nps')}</th>
+  </tr></thead><tbody>${sorted.map(r=>`<tr>
+    <td>${r.label}</td>
+    <td style="text-align:center">${r.count||'—'}</td>
+    <td style="text-align:center;font-weight:600;color:${!isNaN(r.csat)&&r.csat>=4?'var(--green)':!isNaN(r.csat)&&r.csat>=3?'var(--yellow)':'var(--red)'}">${isNaN(r.csat)?'—':r.csat.toFixed(2)}</td>
+    <td style="text-align:center;font-weight:600;color:${!isNaN(r.nps)&&r.nps>=4?'var(--green)':!isNaN(r.nps)&&r.nps>=3?'var(--yellow)':'var(--red)'}">${isNaN(r.nps)?'—':r.nps.toFixed(2)}</td>
+  </tr>`).join('')}</tbody></table>`;
 }
 
 // ========== EVENT HANDLERS ==========
@@ -1718,14 +1811,18 @@ document.getElementById('modal-overlay').addEventListener('click', e=>{
     document.getElementById('modal-overlay').classList.remove('open');
 });
 
-document.querySelectorAll('.sub-tab').forEach(btn=>{
+document.querySelectorAll('#tab-training .sub-tab').forEach(btn=>{
   btn.addEventListener('click',()=>{
     const id=btn.dataset.subtab;
-    document.querySelectorAll('.sub-tab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('#tab-training .sub-tab').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('subtab-squeeze').style.display=id==='squeeze'?'block':'none';
     document.getElementById('subtab-lmk').style.display=id==='lmk'?'block':'none';
   });
+});
+
+document.querySelectorAll('#survey-subtabs .sub-tab').forEach(btn=>{
+  btn.addEventListener('click',()=>{ setSurveyTab(btn.dataset.surveytab); });
 });
 
 // ========== INITIALIZATION ==========
