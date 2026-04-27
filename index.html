@@ -616,8 +616,12 @@ function parseMPPSheet(rows) {
 
     // Check if row has проверяемый info
     const num = parseInt(c0);
-    if (!isNaN(num) && num > 0 && currentMonth) {
+    if (!isNaN(num) && num > 0) {
       const date = (row[1]||'').trim();
+      // Fallback: extract month from date if not set from header
+      const mDate = monthFromDate(date);
+      if (mDate) currentMonth = mDate;
+      if (!currentMonth) continue;
       const checker = (row[2]||'').trim();
       const checked = (row[3]||'').trim();
       const div = (row[4]||'').trim();
@@ -653,6 +657,14 @@ function parseMPPSheet(rows) {
   return records;
 }
 
+// Извлечь месяц из даты формата "05.02.2026" → "ФЕВРАЛЬ"
+function monthFromDate(dateStr) {
+  const m = (dateStr||'').match(/[\.\-\/](\d{2})[\.\-\/]/);
+  if (!m) return null;
+  const monthNames = ['','ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ','ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
+  return monthNames[parseInt(m[1])] || null;
+}
+
 function parseORPSheet(rows) {
   const records = [];
   let currentMonth = null;
@@ -664,39 +676,38 @@ function parseORPSheet(rows) {
     const c0 = (row[0]||'').trim();
     const allCells = row.join(' ');
 
-    // Month detection
-    const m = allCells.match(MONTH_RX);
-    if (m && allCells.includes('202') && !c0.match(/^\d+$/)) {
-      currentMonth = m[0].toUpperCase();
+    // Обнаружение месяца по тексту в любой ячейке (для заголовков блоков)
+    const mText = allCells.match(MONTH_RX);
+    if (mText && allCells.includes('202') && !c0.match(/^\d+$/)) {
+      currentMonth = mText[0].toUpperCase();
       continue;
     }
-    // Also first header: "ПРОВЕРКИ ЯНВАРЬ 2026 Дивизион"
-    if (allCells.match(MONTH_RX) && !currentMonth) {
-      const mm = allCells.match(MONTH_RX);
-      if (mm) currentMonth = mm[0].toUpperCase();
-    }
-
-    if (!currentMonth) continue;
 
     const num = parseInt(c0);
     if (isNaN(num) || num <= 0) continue;
 
     const date = (row[1]||'').trim();
-    const checker = (row[2]||'').trim();
-    const checked = (row[3]||'').trim();
-    const div = (row[4]||'').trim();
 
-    // January: col4=div (text), col5=сильные, col6=слабые, col7=балл
-    // Feb+: col4=comm%, col5=sales, col6=obj, col7=gen%, col8=итого, col9=балл
+    // Извлекаем месяц из даты (основной метод для Feb+)
+    const mDate = monthFromDate(date);
+    if (mDate) currentMonth = mDate;
+
+    if (!currentMonth) continue;
+
+    // Реальная структура ORP (из CSV):
+    // Январь: col[2]=Проверяющий, col[3]=Проверяемый, col[4]=Дивизион(пусто), col[7]=Балл
+    // Feb+:   col[2]=Проверяемый, col[3]=Дивизион, col[4..8]=компетенции, col[9]=Балл
     const c4 = (row[4]||'').trim();
     const c7 = (row[7]||'').trim();
-    const isFebPlus = c7.includes('%') || (!isNaN(parseNum(c4)) && parseNum(c4) < 20);
+    const isFebPlus = c7.includes('%') || (!isNaN(parseNum(c4)) && parseNum(c4) < 20 && parseNum(c4) > 0);
 
     let record;
     if (isFebPlus) {
       record = {
-        month: currentMonth, date, checker, checked,
-        division: (row[3]||'').trim(),
+        month: currentMonth, date,
+        checker: '',
+        checked: (row[2]||'').trim(),  // Проверяемый сотрудник
+        division: (row[3]||'').trim(), // Дивизион
         strong: '', weak: '',
         score: parseNum(row[9]),
         competencies: {
@@ -706,15 +717,17 @@ function parseORPSheet(rows) {
       };
     } else {
       record = {
-        month: currentMonth, date, checker, checked,
-        division: div,
+        month: currentMonth, date,
+        checker: (row[2]||'').trim(),  // Проверяющий
+        checked: (row[3]||'').trim(),  // Проверяемый
+        division: (row[4]||'').trim(), // Дивизион (пустой в январе)
         strong: (row[5]||'').trim(),
         weak: (row[6]||'').trim(),
         score: parseNum(row[7]),
         competencies: null
       };
     }
-    if (!isNaN(record.score)) records.push(record);
+    if (!isNaN(record.score) && record.score > 0) records.push(record);
   }
   return records;
 }
@@ -795,34 +808,48 @@ function parseSurveySheet(rows) {
 }
 
 function parseTrainingSheet(rows) {
-  // Try to detect "ОБУЧЕНИЕ ПО ДОЖИМУ" and "ОБУЧЕНИЕ ПО ВОЗРАЖЕНИЮ"
+  // Реальная структура CSV (из анализа):
+  // Строка 1: шапка, ДОЖИМ в col[3], ФИО в col[0]
+  // Строки 2-14: данные по дожиму
+  // Строка с col[0]="ФИО": разделитель → переход к LMK
+  // Строки после: данные по LMK
+  //
+  // Squeeze cols: col[3]=Точка А%, col[8]=Точка Б1%, col[14]=Точка Б2%, col[20]=Точка Б3%
+  // LMK cols: col[1]=старт%, col[3]=1нед%, col[7]=2нед%, col[10]=Δ FCR 2нед
   const squeeze = [], lmk = [];
   let mode = null;
-  let headerRow = null;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (!row) continue;
-    const a = (row[0]||'').toUpperCase();
-    if (a.includes('ДОЖИМ') || a.includes('ДОЖИМУ')) { mode = 'squeeze'; headerRow = null; continue; }
-    if (a.includes('ЛМК') || a.includes('ВОЗРАЖЕН')) { mode = 'lmk'; headerRow = null; continue; }
-    if (!mode) continue;
-
     const c0 = (row[0]||'').trim();
-    if (!c0) continue;
-    if (c0.includes('ФИО') || c0 === '№') { headerRow = row; continue; }
+    const rowText = row.join(' ').toUpperCase();
+
+    // Detect squeeze section: ДОЖИМ может быть в любом столбце шапки
+    if (!mode && rowText.includes('ДОЖИМ')) { mode = 'squeeze'; continue; }
+
+    // Переход к LMK: строка ФИО после данных дожима
+    if (mode === 'squeeze' && c0.toUpperCase() === 'ФИО') { mode = 'lmk'; continue; }
+
+    if (!mode || !c0 || c0.toUpperCase() === 'ФИО') continue;
     if (c0 === 'Итого' || c0 === 'Среднее') continue;
 
     if (mode === 'squeeze') {
-      const ptA = parsePercent(row[3]);
-      const ptB1 = parsePercent(row[5]);
-      if (!isNaN(ptA)) squeeze.push({ name: c0, pointA: ptA, pointB: ptB1, allPoints: [row[3],row[5],row[7],row[9]].map(parsePercent) });
+      const ptA  = parsePercent(row[3]);
+      const ptB1 = parsePercent(row[8]);
+      const ptB2 = parsePercent(row[14]);
+      const ptB3 = parsePercent(row[20]);
+      if (!isNaN(ptA)) {
+        const lastB = !isNaN(ptB3) ? ptB3 : !isNaN(ptB2) ? ptB2 : ptB1;
+        squeeze.push({ name: c0, pointA: ptA, pointB: lastB, allPoints: [ptA, ptB1, ptB2, ptB3] });
+      }
     }
     if (mode === 'lmk') {
       const start = parsePercent(row[1]);
-      const w1 = parsePercent(row[2]);
-      const w2 = parsePercent(row[3]);
-      if (!isNaN(start)) lmk.push({ name: c0, start, week1: w1, week2: w2, fcr: parsePercent(row[4]) });
+      const w1    = parsePercent(row[3]);
+      const w2    = parsePercent(row[7]);
+      const fcr   = parsePercent(row[10]);
+      if (!isNaN(start)) lmk.push({ name: c0, start, week1: w1, week2: w2, fcr });
     }
   }
   return { squeeze, lmk };
