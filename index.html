@@ -524,8 +524,17 @@ function parseCallsSheet(rows) {
     const a = (row[0] || '').trim();
     const allEmpty = row.slice(1).every(c => !c);
 
+    // Bare month row: col[0] empty, month word in col[10] (e.g. ",,,,,,,,,,ФЕВРАЛЬ,,,")
+    if (!a) {
+      const mFound = findMonthInCells(row);
+      if (mFound) { currentMonth = mFound; skipSummary = false; }
+      continue;
+    }
+
     // Full header row: col1="Итого", col2="Звонков проверено"
     if ((row[1]||'').trim() === 'Итого' && (row[2]||'').trim() === 'Звонков проверено') {
+      // Sub-header repeat (e.g. "Рекрутеры,Итого,...") — only skip, don't overwrite division
+      if (!a.includes('\n') && a === 'Рекрутеры') { continue; }
       const divRaw = a.split('\n')[0].trim();
       currentDivision = divRaw || currentDivision;
       const m = findMonthInCells(row);
@@ -537,24 +546,15 @@ function parseCallsSheet(rows) {
     // Summary/analytics section — skip duplicates
     if (a === 'Аналитика по всему КЦ') { skipSummary = true; continue; }
 
-    // Division divider row (only col0 filled) — also ends summary skip
-    if (a && allEmpty) {
+    // Division divider row: col0 filled, col1 empty (data rows always have % in col1)
+    if (a && !(row[1]||'').trim()) {
       const divName = a.replace(/\n[\s\S]*$/, '').trim();
       // Check if this looks like a month header
       const mInline = findMonthInCells([a]);
       if (mInline) { currentMonth = mInline; skipSummary = false; continue; }
       if (divName) {
         currentDivision = divName;
-        if (skipSummary) skipSummary = false;
-        // Look-ahead: find month in next header row for this block
-        for (let j = i + 1; j < Math.min(i + 6, rows.length); j++) {
-          const nr = rows[j];
-          if (!nr || !nr.length) continue;
-          const mLook = findMonthInCells(nr);
-          if (mLook) { currentMonth = mLook; break; }
-          // Stop if we hit a data row (non-empty col0 AND col1 non-empty)
-          if ((nr[0]||'').trim() && (nr[1]||'').trim() && (nr[0]||'').trim() !== 'Рекрутеры') break;
-        }
+        skipSummary = false;
       }
       continue;
     }
