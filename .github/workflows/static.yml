@@ -18,7 +18,11 @@ jobs:
 
       - name: Inject API key
         run: |
+          # Заменяем плейсхолдер на реальный ключ из Secrets
           sed -i "s|GEMINI_KEY_PLACEHOLDER|${{ secrets.GEMINI_API_KEY }}|g" index.html
+          
+          # Проверяем что замена произошла (для отладки)
+          grep -q "GEMINI_KEY_PLACEHOLDER" index.html && echo "⚠️ Замена не произошла!" || echo "✅ Ключ успешно вставлен"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
