@@ -36,6 +36,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 #error-overlay{display:none}
 .spinner{width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .loading-text{color:var(--text2);font-size:15px}
 .error-icon{font-size:48px}
 .error-msg{color:var(--text2);text-align:center;max-width:400px;line-height:1.6}
@@ -118,7 +119,7 @@ select option{background:#1e293b}
 /* === MODAL === */
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 #modal-overlay.open{display:flex}
-.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1100px;width:100%;max-height:90vh;overflow-y:auto;position:relative}
+.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1260px;width:100%;max-height:92vh;overflow-y:auto;position:relative}
 .modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#1E293B;z-index:1}
 .modal-title{font-size:16px;font-weight:600}
 .modal-body{padding:24px}
@@ -197,6 +198,59 @@ select option{background:#1e293b}
 /* divider */
 .divider{height:1px;background:var(--border);margin:20px 0}
 
+/* === SEARCH === */
+.search-input{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;transition:border-color .2s;width:200px}
+.search-input:focus{border-color:var(--blue)}
+.search-input::placeholder{color:var(--text3)}
+
+/* === TAB BADGE === */
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:0 4px;margin-left:4px;vertical-align:middle;line-height:1}
+
+/* === MATRIX === */
+.matrix-wrap{position:relative;width:100%;height:320px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-top:8px;background:var(--bg)}
+.matrix-q-label{position:absolute;font-size:11px;font-weight:600;pointer-events:none;opacity:.7}
+.matrix-dot{position:absolute;border-radius:50%;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.matrix-dot:hover{transform:translate(-50%,-50%) scale(1.8)!important;box-shadow:0 0 8px rgba(255,255,255,.3);z-index:10}
+.matrix-axis{position:absolute;background:rgba(148,163,184,0.2)}
+.matrix-axis-label{position:absolute;font-size:10px;color:var(--text3)}
+
+/* === DEGRADATION === */
+.deg-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.deg-row:last-child{border-bottom:none}
+.deg-change{font-weight:700;min-width:60px;text-align:right}
+.deg-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.deg-months{font-size:11px;color:var(--text3)}
+
+/* === EXPORT TOOLBAR === */
+.export-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.btn-icon{padding:6px 10px;font-size:13px}
+
+/* === REFRESH === */
+.nav-refresh{padding:8px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-family:inherit;font-size:12px;cursor:pointer;transition:color .2s,border-color .2s;margin-left:auto;white-space:nowrap;flex-shrink:0}
+.nav-refresh:hover{color:var(--blue);border-color:var(--blue)}
+.nav-refresh.spinning{animation:spin .6s linear infinite;border-color:var(--blue);color:var(--blue)}
+
+/* === AUTO-INSIGHT BANNER === */
+.insight-banner{background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.6;position:relative}
+.insight-banner-title{font-weight:600;color:var(--blue);margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+
+/* === SPARKLINE SVG === */
+.sparkline-svg{display:block;width:100%;height:30px}
+
+/* === PRINT === */
+@media print{
+  nav,#loading-overlay,#error-overlay,#modal-overlay,.filters,.btn,.ai-input-row,.ai-suggestions,
+  .export-row,.nav-refresh,#sort-score-desc,#sort-score-asc,#sort-name,
+  #mpp-sort-score-desc,#mpp-sort-score-asc,#mpp-sort-name,#mpp-sort-period,
+  #orp-sort-score-desc,#orp-sort-score-asc,#orp-sort-name,#orp-sort-period
+  {display:none!important}
+  body{background:#fff!important;color:#000!important}
+  .section{display:block!important}
+  .card,.kpi-card,.chart-wrap{background:#fff!important;border:1px solid #ddd!important;break-inside:avoid}
+  main{max-width:100%!important;padding:0!important}
+  .kpi-value,.section-title{color:#000!important}
+}
+
 /* === AI ASSISTANT === */
 .ai-chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:480px}
 .ai-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
@@ -240,6 +294,7 @@ select option{background:#1e293b}
     <button class="tab-btn" data-tab="orp">👥 ОРП</button>
     <button class="tab-btn" data-tab="survey">📋 Опросы</button>
     <button class="tab-btn" data-tab="ai">🤖 AI Ассистент</button>
+    <button class="nav-refresh" id="nav-refresh-btn" onclick="refreshDashboard()" title="Обновить данные">↻ Обновить</button>
   </div>
 </nav>
 
@@ -248,7 +303,14 @@ select option{background:#1e293b}
 
   <!-- OVERVIEW -->
   <div class="section active" id="tab-overview">
-    <div class="section-header"><div><div class="section-title">Сводка КЦ</div><div class="section-sub">Общие показатели качества</div></div></div>
+    <div class="section-header">
+      <div><div class="section-title">Сводка КЦ</div><div class="section-sub">Общие показатели качества</div></div>
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
+    </div>
+    <div id="overview-insight" style="display:none" class="insight-banner">
+      <div class="insight-banner-title">🤖 AI Авто-инсайт</div>
+      <div id="overview-insight-text"></div>
+    </div>
     <div class="kpi-grid" id="overview-kpis"></div>
     <div class="grid-2">
       <div class="chart-wrap"><div class="chart-title">Динамика качества прослушки по месяцам</div><div class="chart-canvas-wrap"><canvas id="chart-overview-trend"></canvas></div></div>
@@ -269,7 +331,12 @@ select option{background:#1e293b}
         <select id="filter-month"><option value="all">Все месяцы</option></select>
         <span class="filter-label">Дивизион:</span>
         <select id="filter-division"><option value="all">Все</option></select>
+        <input class="search-input" id="search-fio" placeholder="🔍 Поиск по ФИО..." oninput="onSearchInput()" autocomplete="off">
       </div>
+    </div>
+    <div class="export-row">
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="exportCallsCSV()" title="Скачать CSV">📥 CSV</button>
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
     </div>
     <div class="breadcrumb" id="calls-breadcrumb" style="display:none">
       <a onclick="clearDivFilter()">Все дивизионы</a>
@@ -292,6 +359,18 @@ select option{background:#1e293b}
         </div>
       </div>
       <div class="recruiter-grid" id="recruiter-grid"></div>
+    </div>
+    <div class="grid-2">
+      <div class="chart-wrap">
+        <div class="chart-title">Матрица: качество × объём звонков</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">⭐Звёзды &nbsp;·&nbsp; 📈Рост &nbsp;·&nbsp; ⚠️Риски &nbsp;·&nbsp; 📋Наблюдение</div>
+        <div class="matrix-wrap" id="calls-matrix"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Деградация: наибольшее снижение %</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Рекрутеры с максимальным падением между месяцами</div>
+        <div id="calls-degradation"></div>
+      </div>
     </div>
     <div class="chart-wrap">
       <div class="chart-title">Сравнение дивизионов по критериям</div>
@@ -545,10 +624,20 @@ function parseCSV(text) {
   return rows.map(r => r.map(c => c.trim()));
 }
 
-async function fetchSheet(name) {
+const CACHE_TTL = 30 * 60 * 1000;
+async function fetchSheet(name, bustCache) {
+  const cacheKey = `okk_v2_${name}`;
+  if (!bustCache) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && (Date.now() - cached.ts) < CACHE_TTL) return parseCSV(cached.text);
+    } catch(e) {}
+  }
   const res = await fetch(sheetUrl(name));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseCSV(await res.text());
+  const text = await res.text();
+  try { localStorage.setItem(cacheKey, JSON.stringify({text, ts: Date.now()})); } catch(e) {}
+  return parseCSV(text);
 }
 
 function findMonthInCells(cells) {
@@ -917,7 +1006,7 @@ function parseTrainingSheet(rows) {
 // ========== STATE MANAGEMENT ==========
 const state = {
   activeTab: 'overview',
-  filters: { month: 'all', division: 'all', mppMonth: 'all', orpMonth: 'all', surveyPeriod: 'all',
+  filters: { month: 'all', division: 'all', search: '', mppMonth: 'all', orpMonth: 'all', surveyPeriod: 'all',
              recSort: 'score-desc', mppSort: 'score-desc', orpSort: 'score-desc', citySort: 'csat-desc',
              surveyActiveTab: 'warehouses' },
   data: { calls: [], mpp: [], orp: [], survey: null, training: null, trainingAvail: true },
@@ -942,11 +1031,17 @@ function prepareBarWrap(canvas, itemCount, minH) {
 }
 
 function filteredCalls() {
+  const q = state.filters.search.toLowerCase();
   return state.data.calls.filter(r => {
     const okM = state.filters.month === 'all' || r.month === state.filters.month;
     const okD = state.filters.division === 'all' || r.division === state.filters.division;
-    return okM && okD;
+    const okS = !q || r.name.toLowerCase().includes(q);
+    return okM && okD && okS;
   });
+}
+function onSearchInput() {
+  state.filters.search = document.getElementById('search-fio').value;
+  renderCalls();
 }
 
 function filteredMPP() {
@@ -1013,6 +1108,149 @@ function avatarClass(division) {
   if (d.includes('урал') || d.includes('ural')) return 'av-ural';
   if (d.includes('лок')) return 'av-local';
   return 'av-other';
+}
+
+// ========== SPARKLINES ==========
+function buildSparklineSVG(name, width, height) {
+  const allData = state.data.calls.filter(r => r.name === name);
+  const months = MONTHS_ORDER.filter(m => allData.find(r => r.month === m));
+  if (months.length < 2) return '';
+  const vals = months.map(m => allData.find(r => r.month === m)?.total ?? null).filter(v => v !== null);
+  if (vals.length < 2) return '';
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * (width - 8) + 4;
+    const y = height - ((v - minV) / range) * (height - 8) - 4;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastVal = vals[vals.length - 1];
+  const trend = vals[vals.length - 1] >= vals[0];
+  const color = lastVal >= 90 ? '#10B981' : lastVal >= 80 ? '#F59E0B' : '#EF4444';
+  return `<svg class="sparkline-svg" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${vals.map((v, i) => { const x = (i / (vals.length - 1)) * (width - 8) + 4; const y = height - ((v - minV) / range) * (height - 8) - 4; return i === vals.length - 1 ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${color}"/>` : ''; }).join('')}
+  </svg>`;
+}
+
+// ========== MATRIX ==========
+function renderCallsMatrix(data) {
+  const el = document.getElementById('calls-matrix');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty" style="padding:40px">Нет данных</div>'; return; }
+  const qualThreshold = 85;
+  const callCounts = data.map(r => r.calls).filter(v => v > 0);
+  const callsMedian = callCounts.length ? callCounts.sort((a,b)=>a-b)[Math.floor(callCounts.length/2)] : 1;
+  const maxCalls = Math.max(...callCounts, 1);
+  const W = el.clientWidth || 400, H = 320;
+  let html = '';
+  // Quadrant backgrounds (using divs)
+  html += `<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;pointer-events:none">
+    <div style="background:rgba(16,185,129,0.07);border-right:1px dashed rgba(148,163,184,0.2);border-bottom:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(245,158,11,0.05);border-bottom:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(239,68,68,0.07);border-right:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(59,130,246,0.05)"></div>
+  </div>`;
+  // Quadrant labels
+  html += `<span class="matrix-q-label" style="top:8px;left:8px;color:var(--green)">⭐ Звёзды</span>`;
+  html += `<span class="matrix-q-label" style="top:8px;right:8px;color:var(--yellow);text-align:right">📈 Рост</span>`;
+  html += `<span class="matrix-q-label" style="bottom:8px;left:8px;color:var(--red)">⚠️ Риски</span>`;
+  html += `<span class="matrix-q-label" style="bottom:8px;right:8px;color:var(--text3);text-align:right">📋 Наблюдение</span>`;
+  // Axis labels
+  html += `<span class="matrix-axis-label" style="bottom:2px;left:50%;transform:translateX(-50%)">← низкое качество · высокое →</span>`;
+  // Dots
+  const padX = 20, padY = 20;
+  const plotW = W - 2*padX, plotH = H - 2*padY;
+  // Aggregate by name (take best/latest record per name)
+  const byName = {};
+  for (const r of data) {
+    if (!byName[r.name] || r.total > byName[r.name].total) byName[r.name] = r;
+  }
+  for (const r of Object.values(byName)) {
+    const xPct = Math.min(100, Math.max(0, r.total)) / 100;
+    const yPct = Math.min(1, r.calls / (maxCalls * 1.1));
+    const x = padX + xPct * plotW;
+    const y = padY + (1 - yPct) * plotH;
+    const color = r.total >= 90 ? '#10B981' : r.total >= 80 ? '#F59E0B' : '#EF4444';
+    const sz = 8 + Math.min(12, r.calls / (maxCalls / 8));
+    html += `<div class="matrix-dot" title="${r.name}\n${r.total.toFixed(0)}% · ${r.calls} зв."
+      style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;width:${sz.toFixed(0)}px;height:${sz.toFixed(0)}px;background:${color};opacity:0.85;transform:translate(-50%,-50%)"
+      onclick="openModal(${JSON.stringify(r.name)})"></div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ========== DEGRADATION ==========
+function renderDegradation(container) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  const calls = state.data.calls;
+  if (!calls.length) { el.innerHTML = '<div class="empty" style="padding:24px">Нет данных</div>'; return; }
+  // Find recruiters with data in 2+ months
+  const byName = {};
+  for (const r of calls) {
+    if (!byName[r.name]) byName[r.name] = {};
+    byName[r.name][r.month] = r.total;
+  }
+  const degraders = [];
+  for (const [name, months] of Object.entries(byName)) {
+    const mkeys = MONTHS_ORDER.filter(m => months[m] !== undefined);
+    if (mkeys.length < 2) continue;
+    let maxDrop = 0, fromMonth = '', toMonth = '', fromVal = 0, toVal = 0;
+    for (let i = 1; i < mkeys.length; i++) {
+      const drop = months[mkeys[i-1]] - months[mkeys[i]];
+      if (drop > maxDrop) { maxDrop = drop; fromMonth = mkeys[i-1]; toMonth = mkeys[i]; fromVal = months[mkeys[i-1]]; toVal = months[mkeys[i]]; }
+    }
+    if (maxDrop > 0) degraders.push({ name, drop: maxDrop, fromMonth, toMonth, fromVal, toVal });
+  }
+  if (!degraders.length) { el.innerHTML = '<div style="color:var(--green);font-size:13px;padding:16px 0">🎉 Снижений не обнаружено — все рекрутеры стабильны или растут</div>'; return; }
+  const top = degraders.sort((a,b) => b.drop - a.drop).slice(0, 7);
+  el.innerHTML = top.map(r => `<div class="deg-row">
+    <span style="font-size:16px">📉</span>
+    <span class="deg-name" onclick="openModal(${JSON.stringify(r.name)})" style="cursor:pointer;color:var(--blue)">${r.name}</span>
+    <span class="deg-months">${r.fromMonth[0]+r.fromMonth.slice(1).toLowerCase()} ${r.fromVal.toFixed(0)}% → ${r.toMonth[0]+r.toMonth.slice(1).toLowerCase()} ${r.toVal.toFixed(0)}%</span>
+    <span class="deg-change" style="color:var(--red)">−${r.drop.toFixed(1)}%</span>
+  </div>`).join('');
+}
+
+// ========== EXPORT CSV ==========
+function exportCallsCSV() {
+  const data = filteredCalls();
+  if (!data.length) return;
+  const headers = ['ФИО','Дивизион','Месяц','% итого','Звонков', ...CRITERIA_NAMES];
+  const rows = data.map(r => [
+    r.name, r.division, r.month, r.total.toFixed(1), r.calls,
+    ...CRITERIA_NAMES.map(n => isNaN(r.criteria[n]) ? '' : r.criteria[n].toFixed(1))
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `okk_прослушка_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ========== TAB BADGES ==========
+function updateTabBadges() {
+  const calls = state.data.calls;
+  const below = calls.filter(r => r.total < 80).length;
+  document.querySelectorAll('.tab-btn[data-tab="calls"] .tab-badge').forEach(e => e.remove());
+  if (below > 0) {
+    const btn = document.querySelector('.tab-btn[data-tab="calls"]');
+    if (btn) { const b = document.createElement('span'); b.className = 'tab-badge'; b.textContent = below; btn.appendChild(b); }
+  }
+}
+
+// ========== REFRESH ==========
+async function refreshDashboard() {
+  const btn = document.getElementById('nav-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  // Clear cache
+  for (const name of Object.values(SHEETS)) {
+    try { localStorage.removeItem(`okk_v2_${name}`); } catch(e) {}
+  }
+  await initDashboard(true);
+  if (btn) btn.classList.remove('spinning');
 }
 
 // ========== CHART DEFAULTS ==========
@@ -1197,6 +1435,8 @@ function renderCalls() {
   renderCriteriaBar(data);
   renderRecruiterGrid(data);
   renderDivHeatmap(data);
+  setTimeout(() => { renderCallsMatrix(data); }, 50);
+  renderDegradation('calls-degradation');
 }
 
 function renderRecruitersBar(sorted) {
@@ -1287,7 +1527,10 @@ function renderRecruiterGrid(data) {
   const grid = document.getElementById('recruiter-grid');
   grid.innerHTML = sorted.map((r,i) => {
     const avC = avatarClass(r.division);
-    return `<div class="rec-card" style="animation-delay:${i*40}ms" onclick="openModal(${JSON.stringify(r.name).replace(/"/g,'&quot;')})">
+    const spark = buildSparklineSVG(r.name, 120, 30);
+    const hasSparkline = spark !== '';
+    const nameJson = JSON.stringify(r.name).replace(/"/g,'&quot;');
+    return `<div class="rec-card" style="animation-delay:${i*40}ms" onclick="openModal(${nameJson})">
       <div class="rec-header">
         <div class="avatar ${avC}">${initials(r.name)}</div>
         <div>
@@ -1297,8 +1540,24 @@ function renderRecruiterGrid(data) {
       </div>
       <div class="rec-score ${scoreClass(r.total)}">${r.total.toFixed(0)}%</div>
       <div class="rec-calls">Проверено звонков: ${r.calls}</div>
+      <div class="rec-footer">
+        <div class="sparkline-wrap">${hasSparkline ? spark : ''}</div>
+        <button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();aiAskFromCard(${nameJson})">🤖 AI</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function aiAskFromCard(name) {
+  const q = `Проанализируй рекрутера ${name}: его показатели по месяцам, сильные и слабые критерии, динамику. Дай конкретные рекомендации по улучшению.`;
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.querySelector('.tab-btn[data-tab="ai"]').click();
+  setTimeout(() => aiAsk(q), 150);
+}
+function aiAskFromModal(name) {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.querySelector('.tab-btn[data-tab="ai"]').click();
+  setTimeout(() => aiAsk(`Проанализируй рекрутера ${name}: его показатели по месяцам, сильные и слабые критерии, динамику. Дай конкретные рекомендации по улучшению.`), 150);
 }
 
 function renderDivHeatmap(data) {
@@ -1398,6 +1657,8 @@ function openModal(name) {
           <button class="btn btn-sm" onclick="renderCompare('${rec.name}')">Сравнить</button>
         </div>
         <div id="compare-area"></div>
+        <div class="divider"></div>
+        <button class="btn btn-sm" onclick="aiAskFromModal('${rec.name.replace(/'/g,"\\'")}')">🤖 AI Анализ этого рекрутера</button>
       </div>
     </div>`;
 
@@ -1415,7 +1676,7 @@ function openModal(name) {
     },
     options: {
       responsive: true,
-      scales: { r: { min:0, max:100, ticks:{stepSize:25,backdropColor:'transparent',color:'var(--text3)'}, grid:{color:'rgba(148,163,184,0.1)'}, pointLabels:{font:{size:9},color:'var(--text2)'} } },
+      scales: { r: { min:0, max:100, ticks:{stepSize:25,backdropColor:'transparent',color:'var(--text3)'}, grid:{color:'rgba(148,163,184,0.1)'}, pointLabels:{font:{size:8},color:'var(--text2)'} } },
       plugins: { legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}, tooltip:{...tooltipPlugin} }
     }
   });
@@ -1920,16 +2181,16 @@ document.querySelectorAll('#survey-subtabs .sub-tab').forEach(btn=>{
 });
 
 // ========== INITIALIZATION ==========
-async function initDashboard() {
+async function initDashboard(bustCache) {
   document.getElementById('loading-overlay').style.display='flex';
   document.getElementById('error-overlay').style.display='none';
 
   try {
     const [callsRows, mppRows, orpRows, surveyRows] = await Promise.all([
-      fetchSheet(SHEETS.calls),
-      fetchSheet(SHEETS.mpp),
-      fetchSheet(SHEETS.orp),
-      fetchSheet(SHEETS.survey),
+      fetchSheet(SHEETS.calls, bustCache),
+      fetchSheet(SHEETS.mpp, bustCache),
+      fetchSheet(SHEETS.orp, bustCache),
+      fetchSheet(SHEETS.survey, bustCache),
     ]);
 
     state.data.calls = parseCallsSheet(callsRows);
@@ -1939,7 +2200,7 @@ async function initDashboard() {
 
     // Training sheet — may have wrong name, so try separately
     try {
-      const trainingRows = await fetchSheet(SHEETS.training);
+      const trainingRows = await fetchSheet(SHEETS.training, bustCache);
       // Verify it's not the same as calls (fallback to default sheet)
       const isActualTraining = trainingRows[0] && !(trainingRows[0][1]==='Итого' && trainingRows[0][2]==='Звонков проверено');
       if (isActualTraining) {
@@ -1955,7 +2216,10 @@ async function initDashboard() {
     }
 
     document.getElementById('loading-overlay').style.display='none';
+    updateTabBadges();
     renderOverview();
+    // Auto-insight (non-blocking)
+    setTimeout(generateAutoInsight, 1500);
 
   } catch(err) {
     console.error(err);
@@ -2066,7 +2330,7 @@ function buildDataContext() {
   return lines.join('\n');
 }
 
-async function sendToGemini(userMsg) {
+function buildGeminiPayload(userMsg, extra) {
   const systemPrompt = `Ты — AI-аналитик дашборда ОКК (отдела контроля качества) колл-центра по подбору персонала.
 Твоя задача — анализировать данные и давать практические выводы на русском языке.
 Стиль: профессиональный, лаконичный. Используй конкретные цифры.
@@ -2075,25 +2339,77 @@ async function sendToGemini(userMsg) {
 
 АКТУАЛЬНЫЕ ДАННЫЕ:
 ${buildDataContext()}`;
-
-  const payload = {
+  return {
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [...aiHistory, { role: 'user', parts: [{ text: userMsg }] }],
-    generationConfig: { temperature: 0.6, maxOutputTokens: 1500, topP: 0.9 }
+    generationConfig: { temperature: 0.6, maxOutputTokens: extra ? 400 : 1500, topP: 0.9 }
   };
+}
 
+async function sendToGeminiStream(userMsg, onChunk) {
+  const payload = buildGeminiPayload(userMsg);
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '', buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const json = JSON.parse(line.slice(6));
+          const chunk = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (chunk) { fullText += chunk; onChunk(fullText); }
+        } catch(e) {}
+      }
+    }
+  }
+  return fullText;
+}
+
+async function sendToGemini(userMsg) {
+  const payload = buildGeminiPayload(userMsg);
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
   );
   if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `HTTP ${res.status}`);
   }
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Пустой ответ от модели');
   return text;
+}
+
+async function generateAutoInsight() {
+  if (!state.data.calls.length) return;
+  const banner = document.getElementById('overview-insight');
+  const textEl = document.getElementById('overview-insight-text');
+  if (!banner || !textEl) return;
+  try {
+    const shortPayload = buildGeminiPayload('Дай 2-3 предложения — самый главный вывод по текущим данным КЦ: кто лидер, что требует срочного внимания. Очень кратко.', true);
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shortPayload) }
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text) { textEl.innerHTML = formatAIText(text); banner.style.display = 'block'; }
+  } catch(e) {}
 }
 
 function formatAIText(text) {
@@ -2135,8 +2451,12 @@ async function aiAsk(message) {
   const thinking = addAIMsg('assistant', '<span style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">⏳</span> Анализирую данные...</span>', true);
 
   try {
-    const reply = await sendToGemini(message);
     thinking.className = 'ai-msg assistant';
+    thinking.innerHTML = '▍';
+    const reply = await sendToGeminiStream(message, (partial) => {
+      thinking.innerHTML = formatAIText(partial) + '<span style="animation:blink 1s step-end infinite">▍</span>';
+      document.getElementById('ai-messages').scrollTop = 99999;
+    });
     thinking.innerHTML = formatAIText(reply);
     aiHistory.push({ role: 'user', parts: [{ text: message }] });
     aiHistory.push({ role: 'model', parts: [{ text: reply }] });
