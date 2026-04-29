@@ -1534,7 +1534,7 @@ function getRepoConfig(){
   return{owner:'max511028-bit',repo:'WB',branch:'main'};
 }
 
-const BASE_RAW='https://cdn.jsdelivr.net/gh';
+const BASE_RAW='https://raw.githubusercontent.com';
 const cfg=getRepoConfig();
 
 // CSV parser — handles semicolon separator, comma decimals, BOM, CRLF
@@ -1587,7 +1587,7 @@ const FILE_MAP={
 async function fetchCSV(period, fileType){
   const names=FILE_MAP[fileType];
   for(const name of names){
-    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}@${cfg.branch}/data/${period}/${encodeURIComponent(name)}`;
+    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/${period}/${encodeURIComponent(name)}`;
     try{
       const r=await fetch(url);
       if(r.ok){
@@ -1632,7 +1632,7 @@ async function loadAllPeriods(){
   showLoading(true);
   try{
     // 1. Fetch index.json — just the list of period folder names
-    const idxUrl=`${BASE_RAW}/${cfg.owner}/${cfg.repo}@${cfg.branch}/data/index.json`;
+    const idxUrl=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/index.json`;
     const idxResp=await fetch(idxUrl);
     if(!idxResp.ok)throw new Error('Не удалось загрузить data/index.json');
     allPeriodKeys=await idxResp.json();
