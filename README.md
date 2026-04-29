@@ -1,2 +1,0 @@
-# OKK
-<!-- trigger deploy -->
