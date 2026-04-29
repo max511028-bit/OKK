@@ -502,10 +502,20 @@ select option{background:#1e293b}
   <div class="section" id="tab-ai">
     <div class="section-header">
       <div>
-        <div class="section-title">🤖 AI Ассистент <span class="ai-badge">Gemini 2.5 Flash Lite</span></div>
+        <div class="section-title">🤖 AI Ассистент <span class="ai-badge" id="ai-model-badge">Ollama</span></div>
         <div class="section-sub">Анализ данных качества КЦ — задайте любой вопрос</div>
       </div>
-      <button class="btn btn-ghost" onclick="clearAIChat()">Очистить чат</button>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text2);white-space:nowrap">Модель:</span>
+          <select id="ai-model-select" style="min-width:200px;max-width:340px">
+            <option value="">⏳ Загрузка моделей...</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="loadOllamaModels()" title="Обновить список моделей">↻</button>
+        </div>
+        <div id="ai-status" style="font-size:11px;color:var(--text3)"></div>
+        <button class="btn btn-ghost" onclick="clearAIChat()">Очистить чат</button>
+      </div>
     </div>
     <div class="chart-wrap" style="padding:0;overflow:hidden">
       <div class="ai-chat-wrap">
@@ -2138,7 +2148,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     else if (tab==='mpp') renderMPP();
     else if (tab==='orp') renderORP();
     else if (tab==='survey') renderSurvey();
-    // AI tab needs no render — it's always ready
+    else if (tab==='ai' && !ollamaModels.length) loadOllamaModels();
   });
 });
 
@@ -2218,8 +2228,11 @@ async function initDashboard(bustCache) {
     document.getElementById('loading-overlay').style.display='none';
     updateTabBadges();
     renderOverview();
-    // Auto-insight (non-blocking)
-    setTimeout(generateAutoInsight, 1500);
+    // Загрузить модели Ollama в фоне
+    loadOllamaModels().then(() => {
+      // Auto-insight после загрузки моделей
+      setTimeout(generateAutoInsight, 500);
+    });
 
   } catch(err) {
     console.error(err);
@@ -2230,9 +2243,9 @@ async function initDashboard(bustCache) {
 }
 
 // ========== AI ASSISTANT ==========
-const GEMINI_API_KEY = 'GEMINI_KEY_PLACEHOLDER';
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const OLLAMA_API = 'http://178.63.16.109:11434/api';
 const aiHistory = [];
+let ollamaModels = [];
 
 function buildDataContext() {
   const lines = [];
@@ -2330,31 +2343,62 @@ function buildDataContext() {
   return lines.join('\n');
 }
 
-function buildGeminiPayload(userMsg, extra) {
-  const systemPrompt = `Ты — AI-аналитик дашборда ОКК (отдела контроля качества) колл-центра по подбору персонала.
+// ========== OLLAMA ==========
+function getSelectedModel() {
+  const sel = document.getElementById('ai-model-select');
+  return sel ? sel.value : '';
+}
+
+function buildOllamaMessages(userMsg) {
+  const systemMsg = {
+    role: 'system',
+    content: `Ты — AI-аналитик дашборда ОКК (отдела контроля качества) колл-центра по подбору персонала.
 Твоя задача — анализировать данные и давать практические выводы на русском языке.
 Стиль: профессиональный, лаконичный. Используй конкретные цифры.
 Структура ответа: факты → вывод → рекомендации (если уместно).
 Используй **жирный** для ключевых имён и цифр, списки для множественных элементов.
 
 АКТУАЛЬНЫЕ ДАННЫЕ:
-${buildDataContext()}`;
-  return {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [...aiHistory, { role: 'user', parts: [{ text: userMsg }] }],
-    generationConfig: { temperature: 0.6, maxOutputTokens: extra ? 400 : 1500, topP: 0.9 }
+${buildDataContext()}`
   };
+  const history = aiHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : h.role, content: h.content }));
+  return [systemMsg, ...history, { role: 'user', content: userMsg }];
 }
 
-async function sendToGeminiStream(userMsg, onChunk) {
-  const payload = buildGeminiPayload(userMsg);
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?key=${GEMINI_API_KEY}&alt=sse`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-  );
+async function loadOllamaModels() {
+  const sel = document.getElementById('ai-model-select');
+  const status = document.getElementById('ai-status');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">⏳ Загрузка...</option>';
+  if (status) status.textContent = '';
+  try {
+    const res = await fetch(`${OLLAMA_API}/tags`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    ollamaModels = (data.models || []).map(m => m.name).sort();
+    if (!ollamaModels.length) throw new Error('Нет доступных моделей');
+    sel.innerHTML = ollamaModels.map(m => `<option value="${m}">${m}</option>`).join('');
+    const badge = document.getElementById('ai-model-badge');
+    if (badge) badge.textContent = `Ollama · ${ollamaModels.length} моделей`;
+    if (status) status.textContent = `✓ ${ollamaModels.length} моделей загружено`;
+  } catch(e) {
+    sel.innerHTML = '<option value="">⚠️ Ошибка загрузки моделей</option>';
+    if (status) status.textContent = `Ошибка: ${e.message}`;
+  }
+}
+
+async function sendToOllamaStream(userMsg, onChunk) {
+  const model = getSelectedModel();
+  if (!model) throw new Error('Выберите модель из списка');
+  const payload = { model, messages: buildOllamaMessages(userMsg), stream: true };
+  const res = await fetch(`${OLLAMA_API}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `HTTP ${res.status}`);
+    throw new Error(err.error || `HTTP ${res.status}`);
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -2366,48 +2410,40 @@ async function sendToGeminiStream(userMsg, onChunk) {
     const lines = buffer.split('\n');
     buffer = lines.pop();
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const json = JSON.parse(line.slice(6));
-          const chunk = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          if (chunk) { fullText += chunk; onChunk(fullText); }
-        } catch(e) {}
-      }
+      if (!line.trim()) continue;
+      try {
+        const json = JSON.parse(line);
+        const chunk = json.message?.content || '';
+        if (chunk) { fullText += chunk; onChunk(fullText); }
+        if (json.done) break;
+      } catch(e) {}
     }
   }
   return fullText;
 }
 
-async function sendToGemini(userMsg) {
-  const payload = buildGeminiPayload(userMsg);
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Пустой ответ от модели');
-  return text;
-}
-
 async function generateAutoInsight() {
   if (!state.data.calls.length) return;
+  const model = getSelectedModel();
+  if (!model) return;
   const banner = document.getElementById('overview-insight');
   const textEl = document.getElementById('overview-insight-text');
   if (!banner || !textEl) return;
   try {
-    const shortPayload = buildGeminiPayload('Дай 2-3 предложения — самый главный вывод по текущим данным КЦ: кто лидер, что требует срочного внимания. Очень кратко.', true);
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shortPayload) }
-    );
+    const payload = {
+      model,
+      messages: [
+        { role: 'system', content: `Ты аналитик КЦ. Данные:\n${buildDataContext()}` },
+        { role: 'user', content: 'Дай 2-3 предложения — самый главный вывод: кто лидер, что требует срочного внимания. Очень кратко.' }
+      ],
+      stream: false
+    };
+    const res = await fetch(`${OLLAMA_API}/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
     if (!res.ok) return;
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = data.message?.content;
     if (text) { textEl.innerHTML = formatAIText(text); banner.style.display = 'block'; }
   } catch(e) {}
 }
@@ -2453,13 +2489,13 @@ async function aiAsk(message) {
   try {
     thinking.className = 'ai-msg assistant';
     thinking.innerHTML = '▍';
-    const reply = await sendToGeminiStream(message, (partial) => {
+    const reply = await sendToOllamaStream(message, (partial) => {
       thinking.innerHTML = formatAIText(partial) + '<span style="animation:blink 1s step-end infinite">▍</span>';
       document.getElementById('ai-messages').scrollTop = 99999;
     });
     thinking.innerHTML = formatAIText(reply);
-    aiHistory.push({ role: 'user', parts: [{ text: message }] });
-    aiHistory.push({ role: 'model', parts: [{ text: reply }] });
+    aiHistory.push({ role: 'user', content: message });
+    aiHistory.push({ role: 'assistant', content: reply });
     if (aiHistory.length > 24) aiHistory.splice(0, 2);
   } catch(e) {
     thinking.className = 'ai-msg assistant';
