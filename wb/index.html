@@ -1643,11 +1643,14 @@ async function loadAllPeriods(){
       return;
     }
 
-    // 2. Load only the latest period immediately
-    const latest=allPeriodKeys[allPeriodKeys.length-1];
-    const ok=await loadPeriod(latest);
-    if(!ok){
-      showLoadError('Не удалось загрузить последний период: '+latest);
+    // 2. Find the latest period that actually has data (iterate from end)
+    let latest=null;
+    for(let i=allPeriodKeys.length-1;i>=0;i--){
+      const ok=await loadPeriod(allPeriodKeys[i]);
+      if(ok){latest=allPeriodKeys[i];break;}
+    }
+    if(!latest){
+      showLoadError('Данных пока нет. Загрузите CSV файлы в папку data/ на GitHub.');
       showLoading(false);
       return;
     }
