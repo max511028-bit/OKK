@@ -360,7 +360,7 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
       </select>
       <div class="search-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Поиск по ФИО…" oninput="onSearch()" onclick="openGSearch()" readonly style="cursor:pointer" placeholder="🔍  Поиск сотрудника…">
+        <input type="text" id="searchInput" placeholder="🔍  Поиск сотрудника…" onclick="openGSearch()" readonly style="cursor:pointer">
       </div>
     </div>
   </div>
@@ -828,6 +828,7 @@ const OP_CFG={
 const FT_CFG={penalty:{cls:'b-red',lbl:'Потери/нарушения'},tarificator:{cls:'b-orange',lbl:'Брак при работе'},writeoff:{cls:'b-yellow',lbl:'Списание имущества'}};
 
 function pn(v){return parseFloat(String(v||0).replace(',','.'))||0;}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function fmt(v,d=0){if(v===null||isNaN(v))return'—';return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:d})+' ₽';}
 function fmtN(v,d=1){if(v===null||isNaN(v))return'—';return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:d});}
 function opBadge(t){const c=OP_CFG[t]||{cls:'b-muted'};return`<span class="badge ${c.cls}">${t||'—'}</span>`;}
@@ -890,10 +891,10 @@ function renderOverview(){
     const isHourly=r.hourly==='Да';
     const sc=calcScore(rph,fineShare,pph,pn(r.days),isHourly);
     const fsClr=fineShare>0.3?'var(--red)':fineShare>0.15?'var(--yellow)':'var(--green)';
-    return`<tr onclick="openEmp('${r.id}','${r._period}')">
+    return`<tr onclick="openEmp('${esc(r.id)}','${esc(r._period)}')">
       <td><div class="score-badge ${sc.cls}" style="width:30px;height:30px;font-size:11px">${sc.grade}</div></td>
       <td style="color:var(--muted);font-family:Unbounded;font-size:11px">${i+1}</td>
-      <td class="td-name">${r.fio||'—'}<br><span class="td-id">${r.id}</span></td>
+      <td class="td-name">${esc(r.fio)||'—'}<br><span class="td-id">${esc(r.id)}</span></td>
       <td class="td-mono g">${fmt(sal)}</td>
       <td class="td-mono" style="color:var(--accent)">${rph>0?fmt(rph):'—'}</td>
       <td style="font-weight:700;color:${fsClr}">${rf>0?(fineShare*100).toFixed(1)+'%':'—'}</td>
@@ -1015,10 +1016,10 @@ function renderEmployees(){
     const typeTag=isHourly
       ?'<span class="badge b-blue" style="font-size:10px">Почасовой</span>'
       :'<span class="badge b-muted" style="font-size:10px">Сдельный</span>';
-    return`<tr onclick="openEmp('${r.id}','${r._period}')">
+    return`<tr onclick="openEmp('${esc(r.id)}','${esc(r._period)}')">
       <td><div style="display:flex;align-items:center;gap:8px"><div class="score-badge ${sc.cls}">${sc.grade}</div><div style="font-size:10px;color:var(--muted)">${sc.score}</div></div></td>
-      <td class="td-name">${r.fio||'—'}<br><span class="td-id">${r.id}</span></td>
-      <td><span class="badge b-yellow" style="font-size:10px">${r.wh||'—'}</span></td>
+      <td class="td-name">${esc(r.fio)||'—'}<br><span class="td-id">${esc(r.id)}</span></td>
+      <td><span class="badge b-yellow" style="font-size:10px">${esc(r.wh)||'—'}</span></td>
       <td class="td-mono g">${fmt(sal)}</td>
       <td class="td-mono" style="color:var(--accent)">${rph>0?fmt(rph):'—'}</td>
       <td><div style="font-size:12px;font-weight:600;color:${fsClr}">${fm.tot>0?fsPct+'%':'—'}</div>${fm.tot>0?`<div class="fshare-bar" style="width:${Math.min(100,fineShare*100).toFixed(0)}%;background:${fsClr};opacity:.6"></div>`:''}</td>
@@ -1103,8 +1104,8 @@ function renderFines(){
   set('fn-emp-cnt',ea.length+' чел.');
   set('bFnS',ea.map(e=>{
     const fsClr=e.share>0.3?'var(--red)':e.share>0.15?'var(--yellow)':'var(--green)';
-    return`<tr onclick="openEmp('${e.id}','')">
-      <td class="td-name">${e.fio||e.id}</td>
+    return`<tr onclick="openEmp('${esc(e.id)}','')">
+      <td class="td-name">${esc(e.fio||String(e.id||''))}</td>
       <td><span class="badge fcat-work">${e.prod?fmt(e.prod):'—'}</span></td>
       <td><span class="badge fcat-home">${e.home?fmt(e.home):'—'}</span></td>
       <td class="td-mono y">${e.w?fmt(e.w):'—'}</td>
@@ -1128,7 +1129,7 @@ function renderFines(){
     const cat=classifyFine(r.reason);
     const catBadge=cat==='home'?'<span class="badge fcat-home">Буфет</span>':'<span class="badge fcat-work">Произв.</span>';
     return`<tr>
-      <td style="max-width:240px;white-space:normal;font-size:12px">${r.reason}</td>
+      <td style="max-width:240px;white-space:normal;font-size:12px">${esc(r.reason)}</td>
       <td>${ftBadge(r.type)}</td>
       <td>${catBadge}</td>
       <td style="color:var(--muted)">${r.cnt}</td>
@@ -1140,9 +1141,9 @@ function renderFines(){
   // Detail
   set('fn-d-cnt',f.length+' строк');
   set('bFnD',f.map(r=>`<tr>
-    <td style="color:var(--muted);font-size:12px">${r.date||'—'}</td>
-    <td class="td-name" style="font-size:12px">${r.fio||r.id}</td>
-    <td style="max-width:240px;white-space:normal;font-size:11.5px;color:var(--muted)">${r.reason||'—'}</td>
+    <td style="color:var(--muted);font-size:12px">${esc(r.date)||'—'}</td>
+    <td class="td-name" style="font-size:12px">${esc(r.fio||String(r.id||''))}</td>
+    <td style="max-width:240px;white-space:normal;font-size:11.5px;color:var(--muted)">${esc(r.reason)||'—'}</td>
     <td>${ftBadge(r.type)}</td>
     <td class="td-mono r">${fmt(pn(r.amount))}</td>
     <td class="td-mono g">${pn(r.ret)?fmt(pn(r.ret)):'—'}</td>
@@ -1236,8 +1237,8 @@ function renderOps(){
     const rph=e.hr>0?(e.er*RATE/e.hr).toFixed(0):0;
     // All types sorted by peaks, shown as badges
     const allTypeBadges=Object.entries(e.types).sort((a,b)=>b[1]-a[1]).map(([t])=>opBadge(t)).join(' ');
-    return`<tr onclick="openEmp('${e.id}','')">
-      <td class="td-name">${e.fio||'—'}</td>
+    return`<tr onclick="openEmp('${esc(e.id)}','')">
+      <td class="td-name">${esc(e.fio)||'—'}</td>
       <td class="td-mono y">${fmtN(e.pk,0)}</td>
       <td>${fmtN(e.hr,1)}</td>
       <td><span class="badge ${pn(pph)>500?'b-green':pn(pph)>250?'b-yellow':'b-red'}">${pph}</span></td>
@@ -1282,8 +1283,8 @@ function renderOps(){
   const oDet=curType==='all'?oAll:oAll.filter(r=>r.opType===curType);
   set('op-d-cnt',oDet.length+' строк');
   set('bOD',oDet.map(r=>`<tr>
-    <td style="color:var(--muted);font-size:12px">${r.date||'—'}</td>
-    <td class="td-name" style="font-size:12px">${r.fio||r.id}</td>
+    <td style="color:var(--muted);font-size:12px">${esc(r.date)||'—'}</td>
+    <td class="td-name" style="font-size:12px">${esc(r.fio||String(r.id||''))}</td>
     <td>${opBadge(r.opType)}</td>
     <td class="td-mono y">${fmtN(pn(r.peaks),0)}</td>
     <td>${fmtN(pn(r.hours),2)}</td>
@@ -1311,11 +1312,11 @@ function openEmp(id, periodName){
 
   const fio=vRow?.fio||fR[0]?.fio||oR[0]?.fio||id;
   const wh=vRow?.wh||'—';
-  set('mName',fio);
-  set('mSub',`ID: ${id} · ${periodName||'все периоды'} · ${wh}`);
+  set('mName',esc(fio));
+  set('mSub',`ID: ${esc(id)} · ${esc(periodName||'все периоды')} · ${esc(wh)}`);
 
   const netEarn=pn(vRow?.netEarn);
-  const sal=Math.max(0,netEarn)*RATE;
+  const sal=getSal(vRow?.netEarn, wh);
   const fA=fR.reduce((s,r)=>s+pn(r.amount),0);
   const fRet=fR.reduce((s,r)=>s+pn(r.ret),0);
   const nf=fA-fRet;
@@ -1353,8 +1354,8 @@ function openEmp(id, periodName){
   set('mm-flist',fl.length?`
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Последние штрафы</div>
     ${fl.map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(37,42,58,.5);gap:8px">
-      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${r.reason||'—'}</div>
-      <div style="color:var(--muted);font-size:11px;margin-top:2px">${r.date||''} · ${ftBadge(r.type)}</div></div>
+      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${esc(r.reason)||'—'}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(r.date)||''} · ${ftBadge(r.type)}</div></div>
       <div style="flex-shrink:0;color:var(--red);font-family:Unbounded;font-size:12px;font-weight:600">${fmt(pn(r.amount))}</div>
     </div>`).join('')}`:'');
 
@@ -1408,7 +1409,6 @@ function srt(tid,ci){
 
 function fTab(id,el){
   document.querySelectorAll('#fTabs .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
-  set('fS',document.getElementById('fS').outerHTML.replace('style="display:none"','').replace('style=""',''));
   ['fS','fR','fD'].forEach(k=>{const e=document.getElementById(k);if(e)e.style.display=k===('f'+id.charAt(0).toUpperCase())?'block':'none';});
 }
 function oTab(id,el){
@@ -1507,16 +1507,6 @@ function addManual(){
 
 // ═══════════════════════ GOOGLE SHEETS ═══════════════════════
 function connectGS(){reloadFromGitHub();}
-
-function parseCSV(csv,keys,name){
-  const lines=csv.split('\n').filter(l=>l.trim());
-  return lines.slice(1).map(l=>{
-    const c=l.split(',').map(x=>x.replace(/^"|"$/g,'').trim());
-    const r={_period:name};
-    keys.forEach((k,i)=>{r[k]=c[i]||'';});
-    return r;
-  }).filter(r=>r.id||r.date);
-}
 
 // ═══════════════════════ DEMO DATA ═══════════════════════
 
@@ -1780,11 +1770,11 @@ function onGSearch(){
     const pph=hrs>0?(e.ops.reduce((s,o)=>s+pn(o.peaks),0)||pn(r.peaks))/hrs:0;
     const fineShare=sal>0?fineNet/sal:0;
     const sc=calcScore(rph,fineShare,pph,pn(r.days),r.hourly==='Да');
-    return`<div class="gsearch-result${i===0?' sel':''}" onclick="gsSelect('${r.id}','${r._period||''}')">
+    return`<div class="gsearch-result${i===0?' sel':''}" onclick="gsSelect('${esc(r.id)}','${esc(r._period||'')}')">
       <div class="gsearch-score ${sc.cls}">${sc.grade}</div>
       <div class="gsearch-meta">
-        <div class="gsearch-name">${r.fio||'—'}</div>
-        <div class="gsearch-sub">${r.wh||'—'} · ${r.days||0} дн.</div>
+        <div class="gsearch-name">${esc(r.fio)||'—'}</div>
+        <div class="gsearch-sub">${esc(r.wh)||'—'} · ${r.days||0} дн.</div>
       </div>
       <div class="gsearch-sal">${fmt(sal)}</div>
     </div>`;
@@ -1873,7 +1863,7 @@ function exportEmpXlsx(){
 let curEmpFilterLocal='all';
 function setEmpFilter(f,el){
   curEmpFilter=f;
-  document.querySelectorAll('.qf-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#screen-employees .qf-btn').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
   renderEmployees();
 }
@@ -1901,8 +1891,8 @@ function renderFineList(id,fR){
       </div>
     </div>
     ${fR.map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(37,42,58,.5);gap:8px">
-      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${r.reason||'—'}</div>
-      <div style="color:var(--muted);font-size:11px;margin-top:2px">${r.date||''} · ${ftBadge(r.type)}${pn(r.ret)?` · <span style="color:var(--green)">возврат ${fmt(pn(r.ret))}</span>`:''}</div></div>
+      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${esc(r.reason)||'—'}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(r.date)||''} · ${ftBadge(r.type)}${pn(r.ret)?` · <span style="color:var(--green)">возврат ${fmt(pn(r.ret))}</span>`:''}</div></div>
       <div style="flex-shrink:0;color:var(--red);font-family:Unbounded;font-size:12px;font-weight:600">${fmt(pn(r.amount))}</div>
     </div>`).join('')}`:'<div style="color:var(--muted);font-size:13px;padding:8px 0">Штрафов нет</div>');
 }
@@ -2077,11 +2067,11 @@ function renderCharts(){
   set('ch-emp-cnt',empCostArr.length+' чел.');
   const empCostRows=empCostArr.map(e=>{
     const rphDiff=medRph>0?((e.rph-medRph)/medRph*100).toFixed(0):0;
-    return`<tr onclick="openEmp('${e.id}','')"><td class="td-name" style="font-size:13px">${e.fio||'—'}</td>
+    return`<tr onclick="openEmp('${esc(e.id)}','')"><td class="td-name" style="font-size:13px">${esc(e.fio)||'—'}</td>
       <td>${fmtN(e.hr,1)}</td><td class="td-mono g">${fmt(e.sal)}</td>
       <td class="td-mono" style="color:var(--accent)">${fmt(e.rph)}${rphDiff!=='0'?`<span style="font-size:10px;margin-left:4px;color:${pn(rphDiff)>0?'var(--green)':'var(--red)'}">${pn(rphDiff)>0?'+':''}${rphDiff}%</span>`:''}</td>
       <td>${fmtN(e.pk,0)}</td><td><span class="badge ${e.pph>500?'b-green':e.pph>250?'b-yellow':'b-red'}">${fmtN(e.pph,0)}</span></td>
-      <td><span class="badge b-yellow" style="font-size:10px">${e.wh}</span></td></tr>`;
+      <td><span class="badge b-yellow" style="font-size:10px">${esc(e.wh)}</span></td></tr>`;
   }).join('')||emptyRow(7);
   const empAvgRow=empCostArr.length?`<tr style="background:rgba(108,143,255,.06);border-top:2px solid rgba(108,143,255,.2);font-weight:600">
     <td style="font-size:11px;color:var(--accent)">≈ СРЕДНЕЕ / МЕДИАНА</td><td>—</td><td>—</td>
@@ -2175,7 +2165,7 @@ function setRiskGrade(grade){
 }
 function setRiskType(type,el){
   curRiskTypeFilter=type;
-  document.querySelectorAll('.qf-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#screen-risk .qf-btn').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
   renderRisk();
 }
@@ -2239,12 +2229,12 @@ function renderRisk(){
         if(e.riskHourly)tags.push(`<span class="risk-tag-sm rt-hourly">почасовой</span>`);
         const uid=e.r.id+'_r';
         return`<div>
-          <div class="risk-row" onclick="toggleRiskRow('${uid}')">
+          <div class="risk-row" onclick="toggleRiskRow('${esc(uid)}')">
             <div class="score-badge ${e.sc.cls}" style="width:34px;height:34px;font-size:12px;flex-shrink:0">${e.sc.grade}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.r.fio||'—'}</div>
+              <div style="font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.r.fio)||'—'}</div>
               <div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                <span>${e.r.wh||'—'}</span><span>·</span><span>${e.r.days||0} дн.</span>${tags.join('')}
+                <span>${esc(e.r.wh)||'—'}</span><span>·</span><span>${e.r.days||0} дн.</span>${tags.join('')}
               </div>
             </div>
             <div style="text-align:right;flex-shrink:0">
@@ -2262,7 +2252,7 @@ function renderRisk(){
               <div class="mob-stat"><div class="mob-stat-lbl">Рейтинг</div><div class="mob-stat-val">${e.sc.score}/100</div></div>
             </div>
             ${e.sc.reasons.length?`<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">${e.sc.reasons.map(r=>'· '+r).join(' · ')}</div>`:''}
-            <button onclick="openEmp('${e.r.id}','${e.r._period||''}');event.stopPropagation()" style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--accent)">Открыть карточку →</button>
+            <button onclick="openEmp('${esc(e.r.id)}','${esc(e.r._period||'')}');event.stopPropagation()" style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--accent)">Открыть карточку →</button>
           </div>
         </div>`;
       }).join('')}
