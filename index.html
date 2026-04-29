@@ -119,7 +119,7 @@ select option{background:#1e293b}
 /* === MODAL === */
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
 #modal-overlay.open{display:flex}
-.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1260px;width:100%;max-height:92vh;overflow-y:auto;position:relative}
+.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1400px;width:100%;max-height:94vh;overflow-y:auto;position:relative}
 .modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#1E293B;z-index:1}
 .modal-title{font-size:16px;font-weight:600}
 .modal-body{padding:24px}
@@ -405,7 +405,16 @@ select option{background:#1e293b}
   <div class="section" id="tab-mpp">
     <div class="section-header">
       <div class="section-title">👤 МПП — Менеджеры по подбору</div>
-      <div class="filters"><span class="filter-label">Месяц:</span><select id="filter-mpp-month"><option value="all">Все</option></select></div>
+      <div class="filters">
+        <span class="filter-label">Месяц:</span><select id="filter-mpp-month"><option value="all">Все</option></select>
+        <input id="filter-mpp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderMPPCheckList(filteredMPP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
+        <select id="filter-mpp-score" onchange="renderMPPCheckList(filteredMPP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px">
+          <option value="all">Все баллы</option>
+          <option value="good">≥80 (норма)</option>
+          <option value="risk">60–79 (риск)</option>
+          <option value="bad">&lt;60 (критично)</option>
+        </select>
+      </div>
     </div>
     <div class="kpi-grid" id="mpp-kpis"></div>
     <div class="grid-2">
@@ -431,7 +440,16 @@ select option{background:#1e293b}
   <div class="section" id="tab-orp">
     <div class="section-header">
       <div class="section-title">👥 ОРП — Супервайзеры / Бригадиры</div>
-      <div class="filters"><span class="filter-label">Месяц:</span><select id="filter-orp-month"><option value="all">Все</option></select></div>
+      <div class="filters">
+        <span class="filter-label">Месяц:</span><select id="filter-orp-month"><option value="all">Все</option></select>
+        <input id="filter-orp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderORPCheckList(filteredORP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
+        <select id="filter-orp-score" onchange="renderORPCheckList(filteredORP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px">
+          <option value="all">Все баллы</option>
+          <option value="good">≥80 (норма)</option>
+          <option value="risk">60–79 (риск)</option>
+          <option value="bad">&lt;60 (критично)</option>
+        </select>
+      </div>
     </div>
     <div class="kpi-grid" id="orp-kpis"></div>
     <div class="grid-2">
@@ -1686,7 +1704,7 @@ function openModal(name) {
     },
     options: {
       responsive: true,
-      scales: { r: { min:0, max:100, ticks:{stepSize:25,backdropColor:'transparent',color:'var(--text3)'}, grid:{color:'rgba(148,163,184,0.1)'}, pointLabels:{font:{size:8},color:'var(--text2)'} } },
+      scales: { r: { min:0, max:100, ticks:{stepSize:25,backdropColor:'transparent',color:'var(--text3)'}, grid:{color:'rgba(148,163,184,0.1)'}, pointLabels:{font:{size:11},color:'var(--text2)'} } },
       plugins: { legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}, tooltip:{...tooltipPlugin} }
     }
   });
@@ -1852,7 +1870,15 @@ function setMPPSort(mode) {
 }
 
 function renderMPPCheckList(data) {
-  let sorted2 = [...data];
+  const nameQ = (document.getElementById('filter-mpp-name')?.value||'').toLowerCase();
+  const scoreQ = document.getElementById('filter-mpp-score')?.value||'all';
+  let sorted2 = data.filter(r=>{
+    if (nameQ && !(r.checked||'').toLowerCase().includes(nameQ)) return false;
+    if (scoreQ==='good' && r.score<80) return false;
+    if (scoreQ==='risk' && (r.score<60||r.score>=80)) return false;
+    if (scoreQ==='bad' && r.score>=60) return false;
+    return true;
+  });
   if (state.filters.mppSort === 'score-desc') sorted2.sort((a,b)=>(b.score||0)-(a.score||0));
   else if (state.filters.mppSort === 'score-asc') sorted2.sort((a,b)=>(a.score||0)-(b.score||0));
   else if (state.filters.mppSort === 'name') sorted2.sort((a,b)=>(a.checked||'').localeCompare(b.checked||'','ru'));
@@ -1939,7 +1965,15 @@ function setORPSort(mode) {
 }
 
 function renderORPCheckList(data) {
-  let sorted2 = [...data];
+  const nameQ = (document.getElementById('filter-orp-name')?.value||'').toLowerCase();
+  const scoreQ = document.getElementById('filter-orp-score')?.value||'all';
+  let sorted2 = data.filter(r=>{
+    if (nameQ && !(r.checked||'').toLowerCase().includes(nameQ)) return false;
+    if (scoreQ==='good' && r.score<80) return false;
+    if (scoreQ==='risk' && (r.score<60||r.score>=80)) return false;
+    if (scoreQ==='bad' && r.score>=60) return false;
+    return true;
+  });
   if (state.filters.orpSort === 'score-desc') sorted2.sort((a,b)=>(b.score||0)-(a.score||0));
   else if (state.filters.orpSort === 'score-asc') sorted2.sort((a,b)=>(a.score||0)-(b.score||0));
   else if (state.filters.orpSort === 'name') sorted2.sort((a,b)=>(a.checked||'').localeCompare(b.checked||'','ru'));
@@ -2331,12 +2365,29 @@ function getSelectedModel() {
 function buildOllamaMessages(userMsg) {
   const systemMsg = {
     role: 'system',
-    content: `Ты — AI-аналитик дашборда ОКК (отдела контроля качества) колл-центра по подбору персонала.
-ВАЖНО: отвечай ТОЛЬКО на русском языке. Никаких других языков, иероглифов, символов.
-Твоя задача — анализировать данные и давать практические выводы.
-Стиль: профессиональный, лаконичный. Используй конкретные цифры из данных.
-Структура ответа: факты → вывод → рекомендации (если уместно).
-Используй **жирный** для ключевых имён и цифр, списки для множественных элементов.
+    content: `Ты — AI-аналитик системы контроля качества (ОКК) колл-центра по подбору складского персонала.
+
+Роль: анализируешь данные прослушки звонков, проверок МПП и ОРП, опросов новичков. Помогаешь руководителям принимать решения на основе цифр.
+
+Правила:
+- Отвечай ТОЛЬКО на русском языке. Никаких иероглифов и символов других языков
+- Используй ТОЛЬКО цифры из предоставленных данных. Никогда не придумывай
+- Если данных недостаточно — прямо скажи об этом
+- Не повторяй вопрос пользователя в ответе
+- Не пиши вступлений типа "Конечно!", "Отличный вопрос!" и т.д.
+
+Формат ответа:
+- Длина: 5-10 предложений максимум
+- Структура: Факты (конкретные цифры) → Вывод (что это значит) → Рекомендация (что делать)
+- Используй **жирный** для имён сотрудников и ключевых цифр
+- Списки — когда сравниваешь 3+ объекта
+- Таблицы в markdown — когда сравниваешь дивизионы или периоды
+
+Нормы для оценки:
+- Прослушка: норма ≥85%, ниже 75% — критично
+- МПП/ОРП: норма ≥80 баллов, ниже 60 — зона риска
+- Опросы: CSAT норма ≥4.5, NPS норма ≥4.0
+- Всегда указывай период (месяц) анализируемых данных
 
 АКТУАЛЬНЫЕ ДАННЫЕ:
 ${buildDataContext()}`
