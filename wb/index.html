@@ -1425,7 +1425,15 @@ function go(id){
   document.querySelectorAll(`[data-s="${id}"]`).forEach(n=>n.classList.add('active'));
   set('pageTitle',TITLES[id]||id);
 }
-function onPeriod(){curPeriod=document.getElementById('periodSelect').value;renderCitySelect();refreshAll();}
+async function onPeriod(){
+  curPeriod=document.getElementById('periodSelect').value;
+  if(!periods[curPeriod]){
+    showLoading(true);
+    await loadPeriod(curPeriod);
+    showLoading(false);
+  }
+  renderCitySelect();refreshAll();
+}
 function onSearch(){curSearch=document.getElementById('searchInput').value;refreshAll();}
 function onCity(){curCity=document.getElementById('citySelect').value;refreshAll();}
 function refreshAll(){renderOverview();renderEmployees();renderFines();renderOps();renderCharts();renderRisk();updatePeriodBanner();}
@@ -1450,8 +1458,10 @@ function renderCitySelect(){
 function renderPeriodSelect(){
   const sel=document.getElementById('periodSelect'),cur=sel.value;
   sel.innerHTML='<option value="all">Все периоды</option>';
-  Object.keys(periods).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;sel.appendChild(o);});
-  if(cur in periods)sel.value=cur;
+  // Use allPeriodKeys (full list from index.json) if available, else fall back to loaded keys
+  const keys=allPeriodKeys.length?allPeriodKeys:Object.keys(periods);
+  keys.forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k+(periods[k]?'':' ⏳');sel.appendChild(o);});
+  if(keys.includes(cur))sel.value=cur;
   if(typeof renderCitySelect==='function')renderCitySelect();
 }
 function renderPeriodsList(){
@@ -1524,7 +1534,7 @@ function getRepoConfig(){
   return{owner:'max511028-bit',repo:'WB',branch:'main'};
 }
 
-const BASE_RAW='https://raw.githubusercontent.com';
+const BASE_RAW='https://cdn.jsdelivr.net/gh';
 const cfg=getRepoConfig();
 
 // CSV parser — handles semicolon separator, comma decimals, BOM, CRLF
@@ -1577,7 +1587,7 @@ const FILE_MAP={
 async function fetchCSV(period, fileType){
   const names=FILE_MAP[fileType];
   for(const name of names){
-    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/${period}/${encodeURIComponent(name)}`;
+    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}@${cfg.branch}/data/${period}/${encodeURIComponent(name)}`;
     try{
       const r=await fetch(url);
       if(r.ok){
@@ -1601,55 +1611,61 @@ async function fetchCSV(period, fileType){
   return[];
 }
 
+// Load a single period's CSV files into periods[key]
+async function loadPeriod(key){
+  const [vyrab,fines,ops]=await Promise.all([
+    fetchCSV(key,'vyrab'),
+    fetchCSV(key,'fines'),
+    fetchCSV(key,'ops'),
+  ]);
+  if(vyrab.length||fines.length||ops.length){
+    periods[key]={vyrab,fines,ops};
+    return true;
+  }
+  return false;
+}
+
+// allPeriodKeys holds the full list from index.json (not yet loaded data)
+let allPeriodKeys=[];
+
 async function loadAllPeriods(){
   showLoading(true);
   try{
-    // Load index.json
-    const idxUrl=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/index.json`;
+    // 1. Fetch index.json — just the list of period folder names
+    const idxUrl=`${BASE_RAW}/${cfg.owner}/${cfg.repo}@${cfg.branch}/data/index.json`;
     const idxResp=await fetch(idxUrl);
     if(!idxResp.ok)throw new Error('Не удалось загрузить data/index.json');
-    const allPeriods=await idxResp.json();
+    allPeriodKeys=await idxResp.json();
 
-    // Try to load each period — skip if files not found
-    let loaded=0;
-    for(const period of allPeriods){
-      const [vyrab,fines,ops]=await Promise.all([
-        fetchCSV(period,'vyrab'),
-        fetchCSV(period,'fines'),
-        fetchCSV(period,'ops'),
-      ]);
-      if(vyrab.length||fines.length||ops.length){
-        periods[period]={vyrab,fines,ops};
-        loaded++;
-      }
-    }
-
-    if(!loaded){
+    if(!allPeriodKeys.length){
       showLoadError('Данных пока нет. Загрузите CSV файлы в папку data/ на GitHub.');
       showLoading(false);
       return;
     }
 
+    // 2. Load only the latest period immediately
+    const latest=allPeriodKeys[allPeriodKeys.length-1];
+    const ok=await loadPeriod(latest);
+    if(!ok){
+      showLoadError('Не удалось загрузить последний период: '+latest);
+      showLoading(false);
+      return;
+    }
+
+    curPeriod=latest;
     renderPeriodSelect();
     renderCitySelect();
     refreshAll();
     updatePeriodBanner();
 
-    // Set latest period as default
-    const latestPeriod=Object.keys(periods).sort().reverse()[0];
-    if(latestPeriod){
-      curPeriod=latestPeriod;
-      const sel=document.getElementById('periodSelect');
-      if(sel)sel.value=latestPeriod;
-      refreshAll();
-      updatePeriodBanner();
-    }
+    const sel=document.getElementById('periodSelect');
+    if(sel)sel.value=latest;
 
-    showAlert('addAlert',`✅ Загружено ${loaded} период(ов): `+Object.keys(periods).join(', '),'ok');
+    showAlert('addAlert','✅ Загружен период: '+latest+'. Остальные периоды загружаются при выборе.','ok');
     const ghEl=document.getElementById('ghStatus');
     if(ghEl)ghEl.innerHTML=`<div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:10px;padding:12px 16px;font-size:13px">
       <span style="color:var(--green);font-weight:600">✅ Подключено</span>
-      <span style="color:var(--muted);margin-left:8px">Загружено ${loaded} период(ов) · ${Object.values(periods).reduce((s,p)=>s+(p.vyrab?.length||0),0)} сотрудников</span>
+      <span style="color:var(--muted);margin-left:8px">Последний период: ${latest} · ${periods[latest]?.vyrab?.length||0} сотрудников · всего периодов: ${allPeriodKeys.length}</span>
     </div>`;
   }catch(e){
     showLoadError('Ошибка загрузки: '+e.message);
