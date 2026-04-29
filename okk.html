@@ -1,0 +1,2564 @@
+<!DOCTYPE html>
+<!--
+  ДАШБОРД КОНТРОЛЯ КАЧЕСТВА КОЛЛ-ЦЕНТРА
+  ======================================
+  Публикация Google Sheets для CSV-доступа:
+  1. Файл → Поделиться → Опубликовать в интернете
+  2. Выберите «Весь документ» и формат «Значения, разделённые запятыми (.csv)»
+  3. Нажмите «Опубликовать»
+
+  Деплой на GitHub Pages:
+  1. Создайте репозиторий на github.com
+  2. Загрузите этот файл как index.html
+  3. Settings → Pages → Source: main / root → Save
+  4. Сайт будет доступен по https://ваш-логин.github.io/репозиторий/
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ОКК Дашборд</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0F172A;--bg2:rgba(30,41,59,0.8);--bg3:rgba(15,23,42,0.95);
+  --text:#F8FAFC;--text2:#94A3B8;--text3:#64748B;
+  --blue:#3B82F6;--green:#10B981;--yellow:#F59E0B;--red:#EF4444;
+  --border:rgba(148,163,184,0.12);--radius:16px;--radius-sm:10px;
+}
+html,body{height:100%;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+body{display:flex;flex-direction:column;min-height:100vh}
+
+/* === LOADING / ERROR === */
+#loading-overlay,#error-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px}
+#error-overlay{display:none}
+.spinner{width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.loading-text{color:var(--text2);font-size:15px}
+.error-icon{font-size:48px}
+.error-msg{color:var(--text2);text-align:center;max-width:400px;line-height:1.6}
+.btn{padding:10px 20px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;font-size:14px;font-weight:500;transition:filter .2s}
+.btn:hover{filter:brightness(1.15)}
+.btn-sm{padding:6px 14px;font-size:13px}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue);filter:none}
+
+/* === NAV === */
+nav{background:var(--bg3);border-bottom:1px solid var(--border);backdrop-filter:blur(12px);position:sticky;top:0;z-index:100;padding:0 20px}
+.nav-inner{max-width:1400px;margin:0 auto;display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none}
+.nav-inner::-webkit-scrollbar{display:none}
+.nav-logo{font-size:15px;font-weight:700;color:var(--blue);padding:16px 12px 16px 0;white-space:nowrap;border-right:1px solid var(--border);margin-right:8px}
+.tab-btn{padding:16px 14px;background:none;border:none;color:var(--text2);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;display:flex;align-items:center;gap:6px}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* === MAIN === */
+main{flex:1;max-width:1400px;margin:0 auto;width:100%;padding:24px 20px}
+.section{display:none;animation:fadeIn .3s ease}
+.section.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* === CARDS === */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;backdrop-filter:blur(10px)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;backdrop-filter:blur(10px);position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--blue)}
+.kpi-card.green::before{background:var(--green)}
+.kpi-card.yellow::before{background:var(--yellow)}
+.kpi-card.red::before{background:var(--red)}
+.kpi-label{font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.kpi-value{font-size:28px;font-weight:700;line-height:1}
+.kpi-sub{font-size:12px;color:var(--text3);margin-top:4px}
+
+/* === FILTERS === */
+.filters{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap;align-items:center}
+.filter-label{font-size:12px;color:var(--text2);font-weight:500}
+select{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;cursor:pointer;outline:none;transition:border-color .2s}
+select:focus{border-color:var(--blue)}
+select option{background:#1e293b}
+
+/* === CHART CONTAINERS === */
+.chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px}
+.chart-title{font-size:14px;font-weight:600;margin-bottom:16px;color:var(--text)}
+.chart-subtitle{font-size:12px;color:var(--text2);margin-top:4px}
+.chart-canvas-wrap{position:relative}
+.chart-canvas-wrap canvas{display:block}
+
+/* === RECRUITER GRID === */
+.recruiter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-bottom:24px}
+.rec-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .2s;animation:cardIn .4s ease both}
+.rec-card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.3);border-color:rgba(59,130,246,.4)}
+@keyframes cardIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.rec-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0}
+.av-south{background:linear-gradient(135deg,#3B82F6,#1D4ED8)}
+.av-ural{background:linear-gradient(135deg,#10B981,#059669)}
+.av-local{background:linear-gradient(135deg,#8B5CF6,#6D28D9)}
+.av-other{background:linear-gradient(135deg,#64748B,#475569)}
+.rec-name{font-size:13px;font-weight:600;line-height:1.3}
+.rec-div-tag{font-size:10px;font-weight:500;padding:2px 8px;border-radius:20px;background:rgba(59,130,246,.15);color:var(--blue);margin-top:3px;display:inline-block}
+.rec-score{font-size:32px;font-weight:700;margin:8px 0 4px}
+.score-green{color:var(--green)}
+.score-yellow{color:var(--yellow)}
+.score-red{color:var(--red)}
+.rec-calls{font-size:12px;color:var(--text2)}
+.rec-footer{margin-top:12px;display:flex;gap:8px;align-items:center}
+.sparkline-wrap{flex:1;height:30px;overflow:hidden}
+
+/* === HEATMAP === */
+.heatmap{overflow-x:auto;margin-bottom:24px}
+.heatmap table{width:100%;border-collapse:collapse;font-size:12px}
+.heatmap th{padding:8px 12px;color:var(--text2);font-weight:500;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+.heatmap td{padding:8px 12px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-weight:600;border-radius:4px;white-space:nowrap}
+.heatmap td:first-child{text-align:left;font-weight:500;color:var(--text)}
+.heatmap tr:last-child td{border-bottom:none}
+
+/* === MODAL === */
+#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#modal-overlay.open{display:flex}
+.modal{background:#1E293B;border:1px solid var(--border);border-radius:var(--radius);max-width:1400px;width:100%;max-height:94vh;overflow-y:auto;position:relative}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#1E293B;z-index:1}
+.modal-title{font-size:16px;font-weight:600}
+.modal-body{padding:24px}
+.modal-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:4px;line-height:1;transition:color .2s}
+.modal-close:hover{color:var(--text)}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.top-criteria{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.crit-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:8px;font-size:12px}
+.crit-item.good{background:rgba(16,185,129,.12);color:var(--green)}
+.crit-item.bad{background:rgba(239,68,68,.12);color:var(--red)}
+.dynamics-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.dynamics-table th,.dynamics-table td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:center}
+.dynamics-table th{color:var(--text2);font-weight:500}
+.arrow-up{color:var(--green)}
+.arrow-down{color:var(--red)}
+
+/* === SECTION HEADERS === */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.section-title{font-size:18px;font-weight:700}
+.section-sub{font-size:13px;color:var(--text2);margin-top:2px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+.grid-2-3{display:grid;grid-template-columns:2fr 3fr;gap:20px;margin-bottom:24px}
+
+/* === LIST CARDS (MПП/OРП) === */
+.check-list{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.check-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;transition:border-color .2s}
+.check-card:hover{border-color:rgba(59,130,246,.4)}
+.check-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.check-meta{font-size:12px;color:var(--text2);margin-top:4px;display:flex;gap:16px}
+.check-detail{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:none}
+.check-detail.open{display:block}
+.badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(16,185,129,.15);color:var(--green)}
+.badge-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* === SURVEY === */
+.survey-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+.progress-bar{height:6px;background:rgba(148,163,184,.2);border-radius:3px;overflow:hidden;margin-top:4px}
+.progress-fill{height:100%;border-radius:3px;background:var(--blue);transition:width .6s ease}
+.progress-fill.green{background:var(--green)}
+.progress-fill.yellow{background:var(--yellow)}
+.progress-fill.red{background:var(--red)}
+.bar-row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:12px}
+.bar-row .bar-label{min-width:120px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-row .bar-track{flex:1;height:8px;background:rgba(148,163,184,.15);border-radius:4px;overflow:hidden}
+.bar-row .bar-fill{height:100%;border-radius:4px;background:var(--blue);transition:width .5s ease}
+.bar-row .bar-val{min-width:40px;text-align:right;font-weight:600}
+
+/* === EMPTY STATE === */
+.empty{padding:48px;text-align:center;color:var(--text2)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.unavailable{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius);padding:20px;color:var(--yellow);display:flex;align-items:center;gap:12px;margin-bottom:24px;font-size:13px}
+
+/* === RESPONSIVE === */
+@media(max-width:900px){.grid-2,.grid-2-3,.modal-grid{grid-template-columns:1fr}.recruiter-grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
+@media(max-width:600px){.recruiter-grid{grid-template-columns:1fr 1fr}.kpi-grid{grid-template-columns:1fr 1fr}.filters{flex-direction:column;align-items:flex-start}main{padding:16px 12px}}
+@media(max-width:400px){.recruiter-grid{grid-template-columns:1fr}}
+
+/* breadcrumbs */
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-bottom:16px}
+.breadcrumb a{color:var(--blue);cursor:pointer;text-decoration:none}.breadcrumb a:hover{text-decoration:underline}
+.breadcrumb span{color:var(--text3)}
+
+/* tooltip override via Chart.js styling */
+.chart-tooltip{background:rgba(15,23,42,.95)!important;border:1px solid var(--border)!important;border-radius:8px!important;padding:10px 14px!important;font-family:'Inter',sans-serif!important}
+
+/* compare section */
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px}
+
+/* tabs within section */
+.sub-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.sub-tab{padding:8px 16px;background:none;border:none;color:var(--text2);font-family:inherit;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;margin-bottom:-1px}
+.sub-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* divider */
+.divider{height:1px;background:var(--border);margin:20px 0}
+
+/* === SEARCH === */
+.search-input{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;transition:border-color .2s;width:200px}
+.search-input:focus{border-color:var(--blue)}
+.search-input::placeholder{color:var(--text3)}
+
+/* === TAB BADGE === */
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:0 4px;margin-left:4px;vertical-align:middle;line-height:1}
+
+/* === MATRIX === */
+.matrix-wrap{position:relative;width:100%;height:320px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-top:8px;background:var(--bg)}
+.matrix-q-label{position:absolute;font-size:11px;font-weight:600;pointer-events:none;opacity:.7}
+.matrix-dot{position:absolute;border-radius:50%;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.matrix-dot:hover{transform:translate(-50%,-50%) scale(1.8)!important;box-shadow:0 0 8px rgba(255,255,255,.3);z-index:10}
+.matrix-axis{position:absolute;background:rgba(148,163,184,0.2)}
+.matrix-axis-label{position:absolute;font-size:10px;color:var(--text3)}
+
+/* === DEGRADATION === */
+.deg-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.deg-row:last-child{border-bottom:none}
+.deg-change{font-weight:700;min-width:60px;text-align:right}
+.deg-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.deg-months{font-size:11px;color:var(--text3)}
+
+/* === EXPORT TOOLBAR === */
+.export-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.btn-icon{padding:6px 10px;font-size:13px}
+
+/* === REFRESH === */
+.nav-refresh{padding:8px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-family:inherit;font-size:12px;cursor:pointer;transition:color .2s,border-color .2s;margin-left:auto;white-space:nowrap;flex-shrink:0}
+.nav-refresh:hover{color:var(--blue);border-color:var(--blue)}
+.nav-refresh.spinning{animation:spin .6s linear infinite;border-color:var(--blue);color:var(--blue)}
+
+/* === AUTO-INSIGHT BANNER === */
+.insight-banner{background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.6;position:relative}
+.insight-banner-title{font-weight:600;color:var(--blue);margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+
+/* === SPARKLINE SVG === */
+.sparkline-svg{display:block;width:100%;height:30px}
+
+/* === PRINT === */
+@media print{
+  nav,#loading-overlay,#error-overlay,#modal-overlay,.filters,.btn,.ai-input-row,.ai-suggestions,
+  .export-row,.nav-refresh,#sort-score-desc,#sort-score-asc,#sort-name,
+  #mpp-sort-score-desc,#mpp-sort-score-asc,#mpp-sort-name,#mpp-sort-period,
+  #orp-sort-score-desc,#orp-sort-score-asc,#orp-sort-name,#orp-sort-period
+  {display:none!important}
+  body{background:#fff!important;color:#000!important}
+  .section{display:block!important}
+  .card,.kpi-card,.chart-wrap{background:#fff!important;border:1px solid #ddd!important;break-inside:avoid}
+  main{max-width:100%!important;padding:0!important}
+  .kpi-value,.section-title{color:#000!important}
+}
+
+/* === AI ASSISTANT === */
+.ai-chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:480px}
+.ai-messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+.ai-msg{max-width:78%;padding:13px 17px;border-radius:14px;font-size:14px;line-height:1.65;word-break:break-word}
+.ai-msg.user{align-self:flex-end;background:rgba(59,130,246,.22);border:1px solid rgba(59,130,246,.35);color:var(--text1);border-bottom-right-radius:4px}
+.ai-msg.assistant{align-self:flex-start;background:var(--bg2);border:1px solid var(--border);color:var(--text1);border-bottom-left-radius:4px}
+.ai-msg.thinking{opacity:.55;font-style:italic}
+.ai-suggestions{display:flex;flex-wrap:wrap;gap:8px;padding:0 20px 12px}
+.ai-chip{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--blue);cursor:pointer;transition:background .15s,transform .1s;white-space:nowrap}
+.ai-chip:hover{background:rgba(59,130,246,.22);transform:translateY(-1px)}
+.ai-input-row{display:flex;gap:10px;padding:14px 20px;border-top:1px solid var(--border);background:var(--bg1)}
+.ai-input{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--text1);font-size:14px;resize:none;min-height:44px;max-height:130px;font-family:inherit;line-height:1.5;transition:border-color .2s}
+.ai-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+.ai-input::placeholder{color:var(--text3)}
+.ai-badge{display:inline-block;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25);border-radius:20px;padding:2px 10px;font-size:11px;margin-left:8px;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Загрузка данных...</div>
+</div>
+
+<!-- ERROR -->
+<div id="error-overlay">
+  <div class="error-icon">⚠️</div>
+  <div class="error-msg" id="error-msg">Не удалось загрузить данные. Проверьте, что таблица опубликована для общего доступа.</div>
+  <button class="btn" onclick="initDashboard()">Повторить</button>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">ОКК</div>
+    <button class="tab-btn active" data-tab="overview">📊 Сводка КЦ</button>
+    <button class="tab-btn" data-tab="calls">🎧 Прослушка</button>
+    <button class="tab-btn" data-tab="training">📈 Динамика обучения</button>
+    <button class="tab-btn" data-tab="mpp">👤 МПП</button>
+    <button class="tab-btn" data-tab="orp">👥 ОРП</button>
+    <button class="tab-btn" data-tab="survey">📋 Опросы</button>
+    <button class="tab-btn" data-tab="ai">🤖 AI Ассистент</button>
+    <button class="nav-refresh" id="nav-refresh-btn" onclick="refreshDashboard()" title="Обновить данные">↻ Обновить</button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+  <!-- OVERVIEW -->
+  <div class="section active" id="tab-overview">
+    <div class="section-header">
+      <div><div class="section-title">Сводка КЦ</div><div class="section-sub">Общие показатели качества</div></div>
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
+    </div>
+    <div id="overview-insight" style="display:none" class="insight-banner">
+      <div class="insight-banner-title">🤖 AI Авто-инсайт</div>
+      <div id="overview-insight-text"></div>
+    </div>
+    <div class="kpi-grid" id="overview-kpis"></div>
+    <div class="grid-2">
+      <div class="chart-wrap"><div class="chart-title">Динамика качества прослушки по месяцам</div><div class="chart-canvas-wrap"><canvas id="chart-overview-trend"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Топ-5 проблемных критериев</div><div class="chart-canvas-wrap"><canvas id="chart-overview-weak"></canvas></div></div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">Тепловая карта: дивизионы × критерии</div>
+      <div class="heatmap" id="overview-heatmap"></div>
+    </div>
+  </div>
+
+  <!-- CALLS -->
+  <div class="section" id="tab-calls">
+    <div class="section-header">
+      <div><div class="section-title">🎧 Прослушка звонков</div></div>
+      <div class="filters">
+        <span class="filter-label">Месяц:</span>
+        <select id="filter-month"><option value="all">Все месяцы</option></select>
+        <span class="filter-label">Дивизион:</span>
+        <select id="filter-division"><option value="all">Все</option></select>
+        <input class="search-input" id="search-fio" placeholder="🔍 Поиск по ФИО..." oninput="onSearchInput()" autocomplete="off">
+      </div>
+    </div>
+    <div class="export-row">
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="exportCallsCSV()" title="Скачать CSV">📥 CSV</button>
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
+    </div>
+    <div class="breadcrumb" id="calls-breadcrumb" style="display:none">
+      <a onclick="clearDivFilter()">Все дивизионы</a>
+      <span>›</span>
+      <span id="breadcrumb-div"></span>
+    </div>
+    <div class="kpi-grid" id="calls-kpis"></div>
+    <div class="grid-2">
+      <div class="chart-wrap"><div class="chart-title">Рейтинг рекрутеров</div><div class="chart-canvas-wrap" style="overflow-x:auto"><canvas id="chart-recruiters-bar"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Анализ по критериям</div><div class="chart-sub">Кликните на столбец для детализации</div><div class="chart-canvas-wrap"><canvas id="chart-criteria-bar"></canvas></div><div id="criteria-detail" style="margin-top:12px"></div></div>
+    </div>
+    <div class="chart-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div class="chart-title" style="margin:0">Карточки рекрутеров</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:12px;color:var(--text2)">Сортировка:</span>
+          <button id="sort-score-desc" class="btn btn-sm" onclick="setRecSort('score-desc')">% ↓</button>
+          <button id="sort-score-asc"  class="btn btn-sm btn-ghost" onclick="setRecSort('score-asc')">% ↑</button>
+          <button id="sort-name"       class="btn btn-sm btn-ghost" onclick="setRecSort('name')">ФИО А→Я</button>
+        </div>
+      </div>
+      <div class="recruiter-grid" id="recruiter-grid"></div>
+    </div>
+    <div class="grid-2">
+      <div class="chart-wrap">
+        <div class="chart-title">Матрица: качество × объём звонков</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">⭐Звёзды &nbsp;·&nbsp; 📈Рост &nbsp;·&nbsp; ⚠️Риски &nbsp;·&nbsp; 📋Наблюдение</div>
+        <div class="matrix-wrap" id="calls-matrix"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Деградация: наибольшее снижение %</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Рекрутеры с максимальным падением между месяцами</div>
+        <div id="calls-degradation"></div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <div class="chart-title">Сравнение дивизионов по критериям</div>
+      <div class="heatmap" id="div-heatmap"></div>
+    </div>
+  </div>
+
+  <!-- TRAINING -->
+  <div class="section" id="tab-training">
+    <div class="section-header"><div class="section-title">📈 Динамика обучения</div></div>
+    <div class="unavailable" id="training-unavail" style="display:none">⚠️ &nbsp;Лист «КЦ замеры динамика после обучений» недоступен. Проверьте название листа в таблице.</div>
+    <div id="training-content">
+      <div class="sub-tabs">
+        <button class="sub-tab active" data-subtab="squeeze">Обучение по дожиму</button>
+        <button class="sub-tab" data-subtab="lmk">Обучение по возражению ЛМК</button>
+      </div>
+      <div id="subtab-squeeze">
+        <div class="kpi-grid" id="squeeze-kpis"></div>
+        <div class="grid-2">
+          <div class="chart-wrap"><div class="chart-title">Прирост конверсии (было / стало)</div><div class="chart-canvas-wrap"><canvas id="chart-squeeze-bar"></canvas></div></div>
+          <div class="chart-wrap"><div class="chart-title">Таблица результатов</div><div id="squeeze-table"></div></div>
+        </div>
+      </div>
+      <div id="subtab-lmk" style="display:none">
+        <div class="kpi-grid" id="lmk-kpis"></div>
+        <div class="chart-wrap"><div class="chart-title">Динамика FCR по сотрудникам</div><div class="chart-canvas-wrap"><canvas id="chart-lmk-line"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MPP -->
+  <div class="section" id="tab-mpp">
+    <div class="section-header">
+      <div class="section-title">👤 МПП — Менеджеры по подбору</div>
+      <div class="filters">
+        <span class="filter-label">Месяц:</span><select id="filter-mpp-month"><option value="all">Все</option></select>
+        <input id="filter-mpp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderMPPCheckList(filteredMPP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
+        <select id="filter-mpp-score" onchange="renderMPPCheckList(filteredMPP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px">
+          <option value="all">Все баллы</option>
+          <option value="good">≥80 (норма)</option>
+          <option value="risk">60–79 (риск)</option>
+          <option value="bad">&lt;60 (критично)</option>
+        </select>
+      </div>
+    </div>
+    <div class="kpi-grid" id="mpp-kpis"></div>
+    <div class="grid-2">
+      <div class="chart-wrap"><div class="chart-title">Рейтинг МПП</div><div class="chart-canvas-wrap" style="overflow-x:auto"><canvas id="chart-mpp-bar"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Динамика среднего балла по месяцам</div><div class="chart-canvas-wrap"><canvas id="chart-mpp-trend"></canvas></div></div>
+    </div>
+    <div class="chart-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div class="chart-title" style="margin:0">Проверки</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:12px;color:var(--text2)">Сортировка:</span>
+          <button id="mpp-sort-score-desc" class="btn btn-sm" onclick="setMPPSort('score-desc')">Балл ↓</button>
+          <button id="mpp-sort-score-asc"  class="btn btn-sm btn-ghost" onclick="setMPPSort('score-asc')">Балл ↑</button>
+          <button id="mpp-sort-name"       class="btn btn-sm btn-ghost" onclick="setMPPSort('name')">ФИО А→Я</button>
+          <button id="mpp-sort-period"     class="btn btn-sm btn-ghost" onclick="setMPPSort('period')">Период</button>
+        </div>
+      </div>
+      <div class="check-list" id="mpp-check-list"></div>
+    </div>
+  </div>
+
+  <!-- ORP -->
+  <div class="section" id="tab-orp">
+    <div class="section-header">
+      <div class="section-title">👥 ОРП — Супервайзеры / Бригадиры</div>
+      <div class="filters">
+        <span class="filter-label">Месяц:</span><select id="filter-orp-month"><option value="all">Все</option></select>
+        <input id="filter-orp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderORPCheckList(filteredORP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
+        <select id="filter-orp-score" onchange="renderORPCheckList(filteredORP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px">
+          <option value="all">Все баллы</option>
+          <option value="good">≥80 (норма)</option>
+          <option value="risk">60–79 (риск)</option>
+          <option value="bad">&lt;60 (критично)</option>
+        </select>
+      </div>
+    </div>
+    <div class="kpi-grid" id="orp-kpis"></div>
+    <div class="grid-2">
+      <div class="chart-wrap"><div class="chart-title">Рейтинг ОРП</div><div class="chart-canvas-wrap" style="overflow-x:auto"><canvas id="chart-orp-bar"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Динамика среднего балла по месяцам</div><div class="chart-canvas-wrap"><canvas id="chart-orp-trend"></canvas></div></div>
+    </div>
+    <div class="chart-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div class="chart-title" style="margin:0">Список проверок</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:12px;color:var(--text2)">Сортировка:</span>
+          <button id="orp-sort-score-desc" class="btn btn-sm" onclick="setORPSort('score-desc')">Балл ↓</button>
+          <button id="orp-sort-score-asc"  class="btn btn-sm btn-ghost" onclick="setORPSort('score-asc')">Балл ↑</button>
+          <button id="orp-sort-name"       class="btn btn-sm btn-ghost" onclick="setORPSort('name')">ФИО А→Я</button>
+          <button id="orp-sort-period"     class="btn btn-sm btn-ghost" onclick="setORPSort('period')">Период</button>
+        </div>
+      </div>
+      <div class="check-list" id="orp-check-list"></div>
+    </div>
+  </div>
+
+  <!-- SURVEY -->
+  <div class="section" id="tab-survey">
+    <div class="section-header">
+      <div class="section-title">📋 Опросы новичков</div>
+      <div class="filters"><span class="filter-label">Период:</span><select id="filter-survey-period"><option value="all">Все</option></select></div>
+    </div>
+    <div class="kpi-grid" id="survey-kpis"></div>
+    <div class="sub-tabs" id="survey-subtabs">
+      <button class="sub-tab active" data-surveytab="warehouses">🏭 По складам</button>
+      <button class="sub-tab" data-surveytab="jobs">💼 По должностям</button>
+      <button class="sub-tab" data-surveytab="cities">🏙 По городам</button>
+      <button class="sub-tab" data-surveytab="completion">📊 Прохождение</button>
+    </div>
+    <div id="survey-tab-warehouses">
+      <div class="grid-2">
+        <div class="chart-wrap">
+          <div class="chart-title">CSAT и NPS по складам</div>
+          <div class="chart-canvas-wrap" id="survey-bar-wrap"><canvas id="chart-survey-bar"></canvas></div>
+        </div>
+        <div class="chart-wrap">
+          <div class="chart-title">Детали по складам</div>
+          <div class="heatmap" id="survey-warehouses-table"></div>
+        </div>
+      </div>
+    </div>
+    <div id="survey-tab-jobs" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">CSAT и NPS по должностям</div>
+        <div class="heatmap" id="survey-jobs-table"></div>
+      </div>
+    </div>
+    <div id="survey-tab-cities" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">Сводка по городам</div>
+        <div class="heatmap" id="survey-cities-table"></div>
+      </div>
+    </div>
+    <div id="survey-tab-completion" style="display:none">
+      <div class="chart-wrap">
+        <div class="chart-title">% прохождения опроса</div>
+        <div id="survey-response-bars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI ASSISTANT -->
+  <div class="section" id="tab-ai">
+    <div class="section-header">
+      <div>
+        <div class="section-title">🤖 AI Ассистент <span class="ai-badge" id="ai-model-badge">Ollama</span></div>
+        <div class="section-sub">Анализ данных качества КЦ — задайте любой вопрос</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text2);white-space:nowrap">Модель:</span>
+          <select id="ai-model-select" style="min-width:200px;max-width:340px">
+            <option value="">⏳ Загрузка моделей...</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="loadOllamaModels()" title="Обновить список моделей">↻</button>
+        </div>
+        <div id="ai-status" style="font-size:11px;color:var(--text3)"></div>
+        <button class="btn btn-ghost" onclick="clearAIChat()">Очистить чат</button>
+      </div>
+    </div>
+    <div class="chart-wrap" style="padding:0;overflow:hidden">
+      <div class="ai-chat-wrap">
+        <div class="ai-messages" id="ai-messages">
+          <div class="ai-msg assistant">
+            Привет! Я анализирую данные качества колл-центра — прослушку, МПП, ОРП и опросы новичков.<br><br>
+            Спросите меня о показателях рекрутеров, трендах по месяцам, проблемных критериях или сравнении дивизионов. Также могу рассчитать рейтинги, выявить аутсайдеров и дать рекомендации.
+          </div>
+        </div>
+        <div class="ai-suggestions">
+          <div class="ai-chip" onclick="aiAsk('Кто лучший рекрутер за последний месяц по прослушке?')">🏆 Лучший рекрутер</div>
+          <div class="ai-chip" onclick="aiAsk('Какие критерии прослушки самые проблемные и почему?')">⚠️ Проблемные критерии</div>
+          <div class="ai-chip" onclick="aiAsk('Как изменилось среднее качество прослушки по месяцам?')">📈 Динамика по месяцам</div>
+          <div class="ai-chip" onclick="aiAsk('Сравни показатели дивизионов между собой')">🗺️ Сравнение дивизионов</div>
+          <div class="ai-chip" onclick="aiAsk('Кто из рекрутеров нуждается в дополнительном обучении?')">📚 Нуждаются в обучении</div>
+          <div class="ai-chip" onclick="aiAsk('Каковы средние показатели МПП и ОРП по всем месяцам?')">👥 МПП и ОРП</div>
+          <div class="ai-chip" onclick="aiAsk('Какой CSAT и NPS по складам в опросах новичков?')">⭐ Опросы CSAT/NPS</div>
+          <div class="ai-chip" onclick="aiAsk('Дай общую сводку всех показателей качества КЦ')">📋 Общая сводка</div>
+        </div>
+        <div class="ai-input-row">
+          <textarea class="ai-input" id="ai-input" placeholder="Задайте вопрос по данным... (Enter — отправить, Shift+Enter — новая строка)" rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMessage()}"
+            oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,130)+'px'"></textarea>
+          <button class="btn" onclick="sendAIMessage()" id="ai-send-btn" style="align-self:flex-end;height:44px;min-width:110px">Отправить ↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title">Детализация рекрутера</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px" id="modal-subtitle"></div>
+      </div>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ========== CONFIGURATION ==========
+const SHEET_ID = '1axGhkihjyjxi99ThPhzD91vbIWwEjMUGlkdV8CzqqWI';
+const SHEETS = {
+  calls:    'КЦ прослушка',
+  training: 'КЦ замеры динамика после обучений',
+  mpp:      'ТП МПП',
+  orp:      'ТП ОРП',
+  survey:   'Опрос нового РП',
+};
+const MONTHS_ORDER = ['ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ'];
+const CRITERIA_NAMES = [
+  'Приветствие','Цель/актуальность','Живая речь','Обращение по имени',
+  'Программирование','Город Проживания','Возраст','Судимости',
+  'Медицинские ограничения','Гражданство','Необходимые документы',
+  'Презентация условий работы','Презентация специфики должности',
+  'Выделение преимуществ вакансии','Оформление','Попытка продажи вакансии',
+  'Работа с возражениями','Технические моменты','Резюмирование',
+  'Прощание благодарность','Оформление Б24'
+];
+const DIV_COLORS = {
+  'ЛП/ЮГ':'av-south','КЦ Юг':'av-south','Юг':'av-south',
+  'УРАЛ':'av-ural','КЦ Урал':'av-ural','Урал':'av-ural',
+  'КЦ Локальные':'av-local','Локальные':'av-local',
+};
+const CHART_COLORS = {
+  blue:'rgba(59,130,246,',green:'rgba(16,185,129,',yellow:'rgba(245,158,11,',red:'rgba(239,68,68,'
+};
+
+function sheetUrl(name) {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
+}
+
+// ========== DATA FETCHING & PARSING ==========
+function parseNum(v) {
+  if (v === null || v === undefined || v === '') return NaN;
+  return parseFloat(String(v).replace(/,/g, '.').replace(/[^\d.\-]/g, ''));
+}
+
+function parsePercent(v) {
+  if (v === null || v === undefined || v === '') return NaN;
+  const s = String(v).trim();
+  if (s.includes('%')) {
+    const n = parseFloat(s.replace('%', '').replace(',', '.'));
+    return isNaN(n) ? NaN : n;
+  }
+  const n = parseNum(v);
+  if (isNaN(n)) return NaN;
+  return n > 1 ? n : n * 100;
+}
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else inQuote = false;
+      } else { field += ch; }
+    } else {
+      if (ch === '"') { inQuote = true; }
+      else if (ch === ',') { row.push(field); field = ''; }
+      else if (ch === '\n') {
+        row.push(field); rows.push(row); row = []; field = '';
+      } else if (ch !== '\r') { field += ch; }
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim()));
+}
+
+const CACHE_TTL = 30 * 60 * 1000;
+async function fetchSheet(name, bustCache) {
+  const cacheKey = `okk_v2_${name}`;
+  if (!bustCache) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (cached && (Date.now() - cached.ts) < CACHE_TTL) return parseCSV(cached.text);
+    } catch(e) {}
+  }
+  const res = await fetch(sheetUrl(name));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  try { localStorage.setItem(cacheKey, JSON.stringify({text, ts: Date.now()})); } catch(e) {}
+  return parseCSV(text);
+}
+
+function findMonthInCells(cells) {
+  for (const c of cells) {
+    const m = (c||'').match(/МАРТ|ФЕВРАЛЬ|ЯНВАРЬ|АПРЕЛЬ|МАЙ|ИЮНЬ/i);
+    if (m) return m[0].toUpperCase();
+  }
+  return null;
+}
+
+function cleanCriteriaName(raw) {
+  return (raw||'')
+    .replace(/МАРТ|ФЕВРАЛЬ|ЯНВАРЬ|АПРЕЛЬ|МАЙ|ИЮНЬ/gi,'')
+    .replace(/Период:\s*[\d.\-]+\s*-\s*[\d.\-]+\s*/gi,'')
+    .replace(/\s+/g,' ').trim();
+}
+
+function parseCallsSheet(rows) {
+  const records = [];
+  let currentMonth = null;
+  let currentDivision = null;
+  let skipSummary = false;
+  let analyticsCount = 0;
+  // gviz output order: МАРТ first, then ФЕВРАЛЬ, then ЯНВАРЬ
+  const MONTH_SEQUENCE = ['МАРТ', 'ФЕВРАЛЬ', 'ЯНВАРЬ'];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.length) continue;
+    const a = (row[0] || '').trim();
+
+    // Empty col[0]: check for bare month row (e.g. local CSV export)
+    if (!a) {
+      const mFound = findMonthInCells(row);
+      if (mFound) { currentMonth = mFound; skipSummary = false; }
+      continue;
+    }
+
+    // Total rows — always skip
+    if (a === 'Итого') continue;
+
+    // "Рекрутеры" sub-header with empty col[1] — skip, don't touch division
+    if (a === 'Рекрутеры' && !(row[1]||'').trim()) continue;
+
+    // Main header row: col1="Итого", col2="Звонков проверено"
+    if ((row[1]||'').trim() === 'Итого' && (row[2]||'').trim() === 'Звонков проверено') {
+      const divRaw = a.split('\n')[0].trim();
+      if (divRaw && divRaw !== 'Рекрутеры') currentDivision = divRaw;
+      // Month is embedded in col[10] header: e.g. "МАРТ  Судимости"
+      const m = findMonthInCells(row);
+      if (m) currentMonth = m;
+      skipSummary = false;
+      continue;
+    }
+
+    // "Аналитика по всему КЦ" marks end of one month's data block
+    if (a.startsWith('Аналитика по всему КЦ')) { skipSummary = true; continue; }
+
+    // Division row: col0 filled, col1 empty
+    if (!(row[1]||'').trim()) {
+      const divName = a.replace(/\n[\s\S]*$/, '').trim();
+      // Rare: month word directly in division cell
+      const mInCell = findMonthInCells([divName]);
+      if (mInCell) { currentMonth = mInCell; skipSummary = false; continue; }
+      if (divName) {
+        // Coming out of a summary block → this division belongs to the next month
+        if (skipSummary) {
+          analyticsCount++;
+          currentMonth = MONTH_SEQUENCE[analyticsCount] || null;
+          skipSummary = false;
+        }
+        currentDivision = divName;
+      }
+      continue;
+    }
+
+    if (skipSummary) continue;
+
+    // Data row
+    if (a && currentMonth && currentDivision) {
+      const total = parsePercent(row[1]);
+      if (isNaN(total)) continue;
+      const calls = parseInt(row[2]) || 0;
+      const criteria = {};
+      CRITERIA_NAMES.forEach((name, idx) => {
+        const val = parsePercent(row[3 + idx]);
+        if (!isNaN(val)) criteria[name] = val;
+      });
+      records.push({ month: currentMonth, division: currentDivision, name: a, total, calls, criteria });
+    }
+  }
+  return records;
+}
+
+function parseMPPSheet(rows) {
+  const records = [];
+  let currentMonth = null;
+  const MONTH_RX = /ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ/i;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.length) continue;
+    const c0 = (row[0]||'').trim();
+    const c2 = (row[2]||'').trim();
+    const c3 = (row[3]||'').trim();
+
+    // Month transition: col2 or col3 contains month+year
+    if ((c2.match(MONTH_RX) || c3.match(MONTH_RX)) && (c2.includes('202') || c3.includes('202'))) {
+      const src = c2.match(MONTH_RX) ? c2 : c3;
+      const m = src.match(MONTH_RX);
+      if (m) currentMonth = m[0].toUpperCase();
+      continue;
+    }
+    // Also detect month in col3 alone (Апрель 2026)
+    const allCells = row.join(' ');
+    if (!c0 && allCells.match(MONTH_RX) && allCells.includes('202')) {
+      const m = allCells.match(MONTH_RX);
+      if (m) { currentMonth = m[0].toUpperCase(); continue; }
+    }
+
+    // Skip header/total rows
+    if (c0 === '№' || c0 === '№ проверки') continue;
+    if (!c0 && !isNaN(parseNum(row[5])) && isNaN(parseNum(row[1]))) continue; // avg row
+
+    // Check if row has проверяемый info
+    const num = parseInt(c0);
+    if (!isNaN(num) && num > 0) {
+      const date = (row[1]||'').trim();
+      // Fallback: extract month from date if not set from header
+      const mDate = monthFromDate(date);
+      if (mDate) currentMonth = mDate;
+      if (!currentMonth) continue;
+      const checker = (row[2]||'').trim();
+      const checked = (row[3]||'').trim();
+      const div = (row[4]||'').trim();
+
+      // Determine if March+ (has 4 competencies) or Jan/Feb (just total)
+      const hasCompetencies = !isNaN(parseNum(row[4])) && !isNaN(parseNum(row[5]));
+
+      let score, competencies = null;
+      if (hasCompetencies) {
+        // Mar+: col4=comm, col5=sales, col6=obj, col7=general, col8=total
+        const comm  = parseNum(row[4]);
+        const sales = parseNum(row[5]);
+        const obj   = parseNum(row[6]);
+        const gen   = parseNum(row[7]);
+        score = parseNum(row[8]);
+        if (isNaN(score)) score = parseNum(row[5]); // fallback
+        if (!isNaN(comm)) competencies = { comm, sales, obj, gen };
+        // In march+ layout: col0=№, col1=date, col2=checked, col3=div, col4..8=scores
+        records.push({
+          month: currentMonth, date,
+          checker: '',
+          checked: row[2]||'',
+          division: row[3]||'',
+          score: parseNum(row[8]),
+          competencies: { comm: parseNum(row[4]), sales: parseNum(row[5]), obj: parseNum(row[6]), gen: parseNum(row[7]) }
+        });
+      } else {
+        score = parseNum(row[5]);
+        records.push({ month: currentMonth, date, checker, checked, division: div, score, competencies: null });
+      }
+    }
+  }
+  return records;
+}
+
+// Извлечь месяц из даты формата "05.02.2026" → "ФЕВРАЛЬ"
+function monthFromDate(dateStr) {
+  const m = (dateStr||'').match(/[\.\-\/](\d{2})[\.\-\/]/);
+  if (!m) return null;
+  const monthNames = ['','ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ','ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
+  return monthNames[parseInt(m[1])] || null;
+}
+
+function parseORPSheet(rows) {
+  const records = [];
+  let currentMonth = null;
+  const MONTH_RX = /ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ/i;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.length) continue;
+    const c0 = (row[0]||'').trim();
+    const allCells = row.join(' ');
+
+    // Обнаружение месяца по тексту в любой ячейке (для заголовков блоков)
+    const mText = allCells.match(MONTH_RX);
+    if (mText && allCells.includes('202') && !c0.match(/^\d+$/)) {
+      currentMonth = mText[0].toUpperCase();
+      continue;
+    }
+
+    const num = parseInt(c0);
+    if (isNaN(num) || num <= 0) continue;
+
+    const date = (row[1]||'').trim();
+
+    // Извлекаем месяц из даты (основной метод для Feb+)
+    const mDate = monthFromDate(date);
+    if (mDate) currentMonth = mDate;
+
+    if (!currentMonth) continue;
+
+    // Реальная структура ORP (из CSV):
+    // Январь: col[2]=Проверяющий, col[3]=Проверяемый, col[4]=Дивизион(пусто), col[7]=Балл
+    // Feb+:   col[2]=Проверяемый, col[3]=Дивизион, col[4..8]=компетенции, col[9]=Балл
+    const c4 = (row[4]||'').trim();
+    const c7 = (row[7]||'').trim();
+    const isFebPlus = c7.includes('%') || (!isNaN(parseNum(c4)) && parseNum(c4) < 20 && parseNum(c4) > 0);
+
+    let record;
+    if (isFebPlus) {
+      record = {
+        month: currentMonth, date,
+        checker: '',
+        checked: (row[2]||'').trim(),  // Проверяемый сотрудник
+        division: (row[3]||'').trim(), // Дивизион
+        strong: '', weak: '',
+        score: parseNum(row[9]),
+        competencies: {
+          comm: parseNum(row[4]), sales: parseNum(row[5]),
+          obj: parseNum(row[6]), gen: parseNum(row[8])
+        }
+      };
+    } else {
+      record = {
+        month: currentMonth, date,
+        checker: (row[2]||'').trim(),  // Проверяющий
+        checked: (row[3]||'').trim(),  // Проверяемый
+        division: (row[4]||'').trim(), // Дивизион (пустой в январе)
+        strong: (row[5]||'').trim(),
+        weak: (row[6]||'').trim(),
+        score: parseNum(row[7]),
+        competencies: null
+      };
+    }
+    if (!isNaN(record.score) && record.score > 0) records.push(record);
+  }
+  return records;
+}
+
+function parseSurveySheet(rows) {
+  const records = []; // { period, label, count, csat, nps, type:'warehouse'|'city'|'job' }
+  const responseRates = []; // { period, label, total, done, pct }
+  let currentPeriod = null;
+
+  function tryParseGroup(row, offset, type) {
+    const label = (row[offset]||'').trim();
+    if (!label || label.toLowerCase().includes('склад') || label.toLowerCase().includes('итого') ||
+        label.toLowerCase().includes('сводная') || label.toLowerCase().includes('должн') ||
+        label.toLowerCase().includes('город') || label.toLowerCase().includes('месяц') ||
+        label.toLowerCase().includes('период')) return null;
+    const count = parseInt(row[offset+1]);
+    const csat = parseNum(row[offset+2]);
+    const nps = parseNum(row[offset+3]);
+    if (isNaN(csat) || isNaN(count)) return null;
+    return { period: currentPeriod, label, count, csat, nps, type };
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.length) continue;
+    const c0 = (row[0]||'').trim();
+
+    // Period/month detection
+    if (c0.match(/месяц:/i) || c0.match(/период:/i)) {
+      const mName = c0.match(/месяц:\s*([а-яёА-ЯЁ]+)/i);
+      const mPer  = c0.match(/период:\s*([\d.]+\s*[-–]\s*[\d.]+)/i);
+      if (mName && mPer) currentPeriod = mName[1] + ' (' + mPer[1] + ')';
+      else if (mName)    currentPeriod = mName[1];
+      else if (mPer)     currentPeriod = mPer[1];
+      else               currentPeriod = c0.replace(/месяц:|период:|склад\s*\+\s*город/gi,'').trim() || c0;
+      continue;
+    }
+    // Inline period in first cell
+    const mperiod = c0.match(/Период:\s*([\d.]+\s*[-–]\s*[\d.]+)/);
+    if (mperiod) { currentPeriod = mperiod[1]; continue; }
+
+    if (!currentPeriod) continue;
+
+    // Response rate block: col3 contains '%'
+    if ((row[3]||'').includes('%') && c0 && !c0.match(/итого/i)) {
+      const pct = parsePercent(row[3]);
+      const total = parseInt(row[1]);
+      const done = parseInt(row[2]);
+      if (!isNaN(pct)) {
+        responseRates.push({ period: currentPeriod, label: c0, total: total||0, done: done||0, pct });
+      }
+      // Try col 5 and col 10 offsets
+      const l5 = (row[5]||'').trim(), l10 = (row[10]||'').trim();
+      if (l5 && (row[8]||'').includes('%')) {
+        responseRates.push({ period: currentPeriod, label: l5, total: parseInt(row[6])||0, done: parseInt(row[7])||0, pct: parsePercent(row[8]) });
+      }
+      if (l10 && (row[13]||'').includes('%')) {
+        responseRates.push({ period: currentPeriod, label: l10, total: parseInt(row[11])||0, done: parseInt(row[12])||0, pct: parsePercent(row[13]) });
+      }
+      continue;
+    }
+
+    // Warehouse/city/job data rows (3 parallel tables)
+    const g0 = tryParseGroup(row, 0, 'warehouse');
+    const g5 = tryParseGroup(row, 5, 'job');
+    const g10 = tryParseGroup(row, 10, 'city');
+    if (g0) records.push(g0);
+    if (g5) records.push(g5);
+    if (g10) records.push(g10);
+  }
+
+  // Compute "Итого" totals per period
+  const totals = {};
+  for (const r of records) {
+    if ((r.label||'').toLowerCase() === 'итого') {
+      if (!totals[r.period]) totals[r.period] = {};
+      totals[r.period][r.type] = r;
+    }
+  }
+
+  return { records: records.filter(r => (r.label||'').toLowerCase() !== 'итого'), responseRates, totals };
+}
+
+function parseTrainingSheet(rows) {
+  // Реальная структура CSV (из анализа):
+  // Строка 1: шапка, ДОЖИМ в col[3], ФИО в col[0]
+  // Строки 2-14: данные по дожиму
+  // Строка с col[0]="ФИО": разделитель → переход к LMK
+  // Строки после: данные по LMK
+  //
+  // Squeeze cols: col[3]=Точка А%, col[8]=Точка Б1%, col[14]=Точка Б2%, col[20]=Точка Б3%
+  // LMK cols: col[1]=старт%, col[3]=1нед%, col[7]=2нед%, col[10]=Δ FCR 2нед
+  const squeeze = [], lmk = [];
+  let mode = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const c0 = (row[0]||'').trim();
+    const rowText = row.join(' ').toUpperCase();
+
+    // Detect squeeze section: ДОЖИМ может быть в любом столбце шапки
+    if (!mode && rowText.includes('ДОЖИМ')) { mode = 'squeeze'; continue; }
+
+    // Переход к LMK: строка ФИО после данных дожима
+    if (mode === 'squeeze' && c0.toUpperCase() === 'ФИО') { mode = 'lmk'; continue; }
+
+    if (!mode || !c0 || c0.toUpperCase() === 'ФИО') continue;
+    if (c0 === 'Итого' || c0 === 'Среднее') continue;
+
+    if (mode === 'squeeze') {
+      const ptA  = parsePercent(row[3]);
+      const ptB1 = parsePercent(row[8]);
+      const ptB2 = parsePercent(row[14]);
+      const ptB3 = parsePercent(row[20]);
+      if (!isNaN(ptA)) {
+        const lastB = !isNaN(ptB3) ? ptB3 : !isNaN(ptB2) ? ptB2 : ptB1;
+        squeeze.push({ name: c0, pointA: ptA, pointB: lastB, allPoints: [ptA, ptB1, ptB2, ptB3] });
+      }
+    }
+    if (mode === 'lmk') {
+      const start = parsePercent(row[1]);
+      const w1    = parsePercent(row[3]);
+      const w2    = parsePercent(row[7]);
+      const fcr   = parsePercent(row[10]);
+      if (!isNaN(start)) lmk.push({ name: c0, start, week1: w1, week2: w2, fcr });
+    }
+  }
+  return { squeeze, lmk };
+}
+
+// ========== STATE MANAGEMENT ==========
+const state = {
+  activeTab: 'overview',
+  filters: { month: 'all', division: 'all', search: '', mppMonth: 'all', orpMonth: 'all', surveyPeriod: 'all',
+             recSort: 'score-desc', mppSort: 'score-desc', orpSort: 'score-desc', citySort: 'csat-desc',
+             surveyActiveTab: 'warehouses' },
+  data: { calls: [], mpp: [], orp: [], survey: null, training: null, trainingAvail: true },
+  charts: {},
+  compareMode: false,
+  compareRecruiter: null,
+};
+
+function destroyChart(key) {
+  if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; }
+}
+
+function prepareBarWrap(canvas, itemCount, minH) {
+  const h = Math.max(minH || 250, itemCount * 38);
+  const wrap = canvas.parentElement;
+  wrap.style.height = h + 'px';
+  wrap.style.overflowY = 'auto';
+  canvas.removeAttribute('height');
+  canvas.removeAttribute('width');
+  canvas.style.height = h + 'px';
+  canvas.style.width = '100%';
+}
+
+function filteredCalls() {
+  const q = state.filters.search.toLowerCase();
+  return state.data.calls.filter(r => {
+    const okM = state.filters.month === 'all' || r.month === state.filters.month;
+    const okD = state.filters.division === 'all' || r.division === state.filters.division;
+    const okS = !q || r.name.toLowerCase().includes(q);
+    return okM && okD && okS;
+  });
+}
+function onSearchInput() {
+  state.filters.search = document.getElementById('search-fio').value;
+  renderCalls();
+}
+
+function filteredMPP() {
+  return state.data.mpp.filter(r => state.filters.mppMonth === 'all' || r.month === state.filters.mppMonth);
+}
+
+function filteredORP() {
+  return state.data.orp.filter(r => state.filters.orpMonth === 'all' || r.month === state.filters.orpMonth);
+}
+
+function filteredSurvey() {
+  if (!state.data.survey) return { records: [], responseRates: [], totals: {} };
+  if (state.filters.surveyPeriod === 'all') return state.data.survey;
+  return {
+    records: state.data.survey.records.filter(r => r.period === state.filters.surveyPeriod),
+    responseRates: state.data.survey.responseRates.filter(r => r.period === state.filters.surveyPeriod),
+    totals: state.data.survey.totals,
+  };
+}
+
+function avg(arr) {
+  const valid = arr.filter(v => !isNaN(v) && v !== null);
+  return valid.length ? valid.reduce((a,b)=>a+b,0)/valid.length : NaN;
+}
+
+function scoreColor(v) {
+  if (v >= 90) return '#10B981';
+  if (v >= 80) return '#F59E0B';
+  return '#EF4444';
+}
+function scoreClass(v) {
+  if (v >= 90) return 'score-green';
+  if (v >= 80) return 'score-yellow';
+  return 'score-red';
+}
+function badgeClass(v) {
+  if (v >= 80) return 'badge-green';
+  if (v >= 60) return 'badge-yellow';
+  return 'badge-red';
+}
+function heatColor(v) {
+  if (isNaN(v)) return 'rgba(148,163,184,0.05)';
+  if (v >= 85) return 'rgba(16,185,129,0.2)';
+  if (v >= 70) return 'rgba(245,158,11,0.2)';
+  return 'rgba(239,68,68,0.2)';
+}
+function heatTextColor(v) {
+  if (isNaN(v)) return 'var(--text3)';
+  if (v >= 85) return 'var(--green)';
+  if (v >= 70) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function initials(name) {
+  return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+}
+
+function avatarClass(division) {
+  for (const [k,v] of Object.entries(DIV_COLORS)) {
+    if (division && division.includes(k.replace('КЦ ','').replace('ЛП/','').split('/')[0])) return v;
+  }
+  const d = (division||'').toLowerCase();
+  if (d.includes('юг') || d.includes('лп')) return 'av-south';
+  if (d.includes('урал') || d.includes('ural')) return 'av-ural';
+  if (d.includes('лок')) return 'av-local';
+  return 'av-other';
+}
+
+// ========== SPARKLINES ==========
+function buildSparklineSVG(name, width, height) {
+  const allData = state.data.calls.filter(r => r.name === name);
+  const months = MONTHS_ORDER.filter(m => allData.find(r => r.month === m));
+  if (months.length < 2) return '';
+  const vals = months.map(m => allData.find(r => r.month === m)?.total ?? null).filter(v => v !== null);
+  if (vals.length < 2) return '';
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * (width - 8) + 4;
+    const y = height - ((v - minV) / range) * (height - 8) - 4;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastVal = vals[vals.length - 1];
+  const trend = vals[vals.length - 1] >= vals[0];
+  const color = lastVal >= 90 ? '#10B981' : lastVal >= 80 ? '#F59E0B' : '#EF4444';
+  return `<svg class="sparkline-svg" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${vals.map((v, i) => { const x = (i / (vals.length - 1)) * (width - 8) + 4; const y = height - ((v - minV) / range) * (height - 8) - 4; return i === vals.length - 1 ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${color}"/>` : ''; }).join('')}
+  </svg>`;
+}
+
+// ========== MATRIX ==========
+function renderCallsMatrix(data) {
+  const el = document.getElementById('calls-matrix');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty" style="padding:40px">Нет данных</div>'; return; }
+  const qualThreshold = 85;
+  const callCounts = data.map(r => r.calls).filter(v => v > 0);
+  const callsMedian = callCounts.length ? callCounts.sort((a,b)=>a-b)[Math.floor(callCounts.length/2)] : 1;
+  const maxCalls = Math.max(...callCounts, 1);
+  const W = el.clientWidth || 400, H = 320;
+  let html = '';
+  // Quadrant backgrounds (using divs)
+  html += `<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;pointer-events:none">
+    <div style="background:rgba(16,185,129,0.07);border-right:1px dashed rgba(148,163,184,0.2);border-bottom:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(245,158,11,0.05);border-bottom:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(239,68,68,0.07);border-right:1px dashed rgba(148,163,184,0.2)"></div>
+    <div style="background:rgba(59,130,246,0.05)"></div>
+  </div>`;
+  // Quadrant labels
+  html += `<span class="matrix-q-label" style="top:8px;left:8px;color:var(--green)">⭐ Звёзды</span>`;
+  html += `<span class="matrix-q-label" style="top:8px;right:8px;color:var(--yellow);text-align:right">📈 Рост</span>`;
+  html += `<span class="matrix-q-label" style="bottom:8px;left:8px;color:var(--red)">⚠️ Риски</span>`;
+  html += `<span class="matrix-q-label" style="bottom:8px;right:8px;color:var(--text3);text-align:right">📋 Наблюдение</span>`;
+  // Axis labels
+  html += `<span class="matrix-axis-label" style="bottom:2px;left:50%;transform:translateX(-50%)">← низкое качество · высокое →</span>`;
+  // Dots
+  const padX = 20, padY = 20;
+  const plotW = W - 2*padX, plotH = H - 2*padY;
+  // Aggregate by name (take best/latest record per name)
+  const byName = {};
+  for (const r of data) {
+    if (!byName[r.name] || r.total > byName[r.name].total) byName[r.name] = r;
+  }
+  for (const r of Object.values(byName)) {
+    const xPct = Math.min(100, Math.max(0, r.total)) / 100;
+    const yPct = Math.min(1, r.calls / (maxCalls * 1.1));
+    const x = padX + xPct * plotW;
+    const y = padY + (1 - yPct) * plotH;
+    const color = r.total >= 90 ? '#10B981' : r.total >= 80 ? '#F59E0B' : '#EF4444';
+    const sz = 8 + Math.min(12, r.calls / (maxCalls / 8));
+    html += `<div class="matrix-dot" title="${r.name}\n${r.total.toFixed(0)}% · ${r.calls} зв."
+      style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;width:${sz.toFixed(0)}px;height:${sz.toFixed(0)}px;background:${color};opacity:0.85;transform:translate(-50%,-50%)"
+      onclick="openModal(${JSON.stringify(r.name)})"></div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ========== DEGRADATION ==========
+function renderDegradation(container) {
+  const el = document.getElementById(container);
+  if (!el) return;
+  const calls = state.data.calls;
+  if (!calls.length) { el.innerHTML = '<div class="empty" style="padding:24px">Нет данных</div>'; return; }
+  // Find recruiters with data in 2+ months
+  const byName = {};
+  for (const r of calls) {
+    if (!byName[r.name]) byName[r.name] = {};
+    byName[r.name][r.month] = r.total;
+  }
+  const degraders = [];
+  for (const [name, months] of Object.entries(byName)) {
+    const mkeys = MONTHS_ORDER.filter(m => months[m] !== undefined);
+    if (mkeys.length < 2) continue;
+    let maxDrop = 0, fromMonth = '', toMonth = '', fromVal = 0, toVal = 0;
+    for (let i = 1; i < mkeys.length; i++) {
+      const drop = months[mkeys[i-1]] - months[mkeys[i]];
+      if (drop > maxDrop) { maxDrop = drop; fromMonth = mkeys[i-1]; toMonth = mkeys[i]; fromVal = months[mkeys[i-1]]; toVal = months[mkeys[i]]; }
+    }
+    if (maxDrop > 0) degraders.push({ name, drop: maxDrop, fromMonth, toMonth, fromVal, toVal });
+  }
+  if (!degraders.length) { el.innerHTML = '<div style="color:var(--green);font-size:13px;padding:16px 0">🎉 Снижений не обнаружено — все рекрутеры стабильны или растут</div>'; return; }
+  const top = degraders.sort((a,b) => b.drop - a.drop).slice(0, 7);
+  el.innerHTML = top.map(r => `<div class="deg-row">
+    <span style="font-size:16px">📉</span>
+    <span class="deg-name" onclick="openModal(${JSON.stringify(r.name)})" style="cursor:pointer;color:var(--blue)">${r.name}</span>
+    <span class="deg-months">${r.fromMonth[0]+r.fromMonth.slice(1).toLowerCase()} ${r.fromVal.toFixed(0)}% → ${r.toMonth[0]+r.toMonth.slice(1).toLowerCase()} ${r.toVal.toFixed(0)}%</span>
+    <span class="deg-change" style="color:var(--red)">−${r.drop.toFixed(1)}%</span>
+  </div>`).join('');
+}
+
+// ========== EXPORT CSV ==========
+function exportCallsCSV() {
+  const data = filteredCalls();
+  if (!data.length) return;
+  const headers = ['ФИО','Дивизион','Месяц','% итого','Звонков', ...CRITERIA_NAMES];
+  const rows = data.map(r => [
+    r.name, r.division, r.month, r.total.toFixed(1), r.calls,
+    ...CRITERIA_NAMES.map(n => isNaN(r.criteria[n]) ? '' : r.criteria[n].toFixed(1))
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `okk_прослушка_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+// ========== TAB BADGES ==========
+function updateTabBadges() {
+  const calls = state.data.calls;
+  const below = calls.filter(r => r.total < 80).length;
+  document.querySelectorAll('.tab-btn[data-tab="calls"] .tab-badge').forEach(e => e.remove());
+  if (below > 0) {
+    const btn = document.querySelector('.tab-btn[data-tab="calls"]');
+    if (btn) { const b = document.createElement('span'); b.className = 'tab-badge'; b.textContent = below; btn.appendChild(b); }
+  }
+}
+
+// ========== REFRESH ==========
+async function refreshDashboard() {
+  const btn = document.getElementById('nav-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  // Clear cache
+  for (const name of Object.values(SHEETS)) {
+    try { localStorage.removeItem(`okk_v2_${name}`); } catch(e) {}
+  }
+  await initDashboard(true);
+  if (btn) btn.classList.remove('spinning');
+}
+
+// ========== CHART DEFAULTS ==========
+Chart.defaults.color = '#94A3B8';
+Chart.defaults.borderColor = 'rgba(148,163,184,0.12)';
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 12;
+
+const tooltipPlugin = {
+  backgroundColor: 'rgba(15,23,42,0.95)',
+  borderColor: 'rgba(148,163,184,0.2)',
+  borderWidth: 1,
+  padding: 10,
+  titleColor: '#F8FAFC',
+  bodyColor: '#94A3B8',
+  cornerRadius: 8,
+};
+
+// ========== RENDER: OVERVIEW ==========
+function renderOverview() {
+  const calls = state.data.calls;
+  if (!calls.length) { document.getElementById('overview-kpis').innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+
+  const avgCalls = avg(calls.map(r=>r.total));
+  const mppAvg = avg(state.data.mpp.map(r=>r.score));
+  const orpAvg = avg(state.data.orp.map(r=>r.score));
+  const sv = state.data.survey;
+  let csatAvg = NaN;
+  if (sv && sv.records.length) csatAvg = avg(sv.records.filter(r=>r.type==='warehouse').map(r=>r.csat));
+
+  document.getElementById('overview-kpis').innerHTML = `
+    <div class="kpi-card ${avgCalls>=90?'green':avgCalls>=80?'':'red'}">
+      <div class="kpi-label">Прослушка — средний %</div>
+      <div class="kpi-value" style="color:${scoreColor(avgCalls)}">${isNaN(avgCalls)?'—':avgCalls.toFixed(1)+'%'}</div>
+      <div class="kpi-sub">${calls.length} записей</div>
+    </div>
+    <div class="kpi-card ${mppAvg>=80?'green':mppAvg>=60?'yellow':'red'}">
+      <div class="kpi-label">МПП — средний балл</div>
+      <div class="kpi-value" style="color:${scoreColor(mppAvg)}">${isNaN(mppAvg)?'—':mppAvg.toFixed(1)}</div>
+      <div class="kpi-sub">${state.data.mpp.length} проверок</div>
+    </div>
+    <div class="kpi-card ${orpAvg>=70?'green':orpAvg>=40?'yellow':'red'}">
+      <div class="kpi-label">ОРП — средний балл</div>
+      <div class="kpi-value" style="color:${scoreColor(orpAvg)}">${isNaN(orpAvg)?'—':orpAvg.toFixed(1)}</div>
+      <div class="kpi-sub">${state.data.orp.length} проверок</div>
+    </div>
+    <div class="kpi-card ${csatAvg>=4?'green':csatAvg>=3?'yellow':'red'}">
+      <div class="kpi-label">CSAT — опросы новичков</div>
+      <div class="kpi-value" style="color:${csatAvg>=4?'var(--green)':csatAvg>=3?'var(--yellow)':'var(--red)'}">${isNaN(csatAvg)?'—':csatAvg.toFixed(2)}</div>
+      <div class="kpi-sub">из 5.00</div>
+    </div>`;
+
+  // Trend by month
+  const byMonth = {};
+  for (const r of calls) {
+    if (!byMonth[r.month]) byMonth[r.month] = [];
+    byMonth[r.month].push(r.total);
+  }
+  const months = MONTHS_ORDER.filter(m => byMonth[m]);
+  const trendVals = months.map(m => +avg(byMonth[m]).toFixed(1));
+
+  destroyChart('overview-trend');
+  const trendEl = document.getElementById('chart-overview-trend');
+  if (months.length < 2) {
+    trendEl.parentElement.innerHTML = `<div class="empty" style="padding:32px"><div class="empty-icon">📅</div>Только один период данных (${months[0]||'—'})<br><span style="font-size:12px;color:var(--text3)">График появится, когда данные накопятся за 2+ месяца</span></div>`;
+  } else {
+    const yMin = Math.max(0, Math.floor((Math.min(...trendVals) - 5) / 5) * 5);
+    const yMax = Math.min(100, Math.ceil((Math.max(...trendVals) + 5) / 5) * 5);
+    state.charts['overview-trend'] = new Chart(trendEl, {
+      type: 'line',
+      data: {
+        labels: months.map(m=>m[0]+m.slice(1).toLowerCase()),
+        datasets: [{
+          label: '% качества', data: trendVals,
+          borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.1)',
+          tension: 0.3, fill: true, pointRadius: 6, pointBackgroundColor: '#3B82F6',
+          pointHoverRadius: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false }, tooltip: { ...tooltipPlugin, callbacks: { label: ctx => `${ctx.raw}%` } } },
+        scales: { y: { min: yMin, max: yMax, ticks: { callback: v=>v+'%' } } }
+      }
+    });
+  }
+
+  // Top weak criteria
+  const critAvg = {};
+  for (const name of CRITERIA_NAMES) {
+    const vals = calls.map(r=>r.criteria[name]).filter(v=>!isNaN(v));
+    if (vals.length) critAvg[name] = avg(vals);
+  }
+  const sorted = Object.entries(critAvg).sort((a,b)=>a[1]-b[1]).slice(0,10);
+
+  destroyChart('overview-weak');
+  state.charts['overview-weak'] = new Chart(document.getElementById('chart-overview-weak'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(([n])=>n.length>18?n.slice(0,16)+'…':n),
+      datasets: [{
+        label: '%', data: sorted.map(([,v])=>+v.toFixed(1)),
+        backgroundColor: sorted.map(([,v])=>v<70?'rgba(239,68,68,0.7)':v<85?'rgba(245,158,11,0.7)':'rgba(16,185,129,0.7)'),
+      }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false }, tooltip: { ...tooltipPlugin } },
+      scales: { x: { min: 0, max: 100, ticks: { callback: v=>v+'%' } } }
+    }
+  });
+
+  // Heatmap
+  renderOverviewHeatmap(calls, critAvg);
+}
+
+function renderOverviewHeatmap(calls, critAvg) {
+  const divs = [...new Set(calls.map(r=>r.division))];
+  const worst5 = Object.entries(critAvg).sort((a,b)=>a[1]-b[1]).slice(0,5).map(([n])=>n);
+
+  let html = '<table><thead><tr><th>Дивизион</th>';
+  for (const c of worst5) html += `<th>${c.length>14?c.slice(0,12)+'…':c}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (const div of divs) {
+    const divCalls = calls.filter(r=>r.division===div);
+    html += `<tr><td>${div}</td>`;
+    for (const c of worst5) {
+      const vals = divCalls.map(r=>r.criteria[c]).filter(v=>!isNaN(v));
+      const v = vals.length ? avg(vals) : NaN;
+      html += `<td style="background:${heatColor(v)};color:${heatTextColor(v)}">${isNaN(v)?'—':v.toFixed(0)+'%'}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('overview-heatmap').innerHTML = html;
+}
+
+// ========== RENDER: CALLS ==========
+function renderCalls() {
+  const data = filteredCalls();
+
+  // Populate filters if first time
+  const months = [...new Set(state.data.calls.map(r=>r.month))].sort((a,b)=>MONTHS_ORDER.indexOf(a)-MONTHS_ORDER.indexOf(b));
+  const divs = [...new Set(state.data.calls.map(r=>r.division))].sort();
+  const mSel = document.getElementById('filter-month');
+  const dSel = document.getElementById('filter-division');
+  if (mSel.options.length === 1) {
+    months.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=m[0]+m.slice(1).toLowerCase(); mSel.appendChild(o); });
+    divs.forEach(d => { const o=document.createElement('option'); o.value=d; o.textContent=d; dSel.appendChild(o); });
+  }
+
+  // Breadcrumb
+  const bc = document.getElementById('calls-breadcrumb');
+  if (state.filters.division !== 'all') {
+    bc.style.display='flex';
+    document.getElementById('breadcrumb-div').textContent = state.filters.division;
+  } else bc.style.display='none';
+
+  // KPIs
+  if (!data.length) {
+    document.getElementById('calls-kpis').innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>Нет данных по выбранным фильтрам</div>';
+    ['recruiters-bar','criteria-bar'].forEach(k=>destroyChart(k));
+    document.getElementById('recruiter-grid').innerHTML='';
+    document.getElementById('div-heatmap').innerHTML='';
+    return;
+  }
+
+  const totalQ = avg(data.map(r=>r.total));
+  const totalCalls = data.reduce((a,r)=>a+r.calls,0);
+  const sorted = [...data].sort((a,b)=>b.total-a.total);
+  const best = sorted[0], worst = sorted[sorted.length-1];
+
+  document.getElementById('calls-kpis').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Средний % качества</div><div class="kpi-value" style="color:${scoreColor(totalQ)}">${totalQ.toFixed(1)}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Проверено звонков</div><div class="kpi-value">${totalCalls}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Рекрутеров</div><div class="kpi-value">${data.length}</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Лучший результат</div><div class="kpi-value" style="color:var(--green);font-size:20px">${best.name.split(' ')[0]}</div><div class="kpi-sub">${best.total.toFixed(0)}%</div></div>
+    <div class="kpi-card red"><div class="kpi-label">Худший результат</div><div class="kpi-value" style="color:var(--red);font-size:20px">${worst.name.split(' ')[0]}</div><div class="kpi-sub">${worst.total.toFixed(0)}%</div></div>`;
+
+  renderRecruitersBar(sorted);
+  renderCriteriaBar(data);
+  renderRecruiterGrid(data);
+  renderDivHeatmap(data);
+  setTimeout(() => { renderCallsMatrix(data); }, 50);
+  renderDegradation('calls-degradation');
+}
+
+function renderRecruitersBar(sorted) {
+  destroyChart('recruiters-bar');
+  const wrap = document.getElementById('chart-recruiters-bar').parentElement;
+  const maxVal = sorted.length ? Math.max(...sorted.map(r=>r.total)) : 100;
+  wrap.style.height = 'auto';
+  wrap.style.maxHeight = '420px';
+  wrap.style.overflowY = 'auto';
+  wrap.style.overflowX = 'hidden';
+  wrap.style.paddingRight = '4px';
+  let html = sorted.map((r, i) => {
+    const pct = r.total.toFixed(1);
+    const barW = (r.total / Math.max(maxVal, 100) * 100).toFixed(1);
+    const color = r.total >= 90 ? 'var(--green)' : r.total >= 80 ? 'var(--yellow)' : 'var(--red)';
+    return `<div class="bar-row" style="cursor:pointer;padding:4px 6px;border-radius:6px;transition:background .15s;margin:3px 0"
+      onmouseenter="this.style.background='rgba(59,130,246,.08)'" onmouseleave="this.style.background=''"
+      onclick="openModal(${JSON.stringify(r.name)})">
+      <div style="min-width:28px;text-align:right;font-size:11px;color:var(--text3);font-weight:600">${i+1}</div>
+      <div class="bar-label" style="min-width:150px;color:var(--text1);font-weight:500;cursor:pointer;flex-shrink:0" title="${r.name}">${r.name}</div>
+      <div class="bar-track" style="flex:1">
+        <div class="bar-fill" style="width:${barW}%;background:${color};height:8px;border-radius:4px"></div>
+      </div>
+      <div class="bar-val" style="color:${color};min-width:52px;text-align:right">${pct}%</div>
+      <div style="min-width:50px;text-align:right;font-size:11px;color:var(--text3)">${r.calls} зв.</div>
+    </div>`;
+  }).join('');
+  // Replace canvas with HTML list
+  wrap.innerHTML = `<canvas id="chart-recruiters-bar" style="display:none"></canvas>${html}`;
+}
+
+function renderCriteriaBar(data) {
+  destroyChart('criteria-bar');
+  const critAvg = {};
+  for (const name of CRITERIA_NAMES) {
+    const vals = data.map(r=>r.criteria[name]).filter(v=>!isNaN(v));
+    if (vals.length) critAvg[name] = avg(vals);
+  }
+  const sorted = Object.entries(critAvg).sort((a,b)=>a[1]-b[1]);
+
+  state.charts['criteria-bar'] = new Chart(document.getElementById('chart-criteria-bar'), {
+    type: 'bar',
+    data: {
+      labels: sorted.map(([n])=>n.length>14?n.slice(0,12)+'…':n),
+      datasets: [{
+        label: '%', data: sorted.map(([,v])=>+v.toFixed(1)),
+        backgroundColor: sorted.map(([,v],i)=>i<5?'rgba(239,68,68,0.7)':i>=sorted.length-5?'rgba(16,185,129,0.7)':'rgba(59,130,246,0.5)'),
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend:{display:false},
+        tooltip:{...tooltipPlugin,callbacks:{label:ctx=>`${ctx.raw}%`}},
+      },
+      scales: { y:{min:0,max:100,ticks:{callback:v=>v+'%'}}, x:{ticks:{font:{size:10},maxRotation:45}} },
+      onClick(e, els) {
+        if (!els.length) return;
+        const name = sorted[els[0].index][0];
+        showCriteriaDetail(name, data);
+      }
+    }
+  });
+}
+
+function showCriteriaDetail(criterionName, data) {
+  const sorted = [...data].filter(r=>!isNaN(r.criteria[criterionName])).sort((a,b)=>a.criteria[criterionName]-b.criteria[criterionName]).slice(0,5);
+  const el = document.getElementById('criteria-detail');
+  el.innerHTML = `<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">Топ-5 слабых по «${criterionName}»:</div>`+
+    sorted.map(r=>`<div class="bar-row"><div class="bar-label" title="${r.name}">${r.name.split(' ')[0]}</div><div class="bar-track"><div class="bar-fill" style="width:${r.criteria[criterionName]}%;background:${scoreColor(r.criteria[criterionName])}"></div></div><div class="bar-val" style="color:${scoreColor(r.criteria[criterionName])}">${r.criteria[criterionName].toFixed(0)}%</div></div>`).join('');
+}
+
+function setRecSort(mode) {
+  state.filters.recSort = mode;
+  ['score-desc','score-asc','name'].forEach(m => {
+    const btn = document.getElementById('sort-'+m);
+    if (btn) btn.className = 'btn btn-sm' + (m === mode ? '' : ' btn-ghost');
+  });
+  renderRecruiterGrid(filteredCalls());
+}
+
+function renderRecruiterGrid(data) {
+  let sorted = [...data];
+  if (state.filters.recSort === 'score-desc') sorted.sort((a,b) => b.total - a.total);
+  else if (state.filters.recSort === 'score-asc') sorted.sort((a,b) => a.total - b.total);
+  else sorted.sort((a,b) => a.name.localeCompare(b.name, 'ru'));
+  const grid = document.getElementById('recruiter-grid');
+  grid.innerHTML = sorted.map((r,i) => {
+    const avC = avatarClass(r.division);
+    const spark = buildSparklineSVG(r.name, 120, 30);
+    const hasSparkline = spark !== '';
+    const nameJson = JSON.stringify(r.name).replace(/"/g,'&quot;');
+    return `<div class="rec-card" style="animation-delay:${i*40}ms" onclick="openModal(${nameJson})">
+      <div class="rec-header">
+        <div class="avatar ${avC}">${initials(r.name)}</div>
+        <div>
+          <div class="rec-name">${r.name}</div>
+          <span class="rec-div-tag">${r.division}</span>
+        </div>
+      </div>
+      <div class="rec-score ${scoreClass(r.total)}">${r.total.toFixed(0)}%</div>
+      <div class="rec-calls">Проверено звонков: ${r.calls}</div>
+      <div class="rec-footer">
+        <div class="sparkline-wrap">${hasSparkline ? spark : ''}</div>
+        <button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();aiAskFromCard(${nameJson})">🤖 AI</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function aiAskFromCard(name) {
+  const q = `Проанализируй рекрутера ${name}: его показатели по месяцам, сильные и слабые критерии, динамику. Дай конкретные рекомендации по улучшению.`;
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.querySelector('.tab-btn[data-tab="ai"]').click();
+  setTimeout(() => aiAsk(q), 150);
+}
+function aiAskFromModal(name) {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.querySelector('.tab-btn[data-tab="ai"]').click();
+  setTimeout(() => aiAsk(`Проанализируй рекрутера ${name}: его показатели по месяцам, сильные и слабые критерии, динамику. Дай конкретные рекомендации по улучшению.`), 150);
+}
+
+function renderDivHeatmap(data) {
+  const divs = [...new Set(data.map(r=>r.division))].sort();
+  const critAvg = {};
+  for (const name of CRITERIA_NAMES) {
+    const vals = data.map(r=>r.criteria[name]).filter(v=>!isNaN(v));
+    if (vals.length) critAvg[name] = avg(vals);
+  }
+  const worst8 = Object.entries(critAvg).sort((a,b)=>a[1]-b[1]).slice(0,8).map(([n])=>n);
+
+  let html = '<table><thead><tr><th>Дивизион</th>';
+  for (const c of worst8) html += `<th title="${c}">${c.length>12?c.slice(0,10)+'…':c}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (const div of divs) {
+    const divData = data.filter(r=>r.division===div);
+    html += `<tr><td style="cursor:pointer;color:var(--blue)" onclick="filterByDiv('${div}')">${div}</td>`;
+    for (const c of worst8) {
+      const vals = divData.map(r=>r.criteria[c]).filter(v=>!isNaN(v));
+      const v = vals.length ? avg(vals) : NaN;
+      html += `<td style="background:${heatColor(v)};color:${heatTextColor(v)}">${isNaN(v)?'—':v.toFixed(0)+'%'}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('div-heatmap').innerHTML = html;
+}
+
+function filterByDiv(div) {
+  state.filters.division = div;
+  document.getElementById('filter-division').value = div;
+  renderCalls();
+}
+function clearDivFilter() {
+  state.filters.division = 'all';
+  document.getElementById('filter-division').value = 'all';
+  renderCalls();
+}
+
+// ========== MODAL: RECRUITER DETAIL ==========
+function openModal(name) {
+  const allData = state.data.calls.filter(r=>r.name===name);
+  if (!allData.length) return;
+
+  const rec = filteredCalls().find(r=>r.name===name) || allData[allData.length-1];
+  document.getElementById('modal-title').textContent = rec.name;
+  document.getElementById('modal-subtitle').textContent = `${rec.division} · ${rec.total.toFixed(0)}% · ${rec.calls} звонков`;
+
+  // Criteria sorted
+  const critEntries = Object.entries(rec.criteria).filter(([,v])=>!isNaN(v)).sort((a,b)=>b[1]-a[1]);
+  const strong = critEntries.filter(([,v])=>v>=90).slice(0,3);
+  const weak = critEntries.filter(([,v])=>v<75).slice(-3).reverse();
+
+  // Division average
+  const divData = state.data.calls.filter(r=>r.division===rec.division);
+  const divAvg = {};
+  for (const name of CRITERIA_NAMES) {
+    const vals = divData.map(r=>r.criteria[name]).filter(v=>!isNaN(v));
+    if (vals.length) divAvg[name] = avg(vals);
+  }
+
+  // Monthly dynamics
+  const byMonth = {};
+  for (const r of allData) byMonth[r.month] = r.total;
+  const mkeys = MONTHS_ORDER.filter(m=>byMonth[m]);
+  let dynHtml = '';
+  if (mkeys.length > 1) {
+    dynHtml = `<div style="margin-top:16px"><div class="chart-title" style="margin-bottom:8px">Динамика по месяцам</div><table class="dynamics-table"><thead><tr>${mkeys.map(m=>`<th>${m[0]+m.slice(1).toLowerCase()}</th>`).join('')}</tr></thead><tbody><tr>${mkeys.map((m,i)=>{const v=byMonth[m];const prev=byMonth[mkeys[i-1]];const arrow=i>0?(v>prev?'▲':'▼'):'';const cls=i>0?(v>prev?'arrow-up':'arrow-down'):'';return`<td>${v.toFixed(0)}% <span class="${cls}">${arrow}</span></td>`;}).join('')}</tr></tbody></table></div>`;
+  }
+
+  const radarLabels = CRITERIA_NAMES.map(n=>n.length>12?n.slice(0,10)+'…':n);
+  const radarData = CRITERIA_NAMES.map(n=>rec.criteria[n]??null);
+  const radarDiv = CRITERIA_NAMES.map(n=>divAvg[n]??null);
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-grid">
+      <div>
+        <canvas id="modal-radar" height="280"></canvas>
+        ${dynHtml}
+      </div>
+      <div>
+        <div class="chart-title">Сильные стороны (≥90%)</div>
+        <div class="top-criteria">
+          ${strong.length?strong.map(([n,v])=>`<div class="crit-item good"><span>${n}</span><span>${v.toFixed(0)}%</span></div>`).join(''):'<div style="color:var(--text3);font-size:12px">Нет критериев ≥90%</div>'}
+        </div>
+        <div class="chart-title" style="margin-top:16px">Слабые стороны (&lt;75%)</div>
+        <div class="top-criteria">
+          ${weak.length?weak.map(([n,v])=>`<div class="crit-item bad"><span>${n}</span><span>${v.toFixed(0)}%</span></div>`).join(''):'<div style="color:var(--text3);font-size:12px">Нет критериев &lt;75%</div>'}
+        </div>
+        <div style="margin-top:20px">
+          <div class="chart-title" style="margin-bottom:8px">Сравнить с другим рекрутером</div>
+          <select id="compare-select" style="width:100%;margin-bottom:8px">
+            <option value="">— Выберите рекрутера —</option>
+            ${state.data.calls.filter(r=>r.name!==rec.name).map(r=>`<option value="${r.name}">${r.name} (${r.division})</option>`).join('')}
+          </select>
+          <button class="btn btn-sm" onclick="renderCompare('${rec.name}')">Сравнить</button>
+        </div>
+        <div id="compare-area"></div>
+        <div class="divider"></div>
+        <button class="btn btn-sm" onclick="aiAskFromModal('${rec.name.replace(/'/g,"\\'")}')">🤖 AI Анализ этого рекрутера</button>
+      </div>
+    </div>`;
+
+  document.getElementById('modal-overlay').classList.add('open');
+
+  destroyChart('modal-radar');
+  state.charts['modal-radar'] = new Chart(document.getElementById('modal-radar'), {
+    type: 'radar',
+    data: {
+      labels: radarLabels,
+      datasets: [
+        { label: rec.name, data: radarData, borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.15)', pointBackgroundColor: '#3B82F6', pointRadius: 3 },
+        { label: 'Среднее по дивизиону', data: radarDiv, borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.08)', borderDash: [4,4], pointRadius: 2 },
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: { r: { min:0, max:100, ticks:{stepSize:25,backdropColor:'transparent',color:'var(--text3)'}, grid:{color:'rgba(148,163,184,0.1)'}, pointLabels:{font:{size:11},color:'var(--text2)'} } },
+      plugins: { legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}, tooltip:{...tooltipPlugin} }
+    }
+  });
+}
+
+function renderCompare(name1) {
+  const name2 = document.getElementById('compare-select').value;
+  if (!name2) return;
+  const r1 = state.data.calls.find(r=>r.name===name1);
+  const r2 = state.data.calls.find(r=>r.name===name2);
+  if (!r1||!r2) return;
+
+  const area = document.getElementById('compare-area');
+  area.innerHTML = `<div class="divider"></div><div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text2)">Сравнение: ${r1.name} vs ${r2.name}</div><canvas id="compare-radar" height="200"></canvas>`;
+
+  destroyChart('compare-radar');
+  state.charts['compare-radar'] = new Chart(document.getElementById('compare-radar'), {
+    type: 'radar',
+    data: {
+      labels: CRITERIA_NAMES.map(n=>n.length>10?n.slice(0,8)+'…':n),
+      datasets: [
+        { label: r1.name.split(' ')[0], data: CRITERIA_NAMES.map(n=>r1.criteria[n]??null), borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.1)',pointRadius:2 },
+        { label: r2.name.split(' ')[0], data: CRITERIA_NAMES.map(n=>r2.criteria[n]??null), borderColor:'#10B981',backgroundColor:'rgba(16,185,129,0.1)',pointRadius:2 },
+      ]
+    },
+    options: {
+      scales:{r:{min:0,max:100,ticks:{stepSize:25,backdropColor:'transparent'},grid:{color:'rgba(148,163,184,0.1)'},pointLabels:{font:{size:8}}}},
+      plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}},tooltip:{...tooltipPlugin}}
+    }
+  });
+}
+
+// ========== RENDER: TRAINING ==========
+function renderTraining() {
+  const t = state.data.training;
+  const unavail = document.getElementById('training-unavail');
+  const content = document.getElementById('training-content');
+
+  if (!t || (!t.squeeze.length && !t.lmk.length)) {
+    unavail.style.display='flex'; content.style.display='none'; return;
+  }
+  unavail.style.display='none'; content.style.display='block';
+
+  // Squeeze
+  if (t.squeeze.length) {
+    const avgA = avg(t.squeeze.map(r=>r.pointA));
+    const avgB = avg(t.squeeze.map(r=>r.pointB).filter(v=>!isNaN(v)));
+    document.getElementById('squeeze-kpis').innerHTML=`
+      <div class="kpi-card"><div class="kpi-label">Точка А (ср.)</div><div class="kpi-value">${isNaN(avgA)?'—':avgA.toFixed(1)+'%'}</div></div>
+      <div class="kpi-card green"><div class="kpi-label">Точка Б (ср.)</div><div class="kpi-value" style="color:var(--green)">${isNaN(avgB)?'—':avgB.toFixed(1)+'%'}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Прирост</div><div class="kpi-value" style="color:${(avgB-avgA)>=0?'var(--green)':'var(--red)'}">${isNaN(avgA)||isNaN(avgB)?'—':(avgB-avgA>0?'+':'')+( avgB-avgA).toFixed(1)+'%'}</div></div>`;
+
+    destroyChart('squeeze-bar');
+    state.charts['squeeze-bar'] = new Chart(document.getElementById('chart-squeeze-bar'),{
+      type:'bar',
+      data:{
+        labels:t.squeeze.map(r=>r.name.split(' ')[0]),
+        datasets:[
+          {label:'Точка А',data:t.squeeze.map(r=>r.pointA),backgroundColor:'rgba(239,68,68,0.6)',borderRadius:4},
+          {label:'Точка Б',data:t.squeeze.map(r=>r.pointB),backgroundColor:'rgba(16,185,129,0.7)',borderRadius:4},
+        ]
+      },
+      options:{responsive:true,plugins:{tooltip:{...tooltipPlugin},legend:{position:'bottom'}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}}}}
+    });
+
+    document.getElementById('squeeze-table').innerHTML=`<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr><th style="padding:8px;text-align:left;color:var(--text2)">ФИО</th><th style="padding:8px;text-align:center;color:var(--text2)">Точка А</th><th style="padding:8px;text-align:center;color:var(--text2)">Точка Б</th><th style="padding:8px;text-align:center;color:var(--text2)">Δ</th></tr></thead><tbody>${
+      t.squeeze.map(r=>{const d=isNaN(r.pointB)?NaN:r.pointB-r.pointA;return`<tr><td style="padding:8px;border-bottom:1px solid var(--border)">${r.name}</td><td style="padding:8px;border-bottom:1px solid var(--border);text-align:center">${isNaN(r.pointA)?'—':r.pointA.toFixed(1)+'%'}</td><td style="padding:8px;border-bottom:1px solid var(--border);text-align:center;color:var(--green)">${isNaN(r.pointB)?'—':r.pointB.toFixed(1)+'%'}</td><td style="padding:8px;border-bottom:1px solid var(--border);text-align:center;color:${isNaN(d)?'var(--text2)':d>=0?'var(--green)':'var(--red)'}">${isNaN(d)?'—':(d>=0?'+':'')+d.toFixed(1)+'%'}</td></tr>`;}).join('')
+    }</tbody></table>`;
+  }
+
+  // LMK
+  if (t.lmk.length) {
+    const avgFCR = avg(t.lmk.map(r=>r.fcr).filter(v=>!isNaN(v)));
+    const pos = t.lmk.filter(r=>!isNaN(r.week2)&&!isNaN(r.start)&&r.week2>r.start).length;
+    document.getElementById('lmk-kpis').innerHTML=`
+      <div class="kpi-card"><div class="kpi-label">Ср. FCR финал</div><div class="kpi-value">${isNaN(avgFCR)?'—':avgFCR.toFixed(1)+'%'}</div></div>
+      <div class="kpi-card green"><div class="kpi-label">С положит. динамикой</div><div class="kpi-value">${pos} из ${t.lmk.length}</div></div>`;
+
+    destroyChart('lmk-line');
+    state.charts['lmk-line'] = new Chart(document.getElementById('chart-lmk-line'),{
+      type:'line',
+      data:{
+        labels:['Старт','1 неделя','2 недели'],
+        datasets:t.lmk.map((r,i)=>({
+          label:r.name.split(' ')[0],
+          data:[r.start,r.week1,r.week2],
+          borderColor:`hsl(${i*40},70%,60%)`,
+          backgroundColor:'transparent',
+          tension:0.3,pointRadius:4,
+        }))
+      },
+      options:{responsive:true,plugins:{tooltip:{...tooltipPlugin},legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}}}}
+    });
+  }
+}
+
+// ========== RENDER: MPP ==========
+function renderMPP() {
+  const data = filteredMPP();
+  const months = [...new Set(state.data.mpp.map(r=>r.month))].sort((a,b)=>MONTHS_ORDER.indexOf(a)-MONTHS_ORDER.indexOf(b));
+  const mSel = document.getElementById('filter-mpp-month');
+  if (mSel.options.length === 1) {
+    months.forEach(m=>{ const o=document.createElement('option');o.value=m;o.textContent=m[0]+m.slice(1).toLowerCase();mSel.appendChild(o); });
+  }
+
+  if (!data.length) { document.getElementById('mpp-kpis').innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+
+  const scores = data.map(r=>r.score).filter(v=>!isNaN(v));
+  const avgScore = avg(scores);
+  const maxR = data.reduce((a,b)=>a.score>b.score?a:b,data[0]);
+  const minR = data.reduce((a,b)=>a.score<b.score?a:b,data[0]);
+
+  document.getElementById('mpp-kpis').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Средний балл</div><div class="kpi-value" style="color:${scoreColor(avgScore)}">${isNaN(avgScore)?'—':avgScore.toFixed(1)}</div><div class="kpi-sub">${data.length} проверок</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Лучший результат</div><div class="kpi-value" style="color:var(--green);font-size:18px">${maxR.checked||maxR.name||'?'}</div><div class="kpi-sub">${maxR.score?.toFixed(1)}</div></div>
+    <div class="kpi-card red"><div class="kpi-label">Требует внимания</div><div class="kpi-value" style="color:var(--red);font-size:18px">${minR.checked||minR.name||'?'}</div><div class="kpi-sub">${minR.score?.toFixed(1)}</div></div>`;
+
+  // Rating bar
+  const byPerson = {};
+  for (const r of data) {
+    const key = r.checked||'';
+    if (!byPerson[key]) byPerson[key] = [];
+    byPerson[key].push(r.score);
+  }
+  const personAvg = Object.entries(byPerson).map(([n,vals])=>({name:n,avg:avg(vals)})).sort((a,b)=>b.avg-a.avg);
+
+  destroyChart('mpp-bar');
+  const canvas = document.getElementById('chart-mpp-bar');
+  prepareBarWrap(canvas, personAvg.length, 250);
+  state.charts['mpp-bar'] = new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:personAvg.map(r=>r.name||'—'),
+      datasets:[{label:'Балл',data:personAvg.map(r=>+r.avg.toFixed(1)),backgroundColor:personAvg.map(r=>r.avg>=80?'rgba(16,185,129,0.7)':r.avg>=60?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)'),borderRadius:4}]
+    },
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
+  });
+
+  // Trend
+  const byMonth2 = {};
+  for (const r of state.data.mpp) {
+    if (!byMonth2[r.month]) byMonth2[r.month] = [];
+    if (!isNaN(r.score)) byMonth2[r.month].push(r.score);
+  }
+  const mkeys = MONTHS_ORDER.filter(m=>byMonth2[m]);
+  destroyChart('mpp-trend');
+  state.charts['mpp-trend'] = new Chart(document.getElementById('chart-mpp-trend'),{
+    type:'line',
+    data:{labels:mkeys.map(m=>m[0]+m.slice(1).toLowerCase()),datasets:[{label:'Ср. балл',data:mkeys.map(m=>+avg(byMonth2[m]).toFixed(1)),borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.1)',tension:0.3,fill:true,pointRadius:5,pointBackgroundColor:'#3B82F6'}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{y:{min:0,max:100}}}
+  });
+
+  renderMPPCheckList(data);
+}
+
+function setMPPSort(mode) {
+  state.filters.mppSort = mode;
+  ['score-desc','score-asc','name','period'].forEach(m => {
+    const btn = document.getElementById('mpp-sort-'+m);
+    if (btn) btn.className = 'btn btn-sm' + (m === mode ? '' : ' btn-ghost');
+  });
+  renderMPPCheckList(filteredMPP());
+}
+
+function renderMPPCheckList(data) {
+  const nameQ = (document.getElementById('filter-mpp-name')?.value||'').toLowerCase();
+  const scoreQ = document.getElementById('filter-mpp-score')?.value||'all';
+  let sorted2 = data.filter(r=>{
+    if (nameQ && !(r.checked||'').toLowerCase().includes(nameQ)) return false;
+    if (scoreQ==='good' && r.score<80) return false;
+    if (scoreQ==='risk' && (r.score<60||r.score>=80)) return false;
+    if (scoreQ==='bad' && r.score>=60) return false;
+    return true;
+  });
+  if (state.filters.mppSort === 'score-desc') sorted2.sort((a,b)=>(b.score||0)-(a.score||0));
+  else if (state.filters.mppSort === 'score-asc') sorted2.sort((a,b)=>(a.score||0)-(b.score||0));
+  else if (state.filters.mppSort === 'name') sorted2.sort((a,b)=>(a.checked||'').localeCompare(b.checked||'','ru'));
+  else sorted2.sort((a,b)=>MONTHS_ORDER.indexOf(a.month)-MONTHS_ORDER.indexOf(b.month));
+
+  document.getElementById('mpp-check-list').innerHTML = sorted2.map((r,i)=>{
+    const score = isNaN(r.score)?'—':r.score.toFixed(1);
+    const bc = badgeClass(r.score);
+    let detail;
+    if (r.competencies) {
+      detail=`<div class="check-detail" id="mpp-detail-${i}"><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:8px">
+        <div><div style="font-size:11px;color:var(--text2)">Связь и коммуникация</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.comm)?'—':r.competencies.comm.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Продажа условий</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.sales)?'—':r.competencies.sales.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Работа с возражениями</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.obj)?'—':r.competencies.obj.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Общие стороны</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.gen)?'—':r.competencies.gen.toFixed(1)}</div></div>
+      </div></div>`;
+    } else {
+      detail=`<div class="check-detail" id="mpp-detail-${i}"><div style="font-size:12px;color:var(--text2);margin-top:4px">Итоговый балл: <strong style="color:var(--text)">${score}</strong> (детализация по компетенциям доступна с марта 2026)</div></div>`;
+    }
+    return`<div class="check-card" onclick="toggleDetail('mpp-detail-${i}')">
+      <div class="check-card-header">
+        <div><strong>${r.checked||'—'}</strong></div>
+        <span class="badge ${bc}">${score}</span>
+      </div>
+      <div class="check-meta"><span>📅 ${r.date||'—'}</span>${r.checker?`<span>👤 ${r.checker}</span>`:''}<span>📍 ${r.division||'—'}</span><span>🗓 ${r.month}</span></div>
+      ${detail}
+    </div>`;
+  }).join('');
+}
+
+// ========== RENDER: ORP ==========
+function renderORP() {
+  const data = filteredORP();
+  const months = [...new Set(state.data.orp.map(r=>r.month))].sort((a,b)=>MONTHS_ORDER.indexOf(a)-MONTHS_ORDER.indexOf(b));
+  const mSel = document.getElementById('filter-orp-month');
+  if (mSel.options.length===1) {
+    months.forEach(m=>{ const o=document.createElement('option');o.value=m;o.textContent=m[0]+m.slice(1).toLowerCase();mSel.appendChild(o); });
+  }
+
+  if (!data.length) { document.getElementById('orp-kpis').innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+
+  const scores = data.map(r=>r.score).filter(v=>!isNaN(v));
+  const avgScore = avg(scores);
+  const maxR = data.reduce((a,b)=>a.score>b.score?a:b,data[0]);
+  const minR = data.reduce((a,b)=>a.score<b.score?a:b,data[0]);
+
+  document.getElementById('orp-kpis').innerHTML=`
+    <div class="kpi-card"><div class="kpi-label">Средний балл</div><div class="kpi-value" style="color:${scoreColor(avgScore)}">${isNaN(avgScore)?'—':avgScore.toFixed(1)}</div><div class="kpi-sub">${data.length} проверок</div></div>
+    <div class="kpi-card green"><div class="kpi-label">Лучший результат</div><div class="kpi-value" style="color:var(--green);font-size:18px">${maxR.checked}</div><div class="kpi-sub">${maxR.score?.toFixed(1)}</div></div>
+    <div class="kpi-card red"><div class="kpi-label">Требует внимания</div><div class="kpi-value" style="color:var(--red);font-size:18px">${minR.checked}</div><div class="kpi-sub">${minR.score?.toFixed(1)}</div></div>`;
+
+  const byPerson = {};
+  for (const r of data) {
+    if (!byPerson[r.checked]) byPerson[r.checked]=[];
+    byPerson[r.checked].push(r.score);
+  }
+  const personAvg = Object.entries(byPerson).map(([n,vals])=>({name:n,avg:avg(vals)})).sort((a,b)=>b.avg-a.avg);
+
+  destroyChart('orp-bar');
+  const canvas = document.getElementById('chart-orp-bar');
+  prepareBarWrap(canvas, personAvg.length, 250);
+  state.charts['orp-bar'] = new Chart(canvas,{
+    type:'bar',
+    data:{labels:personAvg.map(r=>r.name||'—'),datasets:[{label:'Балл',data:personAvg.map(r=>+r.avg.toFixed(1)),backgroundColor:personAvg.map(r=>r.avg>=70?'rgba(16,185,129,0.7)':r.avg>=40?'rgba(245,158,11,0.7)':'rgba(239,68,68,0.7)'),borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{x:{min:0,max:100}}}
+  });
+
+  const byMonth2={};
+  for (const r of state.data.orp) { if(!byMonth2[r.month])byMonth2[r.month]=[]; if(!isNaN(r.score))byMonth2[r.month].push(r.score); }
+  const mkeys=MONTHS_ORDER.filter(m=>byMonth2[m]);
+  destroyChart('orp-trend');
+  state.charts['orp-trend']=new Chart(document.getElementById('chart-orp-trend'),{type:'line',data:{labels:mkeys.map(m=>m[0]+m.slice(1).toLowerCase()),datasets:[{label:'Ср. балл',data:mkeys.map(m=>+avg(byMonth2[m]).toFixed(1)),borderColor:'#10B981',backgroundColor:'rgba(16,185,129,0.1)',tension:0.3,fill:true,pointRadius:5,pointBackgroundColor:'#10B981'}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{...tooltipPlugin}},scales:{y:{min:0,max:100}}}});
+
+  renderORPCheckList(data);
+}
+
+function setORPSort(mode) {
+  state.filters.orpSort = mode;
+  ['score-desc','score-asc','name','period'].forEach(m => {
+    const btn = document.getElementById('orp-sort-'+m);
+    if (btn) btn.className = 'btn btn-sm' + (m === mode ? '' : ' btn-ghost');
+  });
+  renderORPCheckList(filteredORP());
+}
+
+function renderORPCheckList(data) {
+  const nameQ = (document.getElementById('filter-orp-name')?.value||'').toLowerCase();
+  const scoreQ = document.getElementById('filter-orp-score')?.value||'all';
+  let sorted2 = data.filter(r=>{
+    if (nameQ && !(r.checked||'').toLowerCase().includes(nameQ)) return false;
+    if (scoreQ==='good' && r.score<80) return false;
+    if (scoreQ==='risk' && (r.score<60||r.score>=80)) return false;
+    if (scoreQ==='bad' && r.score>=60) return false;
+    return true;
+  });
+  if (state.filters.orpSort === 'score-desc') sorted2.sort((a,b)=>(b.score||0)-(a.score||0));
+  else if (state.filters.orpSort === 'score-asc') sorted2.sort((a,b)=>(a.score||0)-(b.score||0));
+  else if (state.filters.orpSort === 'name') sorted2.sort((a,b)=>(a.checked||'').localeCompare(b.checked||'','ru'));
+  else sorted2.sort((a,b)=>MONTHS_ORDER.indexOf(a.month)-MONTHS_ORDER.indexOf(b.month));
+
+  document.getElementById('orp-check-list').innerHTML = sorted2.map((r,i)=>{
+    const score=isNaN(r.score)?'—':r.score.toFixed(1);
+    const bc=badgeClass(r.score);
+    let detail;
+    if (r.competencies) {
+      detail=`<div class="check-detail" id="orp-detail-${i}"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-top:8px">
+        <div><div style="font-size:11px;color:var(--text2)">Связь (MAX 12)</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.comm)?'—':r.competencies.comm.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Продажа (MAX 35)</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.sales)?'—':r.competencies.sales.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Возражения (MAX 21)</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.obj)?'—':r.competencies.obj.toFixed(1)}</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Общие (MAX 32)</div><div style="font-weight:600;color:var(--blue)">${isNaN(r.competencies.gen)?'—':r.competencies.gen.toFixed(1)}</div></div>
+      </div></div>`;
+    } else {
+      const strongHtml = r.strong ? `<div><span style="color:var(--green);font-weight:600">✓ Сильные:</span> ${r.strong}</div>` : '';
+      const weakHtml = r.weak ? `<div><span style="color:var(--red);font-weight:600">✗ Слабые:</span> ${r.weak}</div>` : '';
+      detail=`<div class="check-detail" id="orp-detail-${i}"><div style="font-size:12px;margin-top:8px;line-height:1.6">${strongHtml}${weakHtml}${(!r.strong&&!r.weak)?'<span style="color:var(--text3)">Нет текстовых комментариев</span>':''}</div></div>`;
+    }
+    return`<div class="check-card" onclick="toggleDetail('orp-detail-${i}')">
+      <div class="check-card-header"><div><strong>${r.checked||'—'}</strong></div><span class="badge ${bc}">${score}</span></div>
+      <div class="check-meta"><span>📅 ${r.date||'—'}</span><span>👤 ${r.checker||'—'}</span><span>📍 ${r.division||'—'}</span><span>🗓 ${r.month}</span></div>
+      ${detail}
+    </div>`;
+  }).join('');
+}
+
+// ========== RENDER: SURVEY ==========
+function setSurveyTab(tab) {
+  document.querySelectorAll('#survey-subtabs .sub-tab').forEach(b=>{
+    b.classList.toggle('active', b.dataset.surveytab === tab);
+  });
+  ['warehouses','jobs','cities','completion'].forEach(t=>{
+    const el = document.getElementById('survey-tab-'+t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  state.filters.surveyActiveTab = tab;
+}
+
+function renderSurvey() {
+  const { records, responseRates } = filteredSurvey();
+
+  if (state.data.survey) {
+    const periods = [...new Set(state.data.survey.records.map(r=>r.period).filter(Boolean))];
+    const pSel = document.getElementById('filter-survey-period');
+    if (pSel.options.length === 1) {
+      periods.forEach(p=>{ const o=document.createElement('option');o.value=p;o.textContent=p;pSel.appendChild(o); });
+    }
+  }
+
+  if (!records.length) {
+    document.getElementById('survey-kpis').innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных по опросам</div>';
+    return;
+  }
+
+  const warehouses = records.filter(r=>r.type==='warehouse');
+  const jobs = records.filter(r=>r.type==='job');
+  const cities = records.filter(r=>r.type==='city');
+  const allForCSAT = warehouses.length ? warehouses : records;
+
+  const avgCSAT = avg(allForCSAT.filter(r=>!isNaN(r.csat)).map(r=>r.csat));
+  const avgNPS  = avg(allForCSAT.filter(r=>!isNaN(r.nps)).map(r=>r.nps));
+  const totalDone  = responseRates.reduce((a,r)=>a+(r.done||0),0);
+  const totalTotal = responseRates.reduce((a,r)=>a+(r.total||0),0);
+  const respPct = totalTotal ? totalDone/totalTotal*100 : NaN;
+
+  const csatOk = avgCSAT>=4.5, csatWarn = !csatOk&&avgCSAT>=4.0;
+  const npsOk  = avgNPS>=4.0,  npsWarn  = !npsOk&&avgNPS>=3.5;
+  const rrOk   = respPct>=50,  rrWarn   = !rrOk&&respPct>=25;
+  document.getElementById('survey-kpis').innerHTML=`
+    <div class="kpi-card ${csatOk?'green':csatWarn?'yellow':'red'}">
+      <div class="kpi-label">Средний CSAT</div>
+      <div class="kpi-value" style="color:${csatOk?'var(--green)':csatWarn?'var(--yellow)':'var(--red)'}">${isNaN(avgCSAT)?'—':avgCSAT.toFixed(2)}</div>
+      <div class="kpi-sub">норма ≥4.50 · из 5.00</div>
+    </div>
+    <div class="kpi-card ${npsOk?'green':npsWarn?'yellow':'red'}">
+      <div class="kpi-label">Средний NPS</div>
+      <div class="kpi-value" style="color:${npsOk?'var(--green)':npsWarn?'var(--yellow)':'var(--red)'}">${isNaN(avgNPS)?'—':avgNPS.toFixed(2)}</div>
+      <div class="kpi-sub">норма ≥4.00 · из 5.00</div>
+    </div>
+    <div class="kpi-card ${rrOk?'green':rrWarn?'yellow':'red'}">
+      <div class="kpi-label">Прохождение опроса</div>
+      <div class="kpi-value" style="color:${rrOk?'var(--green)':rrWarn?'var(--yellow)':'var(--red)'}">${isNaN(respPct)?'—':respPct.toFixed(0)+'%'}</div>
+      <div class="kpi-sub">норма ≥50% · ${totalDone} из ${totalTotal}</div>
+    </div>
+    <div class="kpi-card"><div class="kpi-label">Точек охвата</div>
+      <div class="kpi-value">${[...new Set(records.map(r=>r.label))].length}</div>
+      <div class="kpi-sub">${warehouses.length} складов · ${cities.length} городов</div>
+    </div>`;
+
+  // ---- По складам ----
+  renderSurveyGroup(warehouses, 'survey-bar-wrap', 'chart-survey-bar', 'survey-warehouses-table');
+
+  // ---- По должностям ----
+  renderSurveyTable(jobs, 'survey-jobs-table');
+
+  // ---- По городам ----
+  renderCitiesTable(cities);
+
+  // ---- Прохождение ----
+  const rrSorted = [...responseRates].sort((a,b)=>b.pct-a.pct);
+  const respBars = document.getElementById('survey-response-bars');
+  if (!rrSorted.length) {
+    respBars.innerHTML='<div class="empty"><div class="empty-icon">📭</div>Нет данных по прохождению</div>';
+  } else {
+    respBars.innerHTML = rrSorted.map(r=>`
+      <div class="bar-row">
+        <div class="bar-label" title="${r.label}">${r.label.length>22?r.label.slice(0,20)+'…':r.label}</div>
+        <div class="bar-track"><div class="bar-fill ${r.pct>=50?'green':r.pct>=25?'yellow':'red'}" style="width:${r.pct}%"></div></div>
+        <div class="bar-val" style="color:${r.pct>=50?'var(--green)':r.pct>=25?'var(--yellow)':'var(--red)'}">${r.pct.toFixed(0)}%</div>
+      </div>`).join('');
+  }
+}
+
+function renderSurveyGroup(items, wrapId, canvasId, tableId) {
+  const sorted = [...items].filter(r=>!isNaN(r.csat)).sort((a,b)=>b.csat-a.csat);
+  destroyChart(canvasId);
+  if (!sorted.length) { document.getElementById(wrapId).innerHTML='<div class="empty" style="padding:24px"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  prepareBarWrap(canvas, sorted.length, 280);
+  state.charts[canvasId] = new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels:sorted.map(r=>r.label.length>30?r.label.slice(0,28)+'…':r.label),
+      datasets:[
+        {label:'CSAT',data:sorted.map(r=>isNaN(r.csat)?null:+r.csat.toFixed(2)),backgroundColor:sorted.map(r=>r.csat>=4.5?'rgba(16,185,129,0.75)':r.csat>=4.0?'rgba(245,158,11,0.75)':'rgba(239,68,68,0.75)'),borderRadius:4},
+        {label:'NPS', data:sorted.map(r=>isNaN(r.nps)?null:+r.nps.toFixed(2)),backgroundColor:sorted.map(r=>r.nps>=4.0?'rgba(16,185,129,0.4)':r.nps>=3.5?'rgba(245,158,11,0.4)':'rgba(239,68,68,0.4)'),borderRadius:4},
+      ]
+    },
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{tooltip:{...tooltipPlugin},legend:{position:'bottom',labels:{boxWidth:12,font:{size:12}}}},
+      scales:{x:{min:0,max:5,ticks:{stepSize:1}}}}
+  });
+
+  renderSurveyTable(sorted, tableId);
+}
+
+function csatCol(v) { return !isNaN(v)&&v>=4.5?'var(--green)':!isNaN(v)&&v>=4.0?'var(--yellow)':'var(--red)'; }
+function npsCol(v)  { return !isNaN(v)&&v>=4.0?'var(--green)':!isNaN(v)&&v>=3.5?'var(--yellow)':'var(--red)'; }
+
+function renderSurveyTable(items, elId) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!items.length) { el.innerHTML='<div class="empty" style="padding:16px"><div class="empty-icon">📭</div>Нет данных</div>'; return; }
+  const sorted = [...items].filter(r=>!isNaN(r.csat)).sort((a,b)=>b.csat-a.csat);
+  el.innerHTML=`<table><thead><tr>
+    <th style="width:32px;text-align:center">#</th>
+    <th>Название</th><th style="text-align:center">Ответов</th>
+    <th style="text-align:center">CSAT<br><small style="font-weight:400;opacity:.6">норма ≥4.5</small></th>
+    <th style="text-align:center">NPS<br><small style="font-weight:400;opacity:.6">норма ≥4.0</small></th>
+  </tr></thead><tbody>${sorted.map((r,i)=>`<tr>
+    <td style="text-align:center;color:var(--text3);font-size:12px">${i+1}</td>
+    <td>${r.label}</td>
+    <td style="text-align:center">${r.count||'—'}</td>
+    <td style="text-align:center;font-weight:600;color:${csatCol(r.csat)}">${isNaN(r.csat)?'—':r.csat.toFixed(2)}</td>
+    <td style="text-align:center;font-weight:600;color:${npsCol(r.nps)}">${isNaN(r.nps)?'—':r.nps.toFixed(2)}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+function setCitySort(field) {
+  const cur = state.filters.citySort;
+  if (cur === field + '-desc') state.filters.citySort = field + '-asc';
+  else state.filters.citySort = field + '-desc';
+  const { records } = filteredSurvey();
+  renderCitiesTable(records.filter(r=>r.type==='city'));
+}
+
+function renderCitiesTable(cities) {
+  const el = document.getElementById('survey-cities-table');
+  if (!el) return;
+  if (!cities.length) { el.innerHTML='<div class="empty" style="padding:16px"><div class="empty-icon">📭</div>Нет данных по городам</div>'; return; }
+  const [field, dir] = state.filters.citySort.split('-');
+  const sorted = [...cities].sort((a,b) => {
+    const va = field === 'label' ? (a.label||'') : (a[field]||0);
+    const vb = field === 'label' ? (b.label||'') : (b[field]||0);
+    if (typeof va === 'string') return dir==='asc' ? va.localeCompare(vb,'ru') : vb.localeCompare(va,'ru');
+    return dir==='asc' ? va-vb : vb-va;
+  });
+  const arrow = f => state.filters.citySort===f+'-desc'?' ↓':state.filters.citySort===f+'-asc'?' ↑':'';
+  const th = 'cursor:pointer;user-select:none;white-space:nowrap';
+  el.innerHTML=`<table><thead><tr>
+    <th style="${th}" onclick="setCitySort('label')">Город${arrow('label')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('count')">Ответов${arrow('count')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('csat')">CSAT ≥4.5${arrow('csat')}</th>
+    <th style="${th};text-align:center" onclick="setCitySort('nps')">NPS ≥4.0${arrow('nps')}</th>
+  </tr></thead><tbody>${sorted.map(r=>`<tr>
+    <td>${r.label}</td>
+    <td style="text-align:center">${r.count||'—'}</td>
+    <td style="text-align:center;font-weight:600;color:${csatCol(r.csat)}">${isNaN(r.csat)?'—':r.csat.toFixed(2)}</td>
+    <td style="text-align:center;font-weight:600;color:${npsCol(r.nps)}">${isNaN(r.nps)?'—':r.nps.toFixed(2)}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+// ========== EVENT HANDLERS ==========
+function toggleDetail(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+tab).classList.add('active');
+    state.activeTab = tab;
+    if (tab==='overview') renderOverview();
+    else if (tab==='calls') renderCalls();
+    else if (tab==='training') renderTraining();
+    else if (tab==='mpp') renderMPP();
+    else if (tab==='orp') renderORP();
+    else if (tab==='survey') renderSurvey();
+    else if (tab==='ai' && !ollamaModels.length) loadOllamaModels();
+  });
+});
+
+document.getElementById('filter-month').addEventListener('change', e=>{
+  state.filters.month = e.target.value; renderCalls();
+});
+document.getElementById('filter-division').addEventListener('change', e=>{
+  state.filters.division = e.target.value; renderCalls();
+});
+document.getElementById('filter-mpp-month').addEventListener('change', e=>{
+  state.filters.mppMonth = e.target.value; renderMPP();
+});
+document.getElementById('filter-orp-month').addEventListener('change', e=>{
+  state.filters.orpMonth = e.target.value; renderORP();
+});
+document.getElementById('filter-survey-period').addEventListener('change', e=>{
+  state.filters.surveyPeriod = e.target.value; renderSurvey();
+});
+
+document.getElementById('modal-close').addEventListener('click', ()=>{
+  document.getElementById('modal-overlay').classList.remove('open');
+});
+document.getElementById('modal-overlay').addEventListener('click', e=>{
+  if (e.target === document.getElementById('modal-overlay'))
+    document.getElementById('modal-overlay').classList.remove('open');
+});
+
+document.querySelectorAll('#tab-training .sub-tab').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const id=btn.dataset.subtab;
+    document.querySelectorAll('#tab-training .sub-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('subtab-squeeze').style.display=id==='squeeze'?'block':'none';
+    document.getElementById('subtab-lmk').style.display=id==='lmk'?'block':'none';
+  });
+});
+
+document.querySelectorAll('#survey-subtabs .sub-tab').forEach(btn=>{
+  btn.addEventListener('click',()=>{ setSurveyTab(btn.dataset.surveytab); });
+});
+
+// ========== INITIALIZATION ==========
+async function initDashboard(bustCache) {
+  document.getElementById('loading-overlay').style.display='flex';
+  document.getElementById('error-overlay').style.display='none';
+
+  try {
+    const [callsRows, mppRows, orpRows, surveyRows] = await Promise.all([
+      fetchSheet(SHEETS.calls, bustCache),
+      fetchSheet(SHEETS.mpp, bustCache),
+      fetchSheet(SHEETS.orp, bustCache),
+      fetchSheet(SHEETS.survey, bustCache),
+    ]);
+
+    state.data.calls = parseCallsSheet(callsRows);
+    state.data.mpp = parseMPPSheet(mppRows);
+    state.data.orp = parseORPSheet(orpRows);
+    state.data.survey = parseSurveySheet(surveyRows);
+
+    // Training sheet — may have wrong name, so try separately
+    try {
+      const trainingRows = await fetchSheet(SHEETS.training, bustCache);
+      // Verify it's not the same as calls (fallback to default sheet)
+      const isActualTraining = trainingRows[0] && !(trainingRows[0][1]==='Итого' && trainingRows[0][2]==='Звонков проверено');
+      if (isActualTraining) {
+        state.data.training = parseTrainingSheet(trainingRows);
+        state.data.trainingAvail = true;
+      } else {
+        state.data.training = null;
+        state.data.trainingAvail = false;
+      }
+    } catch(e) {
+      state.data.training = null;
+      state.data.trainingAvail = false;
+    }
+
+    document.getElementById('loading-overlay').style.display='none';
+    updateTabBadges();
+    renderOverview();
+    // Загрузить модели Ollama в фоне
+    loadOllamaModels().then(() => {
+      // Auto-insight после загрузки моделей
+      setTimeout(generateAutoInsight, 500);
+    });
+
+  } catch(err) {
+    console.error(err);
+    document.getElementById('loading-overlay').style.display='none';
+    document.getElementById('error-overlay').style.display='flex';
+    document.getElementById('error-msg').textContent = `Ошибка загрузки: ${err.message}. Убедитесь, что таблица опубликована через Файл → Поделиться → Опубликовать в интернете.`;
+  }
+}
+
+// ========== AI ASSISTANT ==========
+const OLLAMA_API = '/ollama/api';
+const aiHistory = [];
+let ollamaModels = [];
+
+function buildDataContext() {
+  const lines = [];
+  lines.push('Данные ОКК колл-центра (краткая сводка):');
+
+  // ---- Прослушка ----
+  const calls = state.data.calls;
+  if (calls.length) {
+    const byMonth = {};
+    for (const r of calls) { if (!byMonth[r.month]) byMonth[r.month]=[]; byMonth[r.month].push(r); }
+    const months = MONTHS_ORDER.filter(m=>byMonth[m]);
+    const lastMonth = months[months.length-1];
+    const recs = byMonth[lastMonth] || [];
+    lines.push(`\nПРОСЛУШКА (${lastMonth}, ${recs.length} рекрутёров):`);
+    const byDiv = {};
+    for (const r of recs) { if (!byDiv[r.division]) byDiv[r.division]=[]; byDiv[r.division].push(r); }
+    for (const [div, dr] of Object.entries(byDiv)) {
+      const sorted = [...dr].sort((a,b)=>b.total-a.total);
+      lines.push(`  ${div}: лучший ${sorted[0].name} ${sorted[0].total.toFixed(0)}%, худший ${sorted[sorted.length-1].name} ${sorted[sorted.length-1].total.toFixed(0)}%, ср. ${avg(dr.map(r=>r.total)).toFixed(0)}%`);
+    }
+    if (months.length > 1) {
+      const trend = months.map(m=>({ m, v: avg(byMonth[m].map(r=>r.total)) }));
+      lines.push('  Динамика ср.%: ' + trend.map(t=>`${t.m}: ${t.v.toFixed(0)}%`).join(', '));
+    }
+    const critAvg = {};
+    for (const name of CRITERIA_NAMES) {
+      const vals = recs.map(r=>r.criteria[name]).filter(v=>!isNaN(v));
+      if (vals.length) critAvg[name] = avg(vals);
+    }
+    const sc = Object.entries(critAvg).sort((a,b)=>a[1]-b[1]);
+    if (sc.length) lines.push('  Худшие критерии: ' + sc.slice(0,3).map(([n,v])=>`${n} ${v.toFixed(0)}%`).join(', '));
+  }
+
+  // ---- МПП ----
+  const mpp = state.data.mpp;
+  if (mpp.length) {
+    const byMonth = {};
+    for (const r of mpp) { if (!byMonth[r.month]) byMonth[r.month]=[]; byMonth[r.month].push(r); }
+    const months = MONTHS_ORDER.filter(m=>byMonth[m]);
+    const lastMonth = months[months.length-1];
+    const recs = byMonth[lastMonth] || [];
+    const scores = recs.map(r=>r.score).filter(v=>!isNaN(v));
+    const sorted = [...recs].sort((a,b)=>(b.score||0)-(a.score||0));
+    lines.push(`\nМПП (${lastMonth}, ${recs.length} проверок, ср.балл ${scores.length?avg(scores).toFixed(1):'—'}):`);
+    if (sorted[0]) lines.push(`  Лучший: ${sorted[0].checked||sorted[0].name} ${sorted[0].score?.toFixed(1)}`);
+    if (sorted.length>1) lines.push(`  Худший: ${sorted[sorted.length-1].checked||sorted[sorted.length-1].name} ${sorted[sorted.length-1].score?.toFixed(1)}`);
+    if (months.length>1) lines.push('  Динамика: '+months.map(m=>{const s=byMonth[m].map(r=>r.score).filter(v=>!isNaN(v));return `${m}: ${s.length?avg(s).toFixed(1):'—'}`;}).join(', '));
+  }
+
+  // ---- ОРП ----
+  const orp = state.data.orp;
+  if (orp.length) {
+    const byMonth = {};
+    for (const r of orp) { if (!byMonth[r.month]) byMonth[r.month]=[]; byMonth[r.month].push(r); }
+    const months = MONTHS_ORDER.filter(m=>byMonth[m]);
+    const lastMonth = months[months.length-1];
+    const recs = byMonth[lastMonth] || [];
+    const scores = recs.map(r=>r.score).filter(v=>!isNaN(v));
+    const sorted = [...recs].sort((a,b)=>(b.score||0)-(a.score||0));
+    lines.push(`\nОРП (${lastMonth}, ${recs.length} проверок, ср.балл ${scores.length?avg(scores).toFixed(1):'—'}):`);
+    if (sorted[0]) lines.push(`  Лучший: ${sorted[0].checked} ${sorted[0].score?.toFixed(1)}`);
+    if (sorted.length>1) lines.push(`  Худший: ${sorted[sorted.length-1].checked} ${sorted[sorted.length-1].score?.toFixed(1)}`);
+  }
+
+  // ---- Опросы ----
+  const sv = state.data.survey;
+  if (sv && sv.records && sv.records.length) {
+    const all = sv.records.filter(r=>!isNaN(r.csat));
+    if (all.length) {
+      lines.push(`\nОПРОСЫ: ср.CSAT ${avg(all.map(r=>r.csat)).toFixed(2)}, ср.NPS ${avg(all.map(r=>r.nps).filter(v=>!isNaN(v))).toFixed(2)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ========== OLLAMA ==========
+function getSelectedModel() {
+  const sel = document.getElementById('ai-model-select');
+  return sel ? sel.value : '';
+}
+
+function buildOllamaMessages(userMsg) {
+  const systemMsg = {
+    role: 'system',
+    content: `Ты — AI-аналитик системы контроля качества (ОКК) колл-центра по подбору складского персонала.
+
+Роль: анализируешь данные прослушки звонков, проверок МПП и ОРП, опросов новичков. Помогаешь руководителям принимать решения на основе цифр.
+
+Правила:
+- Отвечай ТОЛЬКО на русском языке. Никаких иероглифов и символов других языков
+- Используй ТОЛЬКО цифры из предоставленных данных. Никогда не придумывай
+- Если данных недостаточно — прямо скажи об этом
+- Не повторяй вопрос пользователя в ответе
+- Не пиши вступлений типа "Конечно!", "Отличный вопрос!" и т.д.
+
+Формат ответа:
+- Длина: 5-10 предложений максимум
+- Структура: Факты (конкретные цифры) → Вывод (что это значит) → Рекомендация (что делать)
+- Используй **жирный** для имён сотрудников и ключевых цифр
+- Списки — когда сравниваешь 3+ объекта
+- Таблицы в markdown — когда сравниваешь дивизионы или периоды
+
+Нормы для оценки:
+- Прослушка: норма ≥85%, ниже 75% — критично
+- МПП/ОРП: норма ≥80 баллов, ниже 60 — зона риска
+- Опросы: CSAT норма ≥4.5, NPS норма ≥4.0
+- Всегда указывай период (месяц) анализируемых данных
+
+АКТУАЛЬНЫЕ ДАННЫЕ:
+${buildDataContext()}`
+  };
+  const history = aiHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : h.role, content: h.content }));
+  return [systemMsg, ...history, { role: 'user', content: userMsg }];
+}
+
+async function loadOllamaModels() {
+  const sel = document.getElementById('ai-model-select');
+  const status = document.getElementById('ai-status');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">⏳ Загрузка...</option>';
+  if (status) status.textContent = '';
+  try {
+    const res = await fetch(`${OLLAMA_API}/tags`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    ollamaModels = (data.models || []).map(m => m.name).sort();
+    if (!ollamaModels.length) throw new Error('Нет доступных моделей');
+    sel.innerHTML = ollamaModels.map(m => `<option value="${m}">${m}</option>`).join('');
+    const preferred = ['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
+    const def = preferred.find(p => ollamaModels.includes(p)) || ollamaModels[0];
+    sel.value = def;
+    const badge = document.getElementById('ai-model-badge');
+    if (badge) badge.textContent = `Ollama · ${ollamaModels.length} моделей`;
+    if (status) status.textContent = `✓ ${ollamaModels.length} моделей загружено`;
+  } catch(e) {
+    sel.innerHTML = '<option value="">⚠️ Ошибка загрузки моделей</option>';
+    if (status) status.textContent = `Ошибка: ${e.message}`;
+  }
+}
+
+async function sendToOllamaStream(userMsg, onChunk) {
+  const model = getSelectedModel();
+  if (!model) throw new Error('Выберите модель из списка');
+  const payload = { model, messages: buildOllamaMessages(userMsg), stream: false, think: false };
+  const res = await fetch(`${OLLAMA_API}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const fullText = data.message?.content || '';
+  if (fullText) onChunk(fullText);
+  return fullText;
+}
+
+async function generateAutoInsight() {
+  if (!state.data.calls.length) return;
+  const model = getSelectedModel();
+  if (!model) return;
+  const banner = document.getElementById('overview-insight');
+  const textEl = document.getElementById('overview-insight-text');
+  if (!banner || !textEl) return;
+  try {
+    const payload = {
+      model,
+      messages: [
+        { role: 'system', content: `Ты аналитик КЦ. Данные:\n${buildDataContext()}` },
+        { role: 'user', content: 'Дай 2-3 предложения — самый главный вывод: кто лидер, что требует срочного внимания. Очень кратко.' }
+      ],
+      stream: false,
+      think: false
+    };
+    const res = await fetch(`${OLLAMA_API}/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const text = data.message?.content;
+    if (text) { textEl.innerHTML = formatAIText(text); banner.style.display = 'block'; }
+  } catch(e) {}
+}
+
+function formatAIText(text) {
+  // Remove stray CJK characters (artifacts from qwen models)
+  text = text.replace(/[\u4e00-\u9fff\u3040-\u30ff]{1,3}(?=\s|[а-яёА-ЯЁa-zA-Z])/g, '');
+  // Escape HTML
+  text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Markdown tables
+  const tableRx = /(\|.+\|\n)((?:\|[-:]+)+\|\n)((?:\|.+\|\n?)+)/g;
+  text = text.replace(tableRx, (_, head, sep, body) => {
+    const hcols = head.split('|').filter(c=>c.trim()).map(c=>`<th>${c.trim()}</th>`).join('');
+    const rows = body.trim().split('\n').map(r=>{
+      const cells = r.split('|').filter(c=>c.trim()).map(c=>`<td>${c.trim()}</td>`).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+    return `<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:13px"><thead><tr>${hcols}</tr></thead><tbody>${rows}</tbody></table>`;
+  });
+  return text
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^### (.+)$/gm,'<b style="color:var(--blue)">$1</b>')
+    .replace(/^## (.+)$/gm,'<b style="font-size:15px;color:var(--text)">$1</b>')
+    .replace(/^- (.+)$/gm,'<span style="padding-left:8px">• $1</span>')
+    .replace(/\n/g,'<br>');
+}
+
+function addAIMsg(role, html, isThinking=false) {
+  const box = document.getElementById('ai-messages');
+  const div = document.createElement('div');
+  div.className = `ai-msg ${role}${isThinking?' thinking':''}`;
+  div.innerHTML = html;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+async function sendAIMessage() {
+  const inp = document.getElementById('ai-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ''; inp.style.height = 'auto';
+  await aiAsk(msg);
+}
+
+async function aiAsk(message) {
+  const btn = document.getElementById('ai-send-btn');
+  const inp = document.getElementById('ai-input');
+  if (btn) btn.disabled = true;
+  if (inp) inp.disabled = true;
+
+  addAIMsg('user', formatAIText(message));
+  const thinking = addAIMsg('assistant', '<span style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">⏳</span> Анализирую данные...</span>', true);
+
+  try {
+    thinking.className = 'ai-msg assistant';
+    thinking.innerHTML = '▍';
+    const reply = await sendToOllamaStream(message, (partial) => {
+      thinking.innerHTML = formatAIText(partial) + '<span style="animation:blink 1s step-end infinite">▍</span>';
+      document.getElementById('ai-messages').scrollTop = 99999;
+    });
+    thinking.innerHTML = formatAIText(reply);
+    aiHistory.push({ role: 'user', content: message });
+    aiHistory.push({ role: 'assistant', content: reply });
+    if (aiHistory.length > 24) aiHistory.splice(0, 2);
+  } catch(e) {
+    thinking.className = 'ai-msg assistant';
+    thinking.innerHTML = `<span style="color:var(--red)">⚠️ Ошибка: ${e.message}</span>`;
+  }
+
+  if (btn) btn.disabled = false;
+  if (inp) inp.disabled = false;
+  document.getElementById('ai-messages').scrollTop = 99999;
+}
+
+function clearAIChat() {
+  aiHistory.length = 0;
+  document.getElementById('ai-messages').innerHTML =
+    '<div class="ai-msg assistant">Чат очищен. Задайте новый вопрос!</div>';
+}
+
+initDashboard();
+</script>
+</body>
+</html>
