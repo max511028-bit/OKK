@@ -1,0 +1,2501 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Выработка сотрудников — WB Аутсорсинг</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0d0f14; --surface:#151820; --surface2:#1c2030; --border:#252a3a;
+  --accent:#6c8fff; --accent2:#a78bfa; --green:#34d399; --red:#f87171;
+  --yellow:#fbbf24; --orange:#fb923c; --blue:#38bdf8;
+  --text:#e8ecf5; --muted:#6b7494;
+  --glow:0 0 0 1px var(--border),0 4px 24px rgba(108,143,255,0.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Golos Text',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:0}
+
+/* SIDEBAR */
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;padding:0 0 24px}
+.logo{padding:28px 24px 20px;border-bottom:1px solid var(--border)}
+.logo-title{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:700;letter-spacing:.05em;color:var(--accent);line-height:1.4}
+.logo-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.nav{padding:16px 12px;flex:1;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;font-size:13.5px;color:var(--muted);cursor:pointer;transition:all .18s;font-weight:500;border:1px solid transparent;user-select:none}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{color:var(--accent);background:rgba(108,143,255,.1);border-color:rgba(108,143,255,.2)}
+.nav-icon{font-size:16px;width:20px;text-align:center}
+.sidebar-bottom{padding:12px 12px 0;border-top:1px solid var(--border)}
+
+/* MAIN */
+.main{margin-left:220px;min-height:100vh;position:relative;z-index:1}
+.topbar{position:sticky;top:0;background:rgba(13,15,20,.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px;z-index:50}
+.page-title{font-family:'Unbounded',sans-serif;font-size:16px;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.period-select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Golos Text',sans-serif;font-size:13px;padding:8px 12px;cursor:pointer;outline:none}
+.period-select:focus{border-color:var(--accent)}
+.search-wrap{position:relative}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);width:14px;height:14px}
+#searchInput{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Golos Text',sans-serif;font-size:13px;padding:8px 12px 8px 32px;width:220px;outline:none;transition:border-color .2s}
+#searchInput:focus{border-color:var(--accent)}
+#searchInput::placeholder{color:var(--muted)}
+.content{padding:28px 32px}
+.screen{display:none}
+.screen.active{display:block}
+
+/* STAT CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stats-grid.cols3{grid-template-columns:repeat(3,1fr)}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;position:relative;overflow:hidden;box-shadow:var(--glow);transition:transform .2s,border-color .2s}
+.stat-card:hover{transform:translateY(-2px);border-color:rgba(108,143,255,.3)}
+.stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));opacity:0;transition:opacity .2s}
+.stat-card:hover::after{opacity:1}
+.stat-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.stat-value{font-family:'Unbounded',sans-serif;font-size:20px;font-weight:700}
+.stat-value.green{color:var(--green)}.stat-value.red{color:var(--red)}.stat-value.yellow{color:var(--yellow)}.stat-value.blue{color:var(--blue)}
+.stat-sub{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* TABLE */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--glow);margin-bottom:20px}
+.table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.table-header h3{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:600}
+.table-count{font-size:12px;color:var(--muted);background:var(--surface2);padding:4px 10px;border-radius:20px;border:1px solid var(--border)}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead tr{background:var(--surface2)}
+th{padding:11px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s}
+th:hover{color:var(--text)}
+th.sa::after{content:' ↑';color:var(--accent)}
+th.sd::after{content:' ↓';color:var(--accent)}
+tbody tr{border-top:1px solid var(--border);transition:background .15s;cursor:pointer}
+tbody tr:hover{background:var(--surface2)}
+td{padding:12px 14px;font-size:13px;white-space:nowrap}
+.td-name{font-weight:600}
+.td-id{font-size:11px;color:var(--muted);font-family:monospace}
+.td-mono{font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600}
+.td-mono.g{color:var(--green)}.td-mono.r{color:var(--red)}.td-mono.y{color:var(--yellow)}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+.b-red{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.25)}
+.b-green{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.b-yellow{background:rgba(251,191,36,.15);color:var(--yellow);border:1px solid rgba(251,191,36,.25)}
+.b-blue{background:rgba(56,189,248,.15);color:var(--blue);border:1px solid rgba(56,189,248,.25)}
+.b-orange{background:rgba(251,146,60,.15);color:var(--orange);border:1px solid rgba(251,146,60,.25)}
+.b-purple{background:rgba(167,139,250,.15);color:var(--accent2);border:1px solid rgba(167,139,250,.25)}
+.b-muted{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+
+/* TABS */
+.tabs{display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap}
+.tab{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);border:1px solid transparent;transition:all .15s;user-select:none}
+.tab.active{color:var(--accent);background:rgba(108,143,255,.1);border-color:rgba(108,143,255,.2)}
+.tab:hover:not(.active){color:var(--text);background:var(--surface2)}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;width:100%;max-width:720px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.5);animation:mIn .2s ease}
+@keyframes mIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.modal-head{padding:22px 26px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.modal-name{font-family:'Unbounded',sans-serif;font-size:15px;font-weight:700}
+.modal-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.modal-close{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;transition:all .15s;flex-shrink:0}
+.modal-close:hover{color:var(--text);border-color:var(--accent)}
+.modal-body{padding:20px 26px 26px}
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.mstat{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+.mstat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.mstat-value{font-family:'Unbounded',sans-serif;font-size:16px;font-weight:700}
+.dsec{margin-bottom:18px}
+.dsec h4{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.drow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(37,42,58,.6);font-size:13px}
+.drow:last-child{border-bottom:none}
+.drow-lbl{color:var(--muted)}
+.drow-val{font-weight:600}
+.drow-val.neg{color:var(--red)}.drow-val.pos{color:var(--green)}
+.drow-val.big{font-family:'Unbounded',sans-serif;font-size:15px;color:var(--green)}
+.drow-total{background:rgba(52,211,153,.06);border-radius:8px;padding:10px 8px;margin-top:4px;border-bottom:none!important}
+
+/* FINE BAR */
+.fine-bar-wrap{margin:10px 0}
+.fine-bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;color:var(--muted)}
+.fine-bar-track{height:7px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.fine-bar-seg{height:100%;border-radius:4px;transition:width .4s}
+
+/* ADMIN */
+.admin-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:18px;box-shadow:var(--glow)}
+.admin-card h3{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:600;margin-bottom:16px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:11px;color:var(--muted);margin-bottom:5px;display:block;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Golos Text',sans-serif;font-size:13.5px;padding:10px 14px;outline:none;transition:border-color .2s}
+.form-textarea{resize:vertical;font-family:monospace;font-size:12px}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent)}
+.form-select option{background:var(--surface)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.hint{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.6}
+.hint code{color:var(--accent);background:rgba(108,143,255,.1);padding:1px 5px;border-radius:4px;font-size:11px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:10px;font-family:'Golos Text',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer;border:none;transition:all .18s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#5a7aff;transform:translateY(-1px)}
+.btn-ghost{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--accent)}
+.btn-danger{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.25)}.btn-danger:hover{background:rgba(248,113,113,.2)}
+.periods-list{display:flex;flex-direction:column;gap:8px}
+.period-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px}
+.period-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
+.period-name{font-weight:600;font-size:13.5px}
+.period-count{font-size:11px;color:var(--muted);margin-top:2px}
+.alert{padding:11px 15px;border-radius:9px;font-size:13px;margin-bottom:14px;display:none}
+.alert.show{display:block}
+.alert-ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:var(--green)}
+.alert-err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:var(--red)}
+
+/* LOADING */
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(13,15,20,.7);backdrop-filter:blur(4px);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.loading-overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:10px}
+.empty h4{font-size:15px;font-weight:600;color:var(--text);margin-bottom:5px}
+
+/* BOTTOM NAV */
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:100;padding:6px 0 max(6px,env(safe-area-inset-bottom))}
+.bottom-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;cursor:pointer;color:var(--muted);font-size:9.5px;font-weight:600;transition:color .15s;user-select:none;-webkit-tap-highlight-color:transparent}
+.bn-icon{font-size:19px;line-height:1}
+.bottom-nav-item.active{color:var(--accent)}
+
+
+/* SCORE BADGE */
+.score-badge{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;font-family:'Unbounded',sans-serif;font-size:12px;font-weight:700;flex-shrink:0}
+.score-a{background:rgba(52,211,153,.2);color:#34d399;border:2px solid rgba(52,211,153,.4)}
+.score-b{background:rgba(108,143,255,.2);color:#6c8fff;border:2px solid rgba(108,143,255,.4)}
+.score-c{background:rgba(251,191,36,.2);color:#fbbf24;border:2px solid rgba(251,191,36,.4)}
+.score-d{background:rgba(251,146,60,.2);color:#fb923c;border:2px solid rgba(251,146,60,.4)}
+.score-f{background:rgba(248,113,113,.2);color:#f87171;border:2px solid rgba(248,113,113,.4)}
+/* FINE SHARE BAR */
+.fshare-bar{height:5px;border-radius:3px;margin-top:4px}
+/* RISK CARD */
+.risk-card{background:var(--surface);border:1px solid rgba(248,113,113,.3);border-radius:14px;padding:16px;box-shadow:0 0 0 1px rgba(248,113,113,.1),var(--glow);margin-bottom:12px;cursor:pointer;transition:border-color .2s}
+.risk-card:hover{border-color:rgba(248,113,113,.6)}
+.risk-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;margin-right:4px;margin-top:4px}
+.rt-fines{background:rgba(248,113,113,.15);color:#f87171}
+.rt-low-rph{background:rgba(251,146,60,.15);color:#fb923c}
+.rt-hourly{background:rgba(56,189,248,.15);color:#38bdf8}
+.rt-noshow{background:rgba(107,116,148,.2);color:#9ca3af}
+.risk-filter-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s}
+.risk-filter-btn.active{background:rgba(248,113,113,.15);color:var(--red);border-color:rgba(248,113,113,.3)}
+.risk-filter-btn:hover:not(.active){color:var(--text)}
+/* TOOLTIP */
+.tip{position:relative;cursor:help}
+.tip:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1c2030;border:1px solid #252a3a;color:#e8ecf5;font-size:11.5px;line-height:1.6;padding:8px 12px;border-radius:10px;white-space:pre-line;min-width:200px;max-width:300px;z-index:9999;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:'Golos Text',sans-serif;font-weight:400}
+.tip:hover::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#252a3a;z-index:9999}
+/* CHART INTERACTIVE */
+.chart-bar-wrap{position:relative}
+.chart-tooltip{position:fixed;background:#1c2030;border:1px solid #252a3a;color:#e8ecf5;font-size:12px;padding:8px 12px;border-radius:8px;pointer-events:none;z-index:9999;display:none;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+/* RISK SORT */
+.risk-sort-btn{padding:5px 12px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s}
+.risk-sort-btn.active{background:rgba(108,143,255,.15);color:var(--accent);border-color:rgba(108,143,255,.3)}
+.risk-sort-btn:hover:not(.active){color:var(--text)}
+/* AVG LINE */
+.avg-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;background:rgba(108,143,255,.12);color:var(--accent);border:1px solid rgba(108,143,255,.25)}
+
+/* FINE CATEGORY */
+.fcat-work{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.fcat-home{background:rgba(107,116,148,.15);color:#9ca3af;border:1px solid rgba(107,116,148,.3)}
+
+
+/* GLOBAL SEARCH */
+.gsearch-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);z-index:400;align-items:flex-start;justify-content:center;padding-top:80px}
+.gsearch-overlay.open{display:flex}
+.gsearch-box{background:var(--surface);border:1px solid var(--border);border-radius:18px;width:100%;max-width:600px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5);animation:mIn .18s ease}
+.gsearch-input-wrap{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)}
+.gsearch-input-wrap svg{color:var(--muted);flex-shrink:0;width:18px;height:18px}
+.gsearch-input{background:none;border:none;color:var(--text);font-family:'Golos Text',sans-serif;font-size:16px;outline:none;flex:1}
+.gsearch-input::placeholder{color:var(--muted)}
+.gsearch-kbd{font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 6px}
+.gsearch-results{max-height:420px;overflow-y:auto}
+.gsearch-empty{padding:32px;text-align:center;color:var(--muted);font-size:13px}
+.gsearch-result{display:flex;align-items:center;gap:12px;padding:12px 20px;cursor:pointer;border-bottom:1px solid rgba(37,42,58,.5);transition:background .12s}
+.gsearch-result:hover,.gsearch-result.sel{background:var(--surface2)}
+.gsearch-result:last-child{border-bottom:none}
+.gsearch-score{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Unbounded,sans-serif;font-size:11px;font-weight:700;flex-shrink:0}
+.gsearch-meta{flex:1;min-width:0}
+.gsearch-name{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsearch-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.gsearch-sal{font-family:Unbounded,sans-serif;font-size:12px;font-weight:700;color:var(--green);flex-shrink:0}
+/* PERIOD BANNER */
+.period-banner{background:rgba(108,143,255,.08);border-bottom:1px solid rgba(108,143,255,.15);padding:8px 32px;display:flex;align-items:center;gap:10px;font-size:12.5px}
+.period-banner-label{color:var(--muted)}
+.period-banner-val{font-family:Unbounded,sans-serif;font-size:12px;font-weight:700;color:var(--accent)}
+.period-banner-change{cursor:pointer;color:var(--muted);text-decoration:underline;font-size:12px;margin-left:auto}
+.period-banner-change:hover{color:var(--text)}
+/* MOBILE CARD LIST */
+.mob-card-list{display:none}
+.mob-emp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s}
+.mob-emp-card:hover{border-color:rgba(108,143,255,.4)}
+.mob-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.mob-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.mob-stat{background:var(--surface2);border-radius:8px;padding:7px 9px}
+.mob-stat-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.mob-stat-val{font-size:13px;font-weight:600}
+/* MODAL TABS */
+.modal-tabs{display:flex;gap:4px;padding:0 26px 0;border-bottom:1px solid var(--border);background:var(--surface)}
+.modal-tab{padding:11px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.modal-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.modal-tab:hover:not(.active){color:var(--text)}
+.modal-tab-content{display:none}
+.modal-tab-content.active{display:block}
+/* EXPORT ALL BTN */
+.export-all-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s}
+.export-all-btn:hover{color:var(--text);border-color:var(--accent)}
+/* RISK REDESIGN */
+.risk-tier{margin-bottom:24px}
+.risk-tier-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.risk-tier-badge{font-family:Unbounded,sans-serif;font-size:13px;font-weight:700;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.risk-tier-title{font-family:Unbounded,sans-serif;font-size:13px;font-weight:600}
+.risk-tier-cnt{font-size:12px;color:var(--muted);margin-left:auto}
+.risk-row{display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;transition:all .15s}
+.risk-row:hover{border-color:rgba(108,143,255,.35);background:var(--surface2)}
+.risk-row-expand{display:none;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;margin-top:-8px;margin-bottom:8px}
+.risk-row-expand.open{display:block}
+.risk-tag-sm{display:inline-flex;align-items:center;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-right:3px}
+/* QUICK FILTERS */
+.quick-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.qf-btn{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s;white-space:nowrap}
+.qf-btn.active{border-color:var(--accent);background:rgba(108,143,255,.12);color:var(--accent)}
+.qf-btn:hover:not(.active){color:var(--text)}
+/* FINE SUMMARY TEXT */
+.fine-summary-text{background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.2);border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
+
+
+/* ADMIN LOGIN */
+.admin-login-overlay{display:none;position:fixed;inset:0;background:rgba(13,15,20,.96);backdrop-filter:blur(12px);z-index:500;align-items:center;justify-content:center}
+.admin-login-overlay.show{display:flex}
+.admin-login-box{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:36px;width:100%;max-width:360px;box-shadow:0 24px 80px rgba(0,0,0,.6);animation:mIn .2s ease}
+.admin-login-title{font-family:'Unbounded',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px}
+.admin-login-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
+.admin-login-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Golos Text',sans-serif;font-size:15px;padding:12px 16px;outline:none;transition:border-color .2s;margin-bottom:12px}
+.admin-login-input:focus{border-color:var(--accent)}
+.admin-login-err{font-size:12px;color:var(--red);margin-bottom:12px;min-height:18px}
+.admin-logout-btn{position:absolute;top:12px;right:12px;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s}
+.admin-logout-btn:hover{color:var(--red);border-color:rgba(248,113,113,.4)}
+.rate-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.rate-row:last-child{border-bottom:none}
+.rate-label{flex:1;font-size:13.5px;font-weight:500}
+.rate-input{width:80px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Unbounded',sans-serif;font-size:14px;font-weight:700;padding:7px 10px;outline:none;text-align:center;transition:border-color .2s}
+.rate-input:focus{border-color:var(--accent)}
+
+/* RESPONSIVE */
+@media(max-width:1100px){.stats-grid{grid-template-columns:repeat(2,1fr)}.stats-grid.cols3{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:768px){
+  .sidebar{display:none}.bottom-nav{display:flex}.main{margin-left:0;padding-bottom:68px}
+  .topbar{padding:10px 14px;flex-wrap:wrap;gap:8px}.page-title{font-size:13px;flex:1}
+  .topbar-right{width:100%;gap:8px}.period-select{flex:1;font-size:12px;padding:7px 10px}
+  #searchInput{width:100%;font-size:12px}.search-wrap{flex:1.5}
+  .content{padding:14px 12px}
+  .stats-grid,.stats-grid.cols3{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .stat-card{padding:13px}.stat-value{font-size:16px}.stat-label{font-size:10px;margin-bottom:7px}
+  .table-header{padding:11px 13px}.table-header h3{font-size:12px}
+  th{padding:9px 11px;font-size:10px}td{padding:10px 11px;font-size:12px}
+  .modal{border-radius:20px 20px 0 0;max-height:92vh}.modal-overlay{align-items:flex-end;padding:0}
+  .modal-head{padding:18px 18px 14px}.modal-name{font-size:13px}.modal-body{padding:14px 18px 20px}
+  .mgrid{gap:8px;margin-bottom:14px}.mstat{padding:10px 12px}.mstat-value{font-size:14px}
+  .drow{font-size:12px;padding:7px 0}.admin-card{padding:14px;border-radius:12px}
+  .form-row{grid-template-columns:1fr}.tab{font-size:12px;padding:6px 11px}
+}
+@media(max-width:380px){.stats-grid,.stats-grid.cols3{grid-template-columns:1fr 1fr}.mgrid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:var(--muted)">Загрузка…</div>
+</div>
+<div class="chart-tooltip" id="chartTooltip"></div>
+
+<aside class="sidebar">
+  <div class="logo">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6c8fff,#a78bfa);display:flex;align-items:center;justify-content:center;font-family:Unbounded,sans-serif;font-size:13px;font-weight:900;color:#fff;flex-shrink:0">ЭП</div>
+      <div>
+        <div class="logo-title" style="font-size:12px;line-height:1.3">ЭКСПРЕСС<br>ПЛЮС</div>
+      </div>
+    </div>
+    <div class="logo-sub">WB Аутсорсинг · Дашборд</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" data-s="overview" onclick="go('overview')"><span class="nav-icon">📊</span><span>Обзор</span></div>
+    <div class="nav-item" data-s="employees" onclick="go('employees')"><span class="nav-icon">👥</span><span>Сотрудники</span></div>
+    <div class="nav-item" data-s="fines" onclick="go('fines')"><span class="nav-icon">⚠️</span><span>Штрафы</span></div>
+    <div class="nav-item" data-s="ops" onclick="go('ops')"><span class="nav-icon">⚡</span><span>Операции</span></div>
+    <div class="nav-item" data-s="charts" onclick="go('charts')"><span class="nav-icon">📈</span><span>Графики</span></div>
+    <div class="nav-item" data-s="risk" onclick="go('risk')"><span class="nav-icon">🚨</span><span>Зона риска</span></div>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="nav-item" data-s="admin" onclick="go('admin')"><span class="nav-icon">⚙️</span><span>Админка</span></div>
+  </div>
+</aside>
+
+<nav class="bottom-nav" id="bottomNav">
+  <div class="bottom-nav-item active" data-s="overview" onclick="go('overview')"><span class="bn-icon">📊</span><span>Обзор</span></div>
+  <div class="bottom-nav-item" data-s="employees" onclick="go('employees')"><span class="bn-icon">👥</span><span>Сотрудники</span></div>
+  <div class="bottom-nav-item" data-s="fines" onclick="go('fines')"><span class="bn-icon">⚠️</span><span>Штрафы</span></div>
+  <div class="bottom-nav-item" data-s="ops" onclick="go('ops')"><span class="bn-icon">⚡</span><span>Операции</span></div>
+  <div class="bottom-nav-item" data-s="charts" onclick="go('charts')"><span class="bn-icon">📈</span><span>Графики</span></div>
+  <div class="bottom-nav-item" data-s="risk" onclick="go('risk')"><span class="bn-icon">🚨</span><span>Риск</span></div>
+  <div class="bottom-nav-item" data-s="admin" onclick="go('admin')"><span class="bn-icon">⚙️</span><span>Админка</span></div>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <div class="page-title" id="pageTitle">Обзор</div>
+    <div class="topbar-right">
+      <select class="period-select" id="periodSelect" onchange="onPeriod()">
+        <option value="all">Все периоды</option>
+      </select>
+      <select class="period-select" id="citySelect" onchange="onCity()" style="min-width:130px">
+        <option value="all">Все города</option>
+      </select>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="Поиск по ФИО…" oninput="onSearch()" onclick="openGSearch()" readonly style="cursor:pointer" placeholder="🔍  Поиск сотрудника…">
+      </div>
+    </div>
+  </div>
+
+  <div class="period-banner" id="periodBanner" style="display:none">
+    <span class="period-banner-label">Период:</span>
+    <span class="period-banner-val" id="periodBannerVal">—</span>
+    <span class="period-banner-label" id="cityBannerVal"></span>
+    <span class="period-banner-change" onclick="document.getElementById('periodSelect').focus()">сменить ↓</span>
+  </div>
+  <div class="content">
+
+    <!-- OVERVIEW -->
+    <div class="screen active" id="screen-overview">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Сотрудников</div><div class="stat-value" id="ov-emp">—</div><div class="stat-sub">в периоде</div></div>
+        <div class="stat-card"><div class="stat-label">Общий ФОТ (на руки)</div><div class="stat-value green" id="ov-fot">—</div><div class="stat-sub">70% от чистой выработки</div></div>
+        <div class="stat-card"><div class="stat-label">Медиана ₽/час</div><div class="stat-value" style="color:var(--accent)" id="ov-medrph">—</div><div class="stat-sub">по сотрудникам</div></div>
+        <div class="stat-card"><div class="stat-label">В зоне риска</div><div class="stat-value red" id="ov-risk">—</div><div class="stat-sub">доля штрафов &gt; 20%</div></div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><h3>Топ по заработку</h3><span class="table-count" id="ov-cnt">0</span></div>
+        <div class="table-scroll">
+          <table id="tOv"><thead><tr>
+            <th onclick="srt('tOv',0)"><span class="tip" data-tip="Рейтинг эффективности A–F:&#10;&#10;A (80–100) — Отлично&#10;B (65–79)  — Хорошо&#10;C (50–64)  — Средне&#10;D (35–49)  — Слабо&#10;F (0–34)   — Проблема&#10;&#10;Считается из 3 факторов:&#10;• ₽/час на руки (40%)&#10;• Доля штрафов от ЗП (35%)&#10;• Пиков/час (25%)&#10;&#10;Почасовые: без учёта пиков">Рейтинг ℹ️</span></th><th>#</th><th onclick="srt('tOv',2)">ФИО</th><th onclick="srt('tOv',3)">ЗП на руки</th>
+            <th onclick="srt('tOv',4)"><span class="tip" data-tip="Рублей в час на руки:&#10;ЗП на руки / часов отработано&#10;Показывает реальную ценность&#10;сотрудника для компании">₽/час</span></th><th onclick="srt('tOv',5)"><span class="tip" data-tip="Доля штрафов от ЗП:&#10;(Все удержания − возвраты) / ЗП&#10;&#10;Норма: &lt;10% 🟢&#10;Внимание: 10–20% 🟡&#10;Риск: &gt;20% 🔴">Доля штрафов</span></th>
+            <th onclick="srt('tOv',6)">Штрафы</th><th onclick="srt('tOv',7)">Дней</th>
+          </tr></thead><tbody id="bOv"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES -->
+    <div class="screen" id="screen-employees">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <div class="quick-filters" style="margin-bottom:0;flex:1">
+          <button class="qf-btn active" onclick="setEmpFilter('all',this)">Все</button>
+          <button class="qf-btn" onclick="setEmpFilter('sdelnie',this)">Сдельные</button>
+          <button class="qf-btn" onclick="setEmpFilter('hourly',this)">Почасовые</button>
+          <button class="qf-btn" onclick="setEmpFilter('risk',this)">🚨 В риске</button>
+          <button class="qf-btn" onclick="setEmpFilter('A',this)">⭐ Рейтинг A</button>
+        </div>
+        <button class="export-all-btn" onclick="exportAllXlsx()">📥 Экспорт всех</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><h3>Все сотрудники</h3><span class="table-count" id="emp-cnt">0</span></div>
+        <div class="table-scroll">
+          <table id="tEmp"><thead><tr>
+            <th onclick="srt('tEmp',0)"><span class="tip" data-tip="Рейтинг эффективности A–F:&#10;&#10;A (80–100) — Отлично&#10;B (65–79)  — Хорошо&#10;C (50–64)  — Средне&#10;D (35–49)  — Слабо&#10;F (0–34)   — Проблема&#10;&#10;Считается из 3 факторов:&#10;• ₽/час на руки (40%)&#10;• Доля штрафов от ЗП (35%)&#10;• Пиков/час (25%)&#10;&#10;Почасовые: без учёта пиков">Рейтинг ℹ️</span></th><th onclick="srt('tEmp',1)">ФИО</th>
+            <th onclick="srt('tEmp',2)">Склад</th><th onclick="srt('tEmp',3)">ЗП на руки</th>
+            <th onclick="srt('tEmp',4)">₽/час</th><th onclick="srt('tEmp',5)"><span class="tip" data-tip="Доля штрафов от ЗП:&#10;(Все удержания − возвраты) / ЗП&#10;&#10;Норма: &lt;10% 🟢&#10;Внимание: 10–20% 🟡&#10;Риск: &gt;20% 🔴">Доля штрафов</span></th>
+            <th onclick="srt('tEmp',6)">Штрафы</th><th onclick="srt('tEmp',7)">Пиков</th><th onclick="srt('tEmp',8)">Дней</th><th onclick="srt('tEmp',9)">Тип</th>
+          </tr></thead><tbody id="bEmp"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- FINES -->
+    <div class="screen" id="screen-fines">
+      <div class="stats-grid cols3">
+        <div class="stat-card"><div class="stat-label">Всего удержано</div><div class="stat-value red" id="fn-total">—</div><div class="stat-sub">до возвратов</div></div>
+        <div class="stat-card"><div class="stat-label">Возвращено</div><div class="stat-value green" id="fn-ret">—</div><div class="stat-sub">частичные возвраты</div></div>
+        <div class="stat-card"><div class="stat-label">Чистые потери</div><div class="stat-value yellow" id="fn-net">—</div><div class="stat-sub">удержано − возвращено</div></div>
+      </div>
+      <div class="table-card" style="padding:18px 20px;margin-bottom:20px">
+        <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:14px">Структура штрафов</div>
+        <div id="fineBreakdown"></div>
+      </div>
+      <div class="tabs" id="fTabs">
+        <div class="tab active" onclick="fTab('summary',this)">По сотрудникам</div>
+        <div class="tab" onclick="fTab('reasons',this)">По причинам</div>
+        <div class="tab" onclick="fTab('detail',this)">Детализация</div>
+      </div>
+      <div id="fS">
+        <div class="table-card">
+          <div class="table-header"><h3>Штрафы по сотрудникам</h3><span class="table-count" id="fn-emp-cnt">0</span></div>
+          <div class="table-scroll"><table id="tFnS"><thead><tr>
+            <th onclick="srt('tFnS',0)">ФИО</th><th onclick="srt('tFnS',1)"><span class="tip" data-tip="Производственные штрафы:&#10;• Потери товара (потеряшки)&#10;• Не найдено при сдаче&#10;• Разделение ответственности&#10;• Штрафы по тарификатору WB">⚠️ Производств.</span></th>
+            <th onclick="srt('tFnS',2)"><span class="tip" data-tip="Бытовые штрафы (буфет):&#10;• Еда и напитки на складе&#10;• Кофе, чай, снеки&#10;• Личные покупки в буфете&#10;Не связаны с работой">🧃 Бытовые</span></th>
+            <th onclick="srt('tFnS',3)"><span class="tip" data-tip="Списания:&#10;• Спецодежда на сотрудника&#10;• Вещи без движения (SPS/WMI)&#10;• Списание по ненайденным&#10;товарам в коробке">📦 Списания</span></th>
+            <th onclick="srt('tFnS',4)"><span class="tip" data-tip="Возвраты:&#10;• WB вернул часть штрафа&#10;• Разделение ответственности&#10;• Оспоренные штрафы&#10;Показана сумма, которую&#10;вернули сотруднику">↩️ Возвращено</span></th>
+            <th onclick="srt('tFnS',5)"><span class="tip" data-tip="Доля штрафов от ЗП:&#10;(Штрафы − Возвраты) / ЗП на руки&#10;&#10;Норма: &lt;10% 🟢&#10;Внимание: 10–20% 🟡&#10;Риск: &gt;20% 🔴">% от ЗП</span></th>
+            <th onclick="srt('tFnS',6)">Кол-во</th><th onclick="srt('tFnS',7)">ИТОГО</th>
+          </tr></thead><tbody id="bFnS"></tbody></table></div>
+        </div>
+      </div>
+      <div id="fR" style="display:none">
+        <div class="table-card">
+          <div class="table-header"><h3>Топ причин штрафов</h3><span class="table-count" id="fn-r-cnt">0</span></div>
+          <div class="table-scroll"><table id="tFnR"><thead><tr>
+            <th onclick="srt('tFnR',0)">Причина</th><th onclick="srt('tFnR',1)">Тип</th>
+            <th onclick="srt('tFnR',2)">Характер</th><th onclick="srt('tFnR',3)">Кол-во</th><th onclick="srt('tFnR',4)">Сумма</th><th onclick="srt('tFnR',5)">Возвращено</th>
+          </tr></thead><tbody id="bFnR"></tbody></table></div>
+        </div>
+      </div>
+      <div id="fD" style="display:none">
+        <div class="table-card">
+          <div class="table-header"><h3>Все строки штрафов</h3><span class="table-count" id="fn-d-cnt">0</span></div>
+          <div class="table-scroll"><table id="tFnD"><thead><tr>
+            <th onclick="srt('tFnD',0)">Дата</th><th onclick="srt('tFnD',1)">ФИО</th>
+            <th onclick="srt('tFnD',2)">Причина</th><th onclick="srt('tFnD',3)">Тип</th>
+            <th onclick="srt('tFnD',4)">Сумма</th><th onclick="srt('tFnD',5)">Возврат</th>
+          </tr></thead><tbody id="bFnD"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPERATIONS -->
+    <div class="screen" id="screen-ops">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Всего пиков</div><div class="stat-value yellow" id="op-peaks">—</div><div class="stat-sub">за период</div></div>
+        <div class="stat-card"><div class="stat-label">Всего часов</div><div class="stat-value blue" id="op-hours">—</div><div class="stat-sub">отработано</div></div>
+        <div class="stat-card"><div class="stat-label">Типов операций</div><div class="stat-value" id="op-types">—</div><div class="stat-sub">видов работ</div></div>
+        <div class="stat-card"><div class="stat-label">Выработка</div><div class="stat-value green" id="op-earn">—</div><div class="stat-sub">по тарификатору</div></div>
+      </div>
+      <div id="opTypeCards" style="margin-bottom:20px"></div>
+      <div class="tabs" id="oTabs">
+        <div class="tab active" onclick="oTab('emp',this)">По сотрудникам</div>
+        <div class="tab" onclick="oTab('type',this)">По типам работ</div>
+        <div class="tab" onclick="oTab('det',this)">По дням</div>
+      </div>
+      <div id="oE">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <select class="period-select" id="opTypeFilter" onchange="renderOps()" style="min-width:160px">
+            <option value="all">Все типы работ</option>
+          </select>
+          <span style="font-size:12px;color:var(--muted)" id="op-filter-hint"></span>
+        </div>
+        <div class="table-card">
+          <div class="table-header"><h3>Операции по сотрудникам</h3><span class="table-count" id="op-emp-cnt">0</span></div>
+          <div class="table-scroll"><table id="tOE"><thead><tr>
+            <th onclick="srt('tOE',0)">ФИО</th><th onclick="srt('tOE',1)">Пиков</th>
+            <th onclick="srt('tOE',2)">Часов</th><th onclick="srt('tOE',3)">Пиков/час</th>
+            <th onclick="srt('tOE',4)">₽/час (на руки)</th>
+            <th onclick="srt('tOE',5)">Типы работ</th><th onclick="srt('tOE',6)">Выработка</th>
+          </tr></thead><tbody id="bOE"></tbody></table></div>
+        </div>
+      </div>
+      <div id="oT" style="display:none">
+        <div class="table-card">
+          <div class="table-header"><h3>По типам работ</h3></div>
+          <div class="table-scroll"><table id="tOT"><thead><tr>
+            <th onclick="srt('tOT',0)">Тип работ</th><th onclick="srt('tOT',1)">Сотрудников</th>
+            <th onclick="srt('tOT',2)">Записей</th><th onclick="srt('tOT',3)">Пиков</th>
+            <th onclick="srt('tOT',4)">Часов</th><th onclick="srt('tOT',5)">Пиков/час</th>
+            <th onclick="srt('tOT',6)">₽/час (на руки)</th><th onclick="srt('tOT',7)">Выработка</th>
+          </tr></thead><tbody id="bOT"></tbody></table></div>
+        </div>
+      </div>
+      <div id="oD" style="display:none">
+        <div class="table-card">
+          <div class="table-header"><h3>По дням</h3><span class="table-count" id="op-d-cnt">0</span></div>
+          <div class="table-scroll"><table id="tOD"><thead><tr>
+            <th onclick="srt('tOD',0)">Дата</th><th onclick="srt('tOD',1)">ФИО</th>
+            <th onclick="srt('tOD',2)">Тип работ</th><th onclick="srt('tOD',3)">Пиков</th>
+            <th onclick="srt('tOD',4)">Часов</th><th onclick="srt('tOD',5)">Выработка</th>
+            <th onclick="srt('tOD',6)">₽/час</th>
+          </tr></thead><tbody id="bOD"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="screen" id="screen-charts">
+      <div class="stats-grid" id="ch-stats">
+        <div class="stat-card"><div class="stat-label">Выходов всего</div><div class="stat-value blue" id="ch-shifts">—</div><div class="stat-sub">смен за период</div></div>
+        <div class="stat-card"><div class="stat-label">Уникальных дней</div><div class="stat-value" id="ch-days">—</div><div class="stat-sub">активных дней</div></div>
+        <div class="stat-card"><div class="stat-label">Пик дня</div><div class="stat-value yellow" id="ch-maxday">—</div><div class="stat-sub">макс. выходов за день</div></div>
+        <div class="stat-card"><div class="stat-label">Ср. в день</div><div class="stat-value green" id="ch-avgday">—</div><div class="stat-sub">средний выход</div></div>
+      </div>
+
+      <div class="tabs" id="chTabs">
+        <div class="tab active" onclick="chTab('daily',this)">📅 Суточный выход</div>
+        <div class="tab" onclick="chTab('perf',this)">⚡ Производительность</div>
+        <div class="tab" onclick="chTab('fines',this)">⚠️ Штрафы по дням</div>
+        <div class="tab" onclick="chTab('optypes',this)">🔧 Типы работ</div>
+        <div class="tab" onclick="chTab('rph',this)">💰 ЗП/час по дням</div>
+      </div>
+
+      <div id="chDaily">
+        <div class="table-card" style="padding:20px">
+          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:16px">Выходы сотрудников по дням</div>
+          <div id="chartDailyWrap" style="overflow-x:auto"></div>
+        </div>
+      </div>
+      <div id="chPerf" style="display:none">
+        <div class="table-card" style="padding:20px">
+          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:16px">Пики и часы по дням</div>
+          <div id="chartPerfWrap" style="overflow-x:auto"></div>
+        </div>
+      </div>
+      <div id="chFines" style="display:none">
+        <div class="table-card" style="padding:20px">
+          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:16px">Штрафы по дням (сумма)</div>
+          <div id="chartFinesWrap" style="overflow-x:auto"></div>
+        </div>
+      </div>
+      <div id="chRph" style="display:none">
+        <div class="table-card" style="padding:20px">
+          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:16px">ЗП/час по дням (на руки)</div>
+          <div id="chartRphWrap" style="overflow-x:auto"></div>
+        </div>
+      </div>
+      <div id="chOptypes" style="display:none">
+        <div class="table-card" style="padding:20px">
+          <div style="font-family:'Unbounded',sans-serif;font-size:12px;font-weight:600;margin-bottom:16px">Распределение по типам работ (пики)</div>
+          <div id="chartOptypesWrap" style="overflow-x:auto"></div>
+        </div>
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-header"><h3>Стоимость часа по типу работ</h3></div>
+          <div class="table-scroll">
+            <table id="tCostHour"><thead><tr>
+              <th>Тип работ</th>
+              <th onclick="srt('tCostHour',1)">Выработка</th>
+              <th onclick="srt('tCostHour',2)">Часов</th>
+              <th onclick="srt('tCostHour',3)">₽/час (сырая)</th>
+              <th onclick="srt('tCostHour',4)">₽/час (на руки)</th>
+              <th onclick="srt('tCostHour',5)">Пиков/час</th>
+            </tr></thead><tbody id="bCostHour"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-employee cost table -->
+      <div class="table-card" style="margin-top:8px">
+        <div class="table-header"><h3>Стоимость часа по сотрудникам</h3><span class="table-count" id="ch-emp-cnt">0</span></div>
+        <div class="table-scroll">
+          <table id="tEmpCost"><thead><tr>
+            <th onclick="srt('tEmpCost',0)">ФИО</th>
+            <th onclick="srt('tEmpCost',1)">Часов</th>
+            <th onclick="srt('tEmpCost',2)">ЗП на руки</th>
+            <th onclick="srt('tEmpCost',3)">₽/час (на руки)</th>
+            <th onclick="srt('tEmpCost',4)">Пиков</th>
+            <th onclick="srt('tEmpCost',5)">Пиков/час</th>
+            <th onclick="srt('tEmpCost',6)">Склад</th>
+          </tr></thead><tbody id="bEmpCost"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RISK ZONE -->
+    <div class="screen" id="screen-risk">
+      <!-- Tier counters — clickable -->
+      <div class="stats-grid" style="margin-bottom:16px">
+        <div class="stat-card" style="cursor:pointer" onclick="setRiskGrade('all')" id="risk-tier-all">
+          <div class="stat-label">Все в риске</div>
+          <div class="stat-value" id="risk-cnt">—</div>
+          <div class="stat-sub">суммарно</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer;border-color:rgba(248,113,113,.3)" onclick="setRiskGrade('F')" id="risk-tier-F">
+          <div class="stat-label">Критично (F)</div>
+          <div class="stat-value red" id="risk-cnt-f">—</div>
+          <div class="stat-sub">рейтинг ниже 35</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" onclick="setRiskGrade('D')" id="risk-tier-D">
+          <div class="stat-label">Внимание (D)</div>
+          <div class="stat-value yellow" id="risk-cnt-d">—</div>
+          <div class="stat-sub">рейтинг 35–49</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" onclick="setRiskGrade('C')" id="risk-tier-C">
+          <div class="stat-label">Следить (C)</div>
+          <div class="stat-value" style="color:var(--accent)" id="risk-cnt-c">—</div>
+          <div class="stat-sub">рейтинг 50–64</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">Порог штрафов:</span>
+          <input type="range" id="riskThreshold" min="5" max="50" value="20" step="5"
+            oninput="document.getElementById('riskThresholdVal').textContent=this.value+'%';renderRisk()"
+            style="accent-color:var(--accent);width:100px">
+          <span id="riskThresholdVal" style="font-family:Unbounded;font-size:12px;font-weight:700;color:var(--accent);min-width:36px">20%</span>
+        </div>
+        <div class="quick-filters" style="margin-bottom:0">
+          <button class="qf-btn active" onclick="setRiskType('all',this)">Все проблемы</button>
+          <button class="qf-btn" onclick="setRiskType('fines',this)">⚠️ Высокие штрафы</button>
+          <button class="qf-btn" onclick="setRiskType('lowrph',this)">📉 Низкий ₽/час</button>
+          <button class="qf-btn" onclick="setRiskType('hourly',this)">🕐 Почасовые</button>
+        </div>
+        <div style="margin-left:auto">
+          <select id="riskSortSel" onchange="renderRisk()" class="period-select" style="font-size:12px;padding:6px 10px">
+            <option value="score">↑ По рейтингу</option>
+            <option value="fineShare">↑ По штрафам</option>
+            <option value="rph">↑ По ₽/час</option>
+            <option value="sal">↓ По ЗП</option>
+          </select>
+        </div>
+      </div>
+      <div id="riskCards"></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="screen" id="screen-admin" style="position:relative">
+      <button class="admin-logout-btn" id="adminLogoutBtn" onclick="adminLogout()">Выйти из админки</button>
+
+      <div class="admin-card">
+        <h3>📦 Источник данных — GitHub</h3>
+        <div class="alert alert-ok" id="gsAlert"></div>
+        <div class="hint" style="margin-bottom:16px">
+          Данные загружаются из репозитория GitHub.<br>
+          Структура: <code>data/2026-02-01_2026-02-15/Выработка.csv</code>
+        </div>
+        <div id="ghStatus" style="margin-bottom:16px"></div>
+        <button class="btn btn-primary" onclick="reloadFromGitHub()">🔄 Перезагрузить данные</button>
+      </div>
+
+      <div class="admin-card">
+        <h3>💰 Ставки ЗП на руки</h3>
+        <div class="hint" style="margin-bottom:18px">
+          Общая ставка применяется ко всем складам. Можно переопределить для каждого склада отдельно.<br>
+          Формула: <code>ЗП = Чистая выработка × ставка%</code>
+        </div>
+        <div style="background:var(--surface2);border-radius:12px;padding:16px;margin-bottom:20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Общая ставка (для всех складов)</div>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <input type="range" id="globalRateSlider" min="50" max="90" value="70" step="1"
+              oninput="onGlobalRateChange(this.value)" style="accent-color:var(--accent);width:180px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="rate-input" type="number" id="globalRateInput" value="70" min="50" max="90"
+                oninput="onGlobalRateChange(this.value)" style="width:70px">
+              <span style="font-size:13px;color:var(--muted)">%</span>
+            </div>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="applyRateToAll()">Применить ко всем ↓</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">По складам (переопределение)</div>
+        <div id="rateByWarehouse">
+          <div style="color:var(--muted);font-size:13px;padding:12px 0">Загрузите данные чтобы увидеть список складов</div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveRates()">💾 Сохранить ставки</button>
+          <button class="btn btn-ghost" onclick="resetRates()">Сбросить к умолчаниям</button>
+        </div>
+        <div class="alert alert-ok" id="ratesAlert" style="margin-top:12px"></div>
+      </div>
+
+      <div class="admin-card">
+        <h3>📅 Загруженные периоды</h3>
+        <div class="alert alert-ok" id="addAlert"></div>
+        <div class="periods-list" id="periodsList"><div class="empty"><div class="empty-icon">📂</div><p>Нет данных</p></div></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ADMIN LOGIN OVERLAY -->
+<div class="admin-login-overlay" id="adminLoginOverlay">
+  <div class="admin-login-box">
+    <div class="admin-login-title">🔐 Панель администратора</div>
+    <div class="admin-login-sub">Введите пароль для доступа</div>
+    <input class="admin-login-input" type="password" id="adminPwdInput" placeholder="Пароль"
+      onkeydown="if(event.key==='Enter')checkAdminPwd()">
+    <div class="admin-login-err" id="adminPwdErr"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="checkAdminPwd()">Войти →</button>
+  </div>
+</div>
+
+<!-- GLOBAL SEARCH -->
+<div class="gsearch-overlay" id="gsearchOverlay" onclick="closeGSearch(event)">
+  <div class="gsearch-box">
+    <div class="gsearch-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="gsearch-input" id="gsearchInput" placeholder="Введите ФИО сотрудника…" oninput="onGSearch()" onkeydown="onGSearchKey(event)" autocomplete="off">
+      <span class="gsearch-kbd">Esc</span>
+    </div>
+    <div class="gsearch-results" id="gsearchResults">
+      <div class="gsearch-empty">Начните вводить имя сотрудника</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="empModal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div><div class="modal-name" id="mName">—</div><div class="modal-sub" id="mSub">—</div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="exportEmpXlsx()" style="display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--muted);transition:all .15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--accent)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+          📥 Excel
+        </button>
+        <div class="modal-close" onclick="document.getElementById('empModal').classList.remove('open')">✕</div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:14px;background:var(--surface2);border-radius:12px;border:1px solid var(--border)">
+        <div class="score-badge" id="mm-score-badge" style="width:48px;height:48px;font-size:17px">—</div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Рейтинг эффективности</div>
+          <div style="font-family:Unbounded;font-size:15px;font-weight:700;margin-top:3px" id="mm-score-label">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="mm-score-reasons"></div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:2px">Доля штрафов</div>
+          <div style="font-family:Unbounded;font-size:16px;font-weight:700" id="mm-fshare">—</div>
+        </div>
+      </div>
+      <div class="mgrid">
+        <div class="mstat"><div class="mstat-label">ЗП на руки</div><div class="mstat-value" id="mm-sal" style="color:var(--green)">—</div></div>
+        <div class="mstat"><div class="mstat-label">Штрафы (чистые)</div><div class="mstat-value" id="mm-fin" style="color:var(--red)">—</div></div>
+        <div class="mstat"><div class="mstat-label">₽/час (на руки)</div><div class="mstat-value" id="mm-pk" style="color:var(--accent)">—</div></div>
+      </div>
+      <div class="dsec">
+        <h4>💰 Расчёт заработка</h4>
+        <div class="drow"><span class="drow-lbl">Выработка по тарификатору</span><span class="drow-val" id="mm-tarif">—</span></div>
+        <div class="drow"><span class="drow-lbl">Общие вычеты</span><span class="drow-val neg" id="mm-ded">—</span></div>
+        <div class="drow"><span class="drow-lbl">Чистая выработка</span><span class="drow-val" id="mm-net">—</span></div>
+        <div class="drow drow-total"><span class="drow-lbl" style="font-weight:600;color:var(--text)">ЗП на руки (× 70%)</span><span class="drow-val big" id="mm-sal2">—</span></div>
+      </div>
+      <div class="dsec">
+        <h4>⚠️ Штрафы детально</h4>
+        <div class="drow"><span class="drow-lbl">Penalty</span><span class="drow-val neg" id="mm-fp">—</span></div>
+        <div class="drow"><span class="drow-lbl">Тарификатор</span><span class="drow-val neg" id="mm-ft">—</span></div>
+        <div class="drow"><span class="drow-lbl">Списания</span><span class="drow-val neg" id="mm-fw">—</span></div>
+        <div class="drow"><span class="drow-lbl">Возвращено</span><span class="drow-val pos" id="mm-fr">—</span></div>
+        <div id="mm-flist" style="margin-top:10px"></div>
+      </div>
+      <div class="dsec">
+        <h4>⚡ Операции за период</h4>
+        <div id="mm-olist"></div>
+      </div>
+      <div class="dsec">
+        <h4>📋 Производительность</h4>
+        <div class="drow"><span class="drow-lbl">Рабочих дней</span><span class="drow-val" id="mm-days">—</span></div>
+        <div class="drow"><span class="drow-lbl">Отработано часов</span><span class="drow-val" id="mm-hrs">—</span></div>
+        <div class="drow"><span class="drow-lbl">Ср. смена</span><span class="drow-val" id="mm-sh">—</span></div>
+        <div class="drow"><span class="drow-lbl">Всего пиков</span><span class="drow-val" id="mm-pk2">—</span></div>
+        <div class="drow"><span class="drow-lbl">Пиков / час</span><span class="drow-val" id="mm-pph">—</span></div>
+        <div class="drow" style="background:rgba(108,143,255,.05);border-radius:8px;padding:10px 8px;margin-top:4px;border-bottom:none">
+          <span class="drow-lbl" style="font-weight:600;color:var(--text)">₽ / час (на руки)</span>
+          <span class="drow-val" id="mm-rph" style="font-family:Unbounded,sans-serif;font-size:15px;color:var(--accent)">—</span>
+        </div>
+        <div class="drow"><span class="drow-lbl">Склад</span><span class="drow-val" id="mm-wh">—</span></div>
+        <div class="drow"><span class="drow-lbl">Дата найма</span><span class="drow-val" id="mm-hire">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════ DATA ═══════════════════════
+let periods={}, curPeriod='all', curSearch='', curCity='all', sortSt={}, curEmpFilter='all', curRiskGradeFilter='all', curRiskTypeFilter='all', curRiskSort='score';
+const RATE=0.70; // default fallback
+function getSal(netEarn, wh){ return Math.max(0, pn(netEarn)) * getRate(wh); }
+
+const V_KEYS=['id','fio','hire','wh','lastPeak','firstWH','days','hours','avgShift','peaks','tarif','fineTarif','retPenalty','finePenalty','retWriteoff','writeoff','totalEarn','totalDed','earnAfterDed','netEarn','office','hourly'];
+const F_KEYS_OLD=['date','id','fio','city','reason','wh','amount','type','ret'];
+const O_KEYS_OLD=['date','id','fio','officeId','wh','opType','peaks','earn','hours'];
+const F_KEYS=['_comp','date','id','fio','wh','reason','_shk','amount','type'];
+const O_KEYS=['_comp','date','id','wh','fio','opType','peaks','earn','hours'];
+
+const OP_CFG={
+  'Сортировка':{cls:'b-blue',color:'#38bdf8'},
+  'Сборка':{cls:'b-green',color:'#34d399'},
+  'Раскладка':{cls:'b-yellow',color:'#fbbf24'},
+  'Приёмка':{cls:'b-orange',color:'#fb923c'},
+  'Переупаковка':{cls:'b-purple',color:'#a78bfa'},
+  'Грузчики - Входящий поток':{cls:'b-blue',color:'#0ea5e9'},
+  'Грузчики - Исходящий поток':{cls:'b-blue',color:'#7dd3fc'},
+  'Отгрузка':{cls:'b-green',color:'#86efac'},
+  'Часы':{cls:'b-purple',color:'#c084fc'},
+};
+const FT_CFG={penalty:{cls:'b-red',lbl:'Потери/нарушения'},tarificator:{cls:'b-orange',lbl:'Брак при работе'},writeoff:{cls:'b-yellow',lbl:'Списание имущества'}};
+
+function pn(v){return parseFloat(String(v||0).replace(',','.'))||0;}
+function fmt(v,d=0){if(v===null||isNaN(v))return'—';return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:d})+' ₽';}
+function fmtN(v,d=1){if(v===null||isNaN(v))return'—';return Number(v).toLocaleString('ru-RU',{maximumFractionDigits:d});}
+function opBadge(t){const c=OP_CFG[t]||{cls:'b-muted'};return`<span class="badge ${c.cls}">${t||'—'}</span>`;}
+function ftBadge(t){const c=FT_CFG[t]||{cls:'b-muted',lbl:t||'—'};return`<span class="badge ${c.cls}">${c.lbl}</span>`;}
+
+function getV(){
+  let r=[];
+  if(curPeriod==='all')Object.values(periods).forEach(p=>r=r.concat(p.vyrab||[]));
+  else r=(periods[curPeriod]?.vyrab)||[];
+  if(curCity!=='all')r=r.filter(x=>(x.wh||x.office||'')===curCity);
+  if(curSearch){const q=curSearch.toLowerCase();r=r.filter(x=>(x.fio||'').toLowerCase().includes(q));}
+  return r;
+}
+function getF(){
+  let r=[];
+  if(curPeriod==='all')Object.values(periods).forEach(p=>r=r.concat(p.fines||[]));
+  else r=(periods[curPeriod]?.fines)||[];
+  if(curCity!=='all')r=r.filter(x=>(x.wh||x.city||'')===curCity);
+  if(curSearch){const q=curSearch.toLowerCase();r=r.filter(x=>(x.fio||'').toLowerCase().includes(q));}
+  return r;
+}
+function getO(){
+  let r=[];
+  if(curPeriod==='all')Object.values(periods).forEach(p=>r=r.concat(p.ops||[]));
+  else r=(periods[curPeriod]?.ops)||[];
+  if(curCity!=='all')r=r.filter(x=>(x.wh||'')===curCity);
+  if(curSearch){const q=curSearch.toLowerCase();r=r.filter(x=>(x.fio||'').toLowerCase().includes(q));}
+  return r;
+}
+
+// ═══════════════════════ RENDER ═══════════════════════
+function renderOverview(){
+  const v=getV(),f=getF(),o=getO();
+  const fot=v.reduce((s,r)=>s+getSal(r.netEarn, r.wh),0);
+  const nf=f.reduce((s,r)=>s+pn(r.amount)-pn(r.ret),0);
+  const pk=o.reduce((s,r)=>s+pn(r.peaks),0);
+  // Median ₽/hour and risk count
+  const rphArr=v.map(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const hrs=o.filter(x=>x.id==r.id).reduce((s,x)=>s+pn(x.hours),0)||pn(r.hours);
+    return hrs>0?sal/hrs:0;
+  }).filter(x=>x>0).sort((a,b)=>a-b);
+  const medRph=rphArr.length?rphArr[Math.floor(rphArr.length/2)]:0;
+  const riskCount=v.filter(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const rf=f.filter(x=>x.id==r.id).reduce((s,x)=>s+pn(x.amount)-pn(x.ret),0);
+    return sal>0 && rf/sal>=0.20;
+  }).length;
+  set('ov-emp',v.length); set('ov-fot',fmt(fot)); set('ov-medrph',fmt(medRph)); set('ov-risk',riskCount);
+  const sorted=[...v].sort((a,b)=>pn(b.netEarn)-pn(a.netEarn)).slice(0,25);
+  set('ov-cnt',sorted.length+' чел.');
+  set('bOv',sorted.map((r,i)=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const rf=f.filter(x=>x.id==r.id).reduce((s,x)=>s+pn(x.amount)-pn(x.ret),0);
+    const oEmp=o.filter(x=>x.id==r.id);
+    const hrs=oEmp.reduce((s,x)=>s+pn(x.hours),0)||pn(r.hours);
+    const rph=hrs>0?sal/hrs:0;
+    const pph=hrs>0?(oEmp.reduce((s,x)=>s+pn(x.peaks),0)||pn(r.peaks))/hrs:0;
+    const fineShare=sal>0?rf/sal:0;
+    const isHourly=r.hourly==='Да';
+    const sc=calcScore(rph,fineShare,pph,pn(r.days),isHourly);
+    const fsClr=fineShare>0.3?'var(--red)':fineShare>0.15?'var(--yellow)':'var(--green)';
+    return`<tr onclick="openEmp('${r.id}','${r._period}')">
+      <td><div class="score-badge ${sc.cls}" style="width:30px;height:30px;font-size:11px">${sc.grade}</div></td>
+      <td style="color:var(--muted);font-family:Unbounded;font-size:11px">${i+1}</td>
+      <td class="td-name">${r.fio||'—'}<br><span class="td-id">${r.id}</span></td>
+      <td class="td-mono g">${fmt(sal)}</td>
+      <td class="td-mono" style="color:var(--accent)">${rph>0?fmt(rph):'—'}</td>
+      <td style="font-weight:700;color:${fsClr}">${rf>0?(fineShare*100).toFixed(1)+'%':'—'}</td>
+      <td class="td-mono r">${rf>0?fmt(rf):'—'}</td>
+      <td style="color:var(--muted)">${r.days||0}</td>
+    </tr>`;
+  }).join('')||emptyRow(8));
+}
+
+// ── SCORING ENGINE ──
+// Inputs per employee: rph (₽/hour net), fineShare (fine/salary), pph (peaks/hour), days
+// Returns {score:0-100, grade:'A'-'F', cls, label, reasons[]}
+function calcScore(rph, fineShare, pph, days, isHourly){
+  if(days===0) return {score:0,grade:'—',cls:'',label:'Нет данных',reasons:['Не выходил в период']};
+  let s=100;
+  const reasons=[];
+
+  // ₽/hour (weight 40): benchmark 300 net/h = 100pts
+  const rphScore=isHourly? 50 : Math.min(100, rph/3); // hourly gets neutral score
+  s = s*0.6 + rphScore*0.4;
+
+  // Fine share (weight 35): 0%=100pts, 20%=50pts, 40%+=0pts
+  const fineScore=Math.max(0, 100 - fineShare*250);
+  if(fineShare>0.20){reasons.push(`Штрафы ${(fineShare*100).toFixed(0)}% от ЗП`);}
+  s = s*0.65 + fineScore*0.35;
+
+  // Peaks/hour (weight 25): 0 for hourly, else benchmark 500=100pts
+  if(!isHourly){
+    const pphScore=Math.min(100, pph/5);
+    if(pph<200&&days>=3)reasons.push(`Низкая производительность: ${pph.toFixed(0)} пик/ч`);
+    s = s*0.75 + pphScore*0.25;
+  }
+
+  const score=Math.round(Math.max(0,Math.min(100,s)));
+  let grade,cls,label;
+  if(score>=80){grade='A';cls='score-a';label='Отлично';}
+  else if(score>=65){grade='B';cls='score-b';label='Хорошо';}
+  else if(score>=50){grade='C';cls='score-c';label='Средне';}
+  else if(score>=35){grade='D';cls='score-d';label='Слабо';}
+  else{grade='F';cls='score-f';label='Проблема';}
+  return{score,grade,cls,label,reasons};
+}
+
+// Fine category classifier
+function classifyFine(reason){
+  const r=(reason||'').toLowerCase();
+  if(r.includes('буфет')||r.includes('вода')||r.includes('кофе')||r.includes('чай')||
+     r.includes('лимонад')||r.includes('сок ')||r.includes('напит')||r.includes('булочк')||
+     r.includes('пончик')||r.includes('хлеб')||r.includes('лепёшк')||r.includes('сметан')||
+     r.includes('сахар')||r.includes('стакан')||r.includes('мохито')||r.includes('энергет')||
+     r.includes('шоколад')||r.includes('батончик')||r.includes('лапша')||r.includes('рис')||
+     r.includes('горчица')||r.includes('бедро')||r.includes('курин')){
+    return 'home'; // бытовые
+  }
+  return 'work'; // производственные
+}
+
+function renderEmployees(){
+  const v=getV();
+  const fAll=getF();
+  const oAll=getO();
+
+  // build fine & ops maps
+  const fMap={};
+  fAll.forEach(r=>{
+    if(!fMap[r.id])fMap[r.id]={tot:0,prod:0,home:0,ret:0};
+    const net=pn(r.amount)-pn(r.ret);
+    fMap[r.id].tot+=net;
+    if(classifyFine(r.reason)==='work') fMap[r.id].prod+=net;
+    else fMap[r.id].home+=net;
+    fMap[r.id].ret+=pn(r.ret);
+  });
+  const oMap={};
+  oAll.forEach(r=>{
+    if(!oMap[r.id])oMap[r.id]={hr:0,pk:0,er:0};
+    oMap[r.id].hr+=pn(r.hours);
+    oMap[r.id].pk+=pn(r.peaks);
+    oMap[r.id].er+=pn(r.earn);
+  });
+
+  // Apply quick filter
+  let ve=v;
+  if(curEmpFilter==='sdelnie') ve=v.filter(r=>r.hourly!=='Да');
+  else if(curEmpFilter==='hourly') ve=v.filter(r=>r.hourly==='Да');
+  else if(curEmpFilter==='risk'){
+    const fTmp=getF(),oTmp=getO();
+    ve=v.filter(r=>{
+      const sal=getSal(r.netEarn, r.wh);
+      const fine=fTmp.filter(f=>f.id==r.id).reduce((s,f)=>s+pn(f.amount)-pn(f.ret),0);
+      return sal>0&&fine/sal>=0.20;
+    });
+  }
+  else if(curEmpFilter==='A'){
+    const fTmp=getF(),oTmp=getO();
+    ve=v.filter(r=>{
+      const sal=getSal(r.netEarn, r.wh);
+      const fm=fTmp.filter(f=>f.id==r.id).reduce((s,f)=>s+pn(f.amount)-pn(f.ret),0);
+      const om=oTmp.filter(o=>o.id==r.id);
+      const hrs=om.reduce((s,o)=>s+pn(o.hours),0)||pn(r.hours);
+      const rph=hrs>0?sal/hrs:0;
+      const pph=hrs>0?(om.reduce((s,o)=>s+pn(o.peaks),0)||pn(r.peaks))/hrs:0;
+      const sc=calcScore(rph,sal>0?fm/sal:0,pph,pn(r.days),r.hourly==='Да');
+      return sc.grade==='A';
+    });
+  }
+  set('emp-cnt',ve.length+' чел.');
+  set('bEmp',ve.map(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const fm=fMap[r.id]||{tot:0,prod:0,home:0,ret:0};
+    const om=oMap[r.id]||{hr:0,pk:0,er:0};
+    const hrs=om.hr||pn(r.hours);
+    const rph=hrs>0?sal/hrs:0;
+    const pph=hrs>0?om.pk/hrs:0;
+    const fineShare=sal>0?fm.tot/sal:0;
+    const isHourly=r.hourly==='Да';
+    const sc=calcScore(rph,fineShare,pph,pn(r.days),isHourly);
+    const fsPct=(fineShare*100).toFixed(1);
+    const fsClr=fineShare>0.3?'var(--red)':fineShare>0.15?'var(--yellow)':'var(--green)';
+    const typeTag=isHourly
+      ?'<span class="badge b-blue" style="font-size:10px">Почасовой</span>'
+      :'<span class="badge b-muted" style="font-size:10px">Сдельный</span>';
+    return`<tr onclick="openEmp('${r.id}','${r._period}')">
+      <td><div style="display:flex;align-items:center;gap:8px"><div class="score-badge ${sc.cls}">${sc.grade}</div><div style="font-size:10px;color:var(--muted)">${sc.score}</div></div></td>
+      <td class="td-name">${r.fio||'—'}<br><span class="td-id">${r.id}</span></td>
+      <td><span class="badge b-yellow" style="font-size:10px">${r.wh||'—'}</span></td>
+      <td class="td-mono g">${fmt(sal)}</td>
+      <td class="td-mono" style="color:var(--accent)">${rph>0?fmt(rph):'—'}</td>
+      <td><div style="font-size:12px;font-weight:600;color:${fsClr}">${fm.tot>0?fsPct+'%':'—'}</div>${fm.tot>0?`<div class="fshare-bar" style="width:${Math.min(100,fineShare*100).toFixed(0)}%;background:${fsClr};opacity:.6"></div>`:''}</td>
+      <td class="td-mono r" style="font-size:11px">${fm.tot>0?fmt(fm.tot):'—'}</td>
+      <td>${fmtN(om.pk||pn(r.peaks),0)}</td>
+      <td style="color:var(--muted)">${r.days||0}</td>
+      <td>${typeTag}</td>
+    </tr>`;
+  }).join('')||emptyRow(10));
+}
+
+function renderFines(){
+  const f=getF();
+  const totA=f.reduce((s,r)=>s+pn(r.amount),0);
+  const totR=f.reduce((s,r)=>s+pn(r.ret),0);
+  set('fn-total',fmt(totA)); set('fn-ret',fmt(totR)); set('fn-net',fmt(totA-totR));
+
+  // Breakdown bars
+  const byT={};
+  f.forEach(r=>{byT[r.type]=(byT[r.type]||0)+pn(r.amount);});
+  const tot=Object.values(byT).reduce((s,v)=>s+v,0)||1;
+  set('fineBreakdown',['penalty','tarificator','writeoff'].filter(t=>byT[t]).map(t=>{
+    const pct=(byT[t]/tot*100).toFixed(1);
+    const clr=t==='penalty'?'var(--red)':t==='tarificator'?'var(--orange)':'var(--yellow)';
+    const lbl=FT_CFG[t]?.lbl||t;
+    return`<div class="fine-bar-wrap">
+      <div class="fine-bar-label"><span>${lbl}</span><span>${fmt(byT[t])} (${pct}%)</span></div>
+      <div class="fine-bar-track"><div class="fine-bar-seg" style="width:${pct}%;background:${clr}"></div></div>
+    </div>`;
+  }).join(''));
+
+  // Fine category split
+  const fCatWork=f.filter(r=>classifyFine(r.reason)==='work');
+  const fCatHome=f.filter(r=>classifyFine(r.reason)==='home');
+  const totWork=fCatWork.reduce((s,r)=>s+pn(r.amount)-pn(r.ret),0);
+  const totHome=fCatHome.reduce((s,r)=>s+pn(r.amount)-pn(r.ret),0);
+
+  // Extended breakdown bar with categories
+  const catBreakTotal=(totWork+totHome)||1;
+  set('fineBreakdown', (document.getElementById('fineBreakdown')?.innerHTML||'') );
+  // Append category bar after type bars
+  const breakEl=document.getElementById('fineBreakdown');
+  if(breakEl){
+    const catHtml=`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">По характеру штрафов</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:10px;padding:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">⚠️ Производственные</div>
+          <div style="font-family:Unbounded;font-size:16px;font-weight:700;color:var(--red)">${fmt(totWork)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">Потери, списания, нарушения</div>
+        </div>
+        <div style="background:rgba(107,116,148,.08);border:1px solid rgba(107,116,148,.2);border-radius:10px;padding:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🧃 Бытовые (буфет)</div>
+          <div style="font-family:Unbounded;font-size:16px;font-weight:700;color:var(--muted)">${fmt(totHome)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${((totHome/catBreakTotal)*100).toFixed(0)}% всех штрафов</div>
+        </div>
+      </div>
+    </div>`;
+    breakEl.innerHTML=breakEl.innerHTML+catHtml;
+  }
+
+  // Get salary map for fine share calc
+  const salMap={};
+  getV().forEach(r=>{salMap[r.id]=getSal(r.netEarn, r.wh);});
+
+  // By employee — new columns: production / household / share
+  const em={};
+  f.forEach(r=>{
+    if(!em[r.id])em[r.id]={fio:r.fio,prod:0,home:0,w:0,ret:0,cnt:0};
+    const e=em[r.id];e.cnt++;e.ret+=pn(r.ret);
+    const amt=pn(r.amount);
+    if(r.type==='writeoff') e.w+=amt;
+    else if(classifyFine(r.reason)==='work') e.prod+=amt;
+    else e.home+=amt;
+  });
+  const ea=Object.entries(em).map(([id,v])=>{
+    const tot=v.prod+v.home+v.w-v.ret;
+    const sal=salMap[id]||0;
+    const share=sal>0?tot/sal:0;
+    return{id,...v,tot,sal,share};
+  }).sort((a,b)=>b.share-a.share);
+  set('fn-emp-cnt',ea.length+' чел.');
+  set('bFnS',ea.map(e=>{
+    const fsClr=e.share>0.3?'var(--red)':e.share>0.15?'var(--yellow)':'var(--green)';
+    return`<tr onclick="openEmp('${e.id}','')">
+      <td class="td-name">${e.fio||e.id}</td>
+      <td><span class="badge fcat-work">${e.prod?fmt(e.prod):'—'}</span></td>
+      <td><span class="badge fcat-home">${e.home?fmt(e.home):'—'}</span></td>
+      <td class="td-mono y">${e.w?fmt(e.w):'—'}</td>
+      <td class="td-mono g">${e.ret?fmt(e.ret):'—'}</td>
+      <td style="font-weight:700;color:${fsClr}">${e.sal>0?(e.share*100).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--muted)">${e.cnt}</td>
+      <td class="td-mono r">${fmt(e.tot)}</td>
+    </tr>`;
+  }).join('')||emptyRow(8));
+
+  // By reason
+  const rm={};
+  f.forEach(r=>{
+    const k=(r.reason||'—').substring(0,80);
+    if(!rm[k])rm[k]={reason:r.reason||'—',type:r.type,cnt:0,amount:0,ret:0};
+    rm[k].cnt++;rm[k].amount+=pn(r.amount);rm[k].ret+=pn(r.ret);
+  });
+  const ra=Object.values(rm).sort((a,b)=>b.amount-a.amount);
+  set('fn-r-cnt',ra.length+' причин');
+  set('bFnR',ra.map(r=>{
+    const cat=classifyFine(r.reason);
+    const catBadge=cat==='home'?'<span class="badge fcat-home">Буфет</span>':'<span class="badge fcat-work">Произв.</span>';
+    return`<tr>
+      <td style="max-width:240px;white-space:normal;font-size:12px">${r.reason}</td>
+      <td>${ftBadge(r.type)}</td>
+      <td>${catBadge}</td>
+      <td style="color:var(--muted)">${r.cnt}</td>
+      <td class="td-mono r">${fmt(r.amount)}</td>
+      <td class="td-mono g">${r.ret?fmt(r.ret):'—'}</td>
+    </tr>`;
+  }).join('')||emptyRow(6));
+
+  // Detail
+  set('fn-d-cnt',f.length+' строк');
+  set('bFnD',f.map(r=>`<tr>
+    <td style="color:var(--muted);font-size:12px">${r.date||'—'}</td>
+    <td class="td-name" style="font-size:12px">${r.fio||r.id}</td>
+    <td style="max-width:240px;white-space:normal;font-size:11.5px;color:var(--muted)">${r.reason||'—'}</td>
+    <td>${ftBadge(r.type)}</td>
+    <td class="td-mono r">${fmt(pn(r.amount))}</td>
+    <td class="td-mono g">${pn(r.ret)?fmt(pn(r.ret)):'—'}</td>
+  </tr>`).join('')||emptyRow(6));
+}
+
+function renderOps(){
+  const oAll=getO();
+
+  // Fill op type filter
+  const sel=document.getElementById('opTypeFilter');
+  if(sel){
+    const cur=sel.value;
+    const allTypes=[...new Set(oAll.map(r=>r.opType).filter(Boolean))].sort();
+    sel.innerHTML='<option value="all">Все типы работ</option>';
+    allTypes.forEach(t=>{const op=document.createElement('option');op.value=t;op.textContent=t;sel.appendChild(op);});
+    if(allTypes.includes(cur))sel.value=cur;
+  }
+  const curType=document.getElementById('opTypeFilter')?.value||'all';
+
+  // Stats from all ops (not filtered by type)
+  const pk=oAll.reduce((s,r)=>s+pn(r.peaks),0);
+  const hr=oAll.reduce((s,r)=>s+pn(r.hours),0);
+  const er=oAll.reduce((s,r)=>s+pn(r.earn),0);
+  const types=[...new Set(oAll.map(r=>r.opType).filter(Boolean))];
+  set('op-peaks',fmtN(pk,0)); set('op-hours',fmtN(hr,1)); set('op-types',types.length); set('op-earn',fmt(er));
+
+  // Type cards (all)
+  const tm={};
+  oAll.forEach(r=>{
+    if(!r.opType)return;
+    if(!tm[r.opType])tm[r.opType]={t:r.opType,pk:0,hr:0,er:0,emps:new Set(),cnt:0};
+    tm[r.opType].pk+=pn(r.peaks);tm[r.opType].hr+=pn(r.hours);
+    tm[r.opType].er+=pn(r.earn);tm[r.opType].emps.add(r.id);tm[r.opType].cnt++;
+  });
+  const ta=Object.values(tm).sort((a,b)=>b.pk-a.pk);
+  set('opTypeCards',`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">${
+    ta.map(t=>{
+      const cfg=OP_CFG[t.t]||{color:'#6b7494'};
+      const pph=t.hr>0?(t.pk/t.hr).toFixed(0):0;
+      const rph=t.hr>0?(t.er/t.hr*RATE).toFixed(0):0;
+      const isActive=curType==='all'||curType===t.t;
+      return`<div class="stat-card" style="border-top:2px solid ${cfg.color};cursor:pointer;opacity:${isActive?1:0.4}" onclick="document.getElementById('opTypeFilter').value='${t.t}';renderOps()">
+        <div class="stat-label">${t.t}</div>
+        <div style="font-family:Unbounded;font-size:16px;font-weight:700;color:${cfg.color}">${fmtN(t.pk,0)}</div>
+        <div class="stat-sub">${t.emps.size} чел · ${fmtN(t.hr,0)} ч</div>
+        <div class="stat-sub" style="color:var(--accent);margin-top:2px">${fmt(pn(rph))}/ч на руки</div>
+      </div>`;
+    }).join('')
+  }</div>`);
+
+  // Apply type filter for employee table
+  const o=curType==='all'?oAll:oAll.filter(r=>r.opType===curType);
+  if(curType!=='all'){
+    set('op-filter-hint',`Показаны сотрудники с типом: ${curType}`);
+  } else {
+    set('op-filter-hint','');
+  }
+
+  // Build vyrab map for ₽/hour calc
+  const vMap={};
+  getV().forEach(r=>{vMap[r.id]=r;});
+
+  // By employee — show ALL types as badges
+  const em={};
+  o.forEach(r=>{
+    if(!em[r.id])em[r.id]={id:r.id,fio:r.fio,pk:0,hr:0,er:0,types:{},typeHr:{}};
+    em[r.id].pk+=pn(r.peaks);em[r.id].hr+=pn(r.hours);em[r.id].er+=pn(r.earn);
+    em[r.id].types[r.opType]=(em[r.id].types[r.opType]||0)+pn(r.peaks);
+    em[r.id].typeHr[r.opType]=(em[r.id].typeHr[r.opType]||0)+pn(r.hours);
+  });
+  const ea=Object.values(em).sort((a,b)=>b.pk-a.pk);
+  // Compute averages for ops employees
+  const validEa=ea.filter(e=>e.hr>0);
+  const avgRphEa=validEa.length?validEa.reduce((s,e)=>s+pn(e.hr>0?(e.er*RATE/e.hr):0),0)/validEa.length:0;
+  const avgPphEa=validEa.length?validEa.reduce((s,e)=>s+pn(e.hr>0?(e.pk/e.hr):0),0)/validEa.length:0;
+  const avgPkEa=ea.length?ea.reduce((s,e)=>s+e.pk,0)/ea.length:0;
+  const avgHintHtml=validEa.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <span class="avg-badge">Ср. ₽/час: ${fmt(avgRphEa)}</span>
+    <span class="avg-badge">Ср. пиков/час: ${fmtN(avgPphEa,0)}</span>
+    <span class="avg-badge">Ср. пиков: ${fmtN(avgPkEa,0)}</span>
+  </div>`:'';
+  const opEmpEl=document.getElementById('oE');
+  let avgHintEl=opEmpEl?.querySelector('.op-avg-hint');
+  if(!avgHintEl&&opEmpEl){avgHintEl=document.createElement('div');avgHintEl.className='op-avg-hint';const tc=opEmpEl.querySelector('.table-card');if(tc)opEmpEl.insertBefore(avgHintEl,tc);}
+  if(avgHintEl)avgHintEl.innerHTML=avgHintHtml;
+  set('op-emp-cnt',ea.length+' чел.');
+  set('bOE',ea.map(e=>{
+    const pph=e.hr>0?(e.pk/e.hr).toFixed(0):0;
+    // ₽/hour on hands = earn_on_ops * RATE / hours_on_ops
+    const rph=e.hr>0?(e.er*RATE/e.hr).toFixed(0):0;
+    // All types sorted by peaks, shown as badges
+    const allTypeBadges=Object.entries(e.types).sort((a,b)=>b[1]-a[1]).map(([t])=>opBadge(t)).join(' ');
+    return`<tr onclick="openEmp('${e.id}','')">
+      <td class="td-name">${e.fio||'—'}</td>
+      <td class="td-mono y">${fmtN(e.pk,0)}</td>
+      <td>${fmtN(e.hr,1)}</td>
+      <td><span class="badge ${pn(pph)>500?'b-green':pn(pph)>250?'b-yellow':'b-red'}">${pph}</span></td>
+      <td class="td-mono" style="color:var(--accent)">${fmt(pn(rph))}</td>
+      <td style="white-space:normal;min-width:140px">${allTypeBadges}</td>
+      <td>${fmt(e.er)}</td>
+    </tr>`;
+  }).join('')||emptyRow(7));
+
+  // By type — add ₽/hour + average footer
+  const totalHrAll=ta.reduce((s,t)=>s+t.hr,0);
+  const totalErAll=ta.reduce((s,t)=>s+t.er,0);
+  const totalPkAll=ta.reduce((s,t)=>s+t.pk,0);
+  const avgRphAll=totalHrAll>0?(totalErAll*RATE/totalHrAll).toFixed(0):0;
+  const avgPphAll=totalHrAll>0?(totalPkAll/totalHrAll).toFixed(0):0;
+  const typeRows=ta.map(t=>{
+    const pph=t.hr>0?(t.pk/t.hr).toFixed(0):0;
+    const rph=t.hr>0?(t.er*RATE/t.hr).toFixed(0):0;
+    const pphDiff=avgPphAll>0?((pn(pph)-pn(avgPphAll))/pn(avgPphAll)*100).toFixed(0):0;
+    const rphDiff=avgRphAll>0?((pn(rph)-pn(avgRphAll))/pn(avgRphAll)*100).toFixed(0):0;
+    return`<tr><td>${opBadge(t.t)}</td><td>${t.emps.size}</td><td style="color:var(--muted)">${t.cnt}</td>
+      <td class="td-mono y">${fmtN(t.pk,0)}</td><td>${fmtN(t.hr,1)}</td>
+      <td><span class="badge ${pn(pph)>500?'b-green':pn(pph)>250?'b-yellow':'b-red'}">${pph}</span>
+        ${pphDiff!=='0'?`<span style="font-size:10px;color:${pn(pphDiff)>0?'var(--green)':'var(--red)'}">${pn(pphDiff)>0?'+':''}${pphDiff}%</span>`:''}</td>
+      <td class="td-mono" style="color:var(--accent)">${fmt(pn(rph))}/ч
+        ${rphDiff!=='0'?`<div style="font-size:10px;color:${pn(rphDiff)>0?'var(--green)':'var(--red)'}">${pn(rphDiff)>0?'+':''}${rphDiff}% к ср</div>`:''}</td>
+      <td>${fmt(t.er)}</td>
+    </tr>`;
+  }).join('')||emptyRow(8);
+  const avgFooter=ta.length?`<tr style="background:rgba(108,143,255,.06);font-weight:600;border-top:2px solid rgba(108,143,255,.2)">
+    <td style="font-size:11px;color:var(--accent)">≈ СРЕДНЕЕ</td>
+    <td>—</td><td style="color:var(--muted)">—</td>
+    <td class="td-mono y">${fmtN(totalPkAll/ta.length,0)}</td>
+    <td>${fmtN(totalHrAll/ta.length,1)}</td>
+    <td><span class="badge b-blue">${avgPphAll} пик/ч</span></td>
+    <td class="td-mono" style="color:var(--accent)">${fmt(pn(avgRphAll))}/ч</td>
+    <td>${fmt(totalErAll/ta.length)}</td>
+  </tr>`:'';
+  set('bOT',typeRows+avgFooter);
+
+  // Detail (apply type filter)
+  const oDet=curType==='all'?oAll:oAll.filter(r=>r.opType===curType);
+  set('op-d-cnt',oDet.length+' строк');
+  set('bOD',oDet.map(r=>`<tr>
+    <td style="color:var(--muted);font-size:12px">${r.date||'—'}</td>
+    <td class="td-name" style="font-size:12px">${r.fio||r.id}</td>
+    <td>${opBadge(r.opType)}</td>
+    <td class="td-mono y">${fmtN(pn(r.peaks),0)}</td>
+    <td>${fmtN(pn(r.hours),2)}</td>
+    <td>${fmt(pn(r.earn))}</td>
+    <td class="td-mono" style="color:var(--accent);font-size:11px">${pn(r.hours)>0?fmt(pn(r.earn)*RATE/pn(r.hours))+'/ч':'—'}</td>
+  </tr>`).join('')||emptyRow(7));
+}
+
+// ═══════════════════════ MODAL ═══════════════════════
+function openEmp(id, periodName){
+  let vRow=null;
+  if(periodName&&periods[periodName]) vRow=periods[periodName].vyrab?.find(r=>r.id==id);
+  if(!vRow) for(const p of Object.values(periods)){vRow=p.vyrab?.find(r=>r.id==id);if(vRow)break;}
+
+  let fR=[],oR=[];
+  if(periodName&&periods[periodName]){
+    fR=(periods[periodName].fines||[]).filter(r=>r.id==id);
+    oR=(periods[periodName].ops||[]).filter(r=>r.id==id);
+  } else {
+    Object.values(periods).forEach(p=>{
+      fR=fR.concat((p.fines||[]).filter(r=>r.id==id));
+      oR=oR.concat((p.ops||[]).filter(r=>r.id==id));
+    });
+  }
+
+  const fio=vRow?.fio||fR[0]?.fio||oR[0]?.fio||id;
+  const wh=vRow?.wh||'—';
+  set('mName',fio);
+  set('mSub',`ID: ${id} · ${periodName||'все периоды'} · ${wh}`);
+
+  const netEarn=pn(vRow?.netEarn);
+  const sal=Math.max(0,netEarn)*RATE;
+  const fA=fR.reduce((s,r)=>s+pn(r.amount),0);
+  const fRet=fR.reduce((s,r)=>s+pn(r.ret),0);
+  const nf=fA-fRet;
+  const pk=pn(vRow?.peaks)||oR.reduce((s,r)=>s+pn(r.peaks),0);
+
+  // Score
+  const fineShareModal=sal>0?nf/sal:0;
+  const totalHrsModal=oR.reduce((s,r)=>s+pn(r.hours),0)||pn(vRow?.hours);
+  const rphModal=totalHrsModal>0?sal/totalHrsModal:0;
+  const pphModal=totalHrsModal>0?(oR.reduce((s,r)=>s+pn(r.peaks),0)||pn(vRow?.peaks))/totalHrsModal:0;
+  const scModal=calcScore(rphModal,fineShareModal,pphModal,pn(vRow?.days||0),vRow?.hourly==='Да');
+  const scBadge=document.getElementById('mm-score-badge');
+  if(scBadge){scBadge.className='score-badge '+scModal.cls;scBadge.textContent=scModal.grade;}
+  set('mm-score-label',`${scModal.label} · ${scModal.score}/100`);
+  set('mm-score-reasons',scModal.reasons.join(' · ')||'Без замечаний');
+  const fsClrModal=fineShareModal>0.3?'var(--red)':fineShareModal>0.15?'var(--yellow)':'var(--green)';
+  set('mm-fshare',nf>0?`<span style="color:${fsClrModal}">${(fineShareModal*100).toFixed(1)}%</span>`:'0%');
+
+  set('mm-sal',fmt(sal)); set('mm-sal2',fmt(sal));
+  set('mm-fin',nf>0?fmt(nf):'—');
+  set('mm-pk',rphModal>0?fmt(rphModal):'—'); // ₽/час instead of peaks in top grid
+  set('mm-tarif',fmt(pn(vRow?.tarif)));
+  set('mm-ded',pn(vRow?.totalDed)?'−'+fmt(pn(vRow.totalDed)):'—');
+  set('mm-net',fmt(netEarn));
+
+  const fp=fR.filter(r=>r.type==='penalty').reduce((s,r)=>s+pn(r.amount),0);
+  const ft=fR.filter(r=>r.type==='tarificator').reduce((s,r)=>s+pn(r.amount),0);
+  const fw=fR.filter(r=>r.type==='writeoff').reduce((s,r)=>s+pn(r.amount),0);
+  set('mm-fp',fp?'−'+fmt(fp):'—');
+  set('mm-ft',ft?'−'+fmt(ft):'—');
+  set('mm-fw',fw?'−'+fmt(fw):'—');
+  set('mm-fr',fRet?'+'+fmt(fRet):'—');
+
+  const fl=fR.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,12);
+  set('mm-flist',fl.length?`
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Последние штрафы</div>
+    ${fl.map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(37,42,58,.5);gap:8px">
+      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${r.reason||'—'}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">${r.date||''} · ${ftBadge(r.type)}</div></div>
+      <div style="flex-shrink:0;color:var(--red);font-family:Unbounded;font-size:12px;font-weight:600">${fmt(pn(r.amount))}</div>
+    </div>`).join('')}`:'');
+
+  const ot={};
+  oR.forEach(r=>{
+    if(!ot[r.opType])ot[r.opType]={pk:0,hr:0,er:0,days:0};
+    ot[r.opType].pk+=pn(r.peaks);ot[r.opType].hr+=pn(r.hours);
+    ot[r.opType].er+=pn(r.earn);ot[r.opType].days++;
+  });
+  set('mm-olist', buildModalOps(oR));
+
+  const totalHrsOps=oR.reduce((s,r)=>s+pn(r.hours),0);
+  const totalPkOps=oR.reduce((s,r)=>s+pn(r.peaks),0)||pn(vRow?.peaks);
+  const usedHrs=totalHrsOps>0?totalHrsOps:pn(vRow?.hours);
+  const rph=usedHrs>0?(sal/usedHrs):0;
+  const pphCalc=usedHrs>0?(totalPkOps/usedHrs):0;
+
+  set('mm-days',vRow?.days||'—');
+  set('mm-hrs',fmtN(usedHrs,1)+' ч');
+  set('mm-sh',vRow?.avgShift?fmtN(pn(vRow.avgShift),2)+' ч':'—');
+  set('mm-pk2',fmtN(totalPkOps,0));
+  set('mm-pph',fmtN(pphCalc,0)+' пик/ч');
+  set('mm-rph',fmt(rph));
+  set('mm-wh',wh);
+  set('mm-hire',vRow?.hire||'—');
+  document.getElementById('empModal').classList.add('open');
+}
+function closeModal(e){if(e.target===document.getElementById('empModal'))document.getElementById('empModal').classList.remove('open');}
+
+// ═══════════════════════ UTILS ═══════════════════════
+function set(id,v){const el=document.getElementById(id);if(el)el.innerHTML=v;}
+function emptyRow(c){return`<tr><td colspan="${c}" style="text-align:center;padding:36px;color:var(--muted)"><div style="font-size:26px;margin-bottom:8px">🔍</div><div>Нет данных — загрузите период в Админке</div></td></tr>`;}
+function showAlert(id,msg,type){const el=document.getElementById(id);el.className=`alert alert-${type} show`;el.textContent=msg;setTimeout(()=>el.classList.remove('show'),5000);}
+function showLoading(v){document.getElementById('loadingOverlay').classList[v?'add':'remove']('show');}
+
+function srt(tid,ci){
+  const key=tid+'_'+ci,asc=sortSt[key]!=='asc';sortSt[key]=asc?'asc':'desc';
+  const tbl=document.getElementById(tid);
+  tbl.querySelectorAll('th').forEach(t=>t.classList.remove('sa','sd'));
+  tbl.querySelectorAll('th')[ci]?.classList.add(asc?'sa':'sd');
+  const tb=tbl.querySelector('tbody');
+  [...tb.querySelectorAll('tr')].sort((a,b)=>{
+    const av=a.cells[ci]?.textContent.trim()||'';
+    const bv=b.cells[ci]?.textContent.trim()||'';
+    const an=parseFloat(av.replace(/[^\d.-]/g,''));
+    const bn=parseFloat(bv.replace(/[^\d.-]/g,''));
+    if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;
+    return asc?av.localeCompare(bv,'ru'):bv.localeCompare(av,'ru');
+  }).forEach(r=>tb.appendChild(r));
+}
+
+function fTab(id,el){
+  document.querySelectorAll('#fTabs .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  set('fS',document.getElementById('fS').outerHTML.replace('style="display:none"','').replace('style=""',''));
+  ['fS','fR','fD'].forEach(k=>{const e=document.getElementById(k);if(e)e.style.display=k===('f'+id.charAt(0).toUpperCase())?'block':'none';});
+}
+function oTab(id,el){
+  document.querySelectorAll('#oTabs .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  ['oE','oT','oD'].forEach(k=>{const e=document.getElementById(k);if(e)e.style.display=k===('o'+id.charAt(0).toUpperCase())?'block':'none';});
+}
+
+// ═══════════════════════ NAV ═══════════════════════
+const TITLES={overview:'Обзор',employees:'Сотрудники',fines:'Штрафы',ops:'Операции',charts:'Графики',risk:'Зона риска',admin:'Администрирование'};
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('[data-s]').forEach(n=>n.classList.remove('active'));
+  document.getElementById('screen-'+id)?.classList.add('active');
+  document.querySelectorAll(`[data-s="${id}"]`).forEach(n=>n.classList.add('active'));
+  set('pageTitle',TITLES[id]||id);
+}
+function onPeriod(){curPeriod=document.getElementById('periodSelect').value;renderCitySelect();refreshAll();}
+function onSearch(){curSearch=document.getElementById('searchInput').value;refreshAll();}
+function onCity(){curCity=document.getElementById('citySelect').value;refreshAll();}
+function refreshAll(){renderOverview();renderEmployees();renderFines();renderOps();renderCharts();renderRisk();updatePeriodBanner();}
+
+function renderCitySelect(){
+  const sel=document.getElementById('citySelect');
+  const cur=sel.value;
+  // collect cities from vyrab
+  const cities=new Set();
+  const rows=curPeriod==='all'?Object.values(periods).flatMap(p=>p.vyrab||[]):(periods[curPeriod]?.vyrab||[]);
+  rows.forEach(r=>{if(r.wh)cities.add(r.wh);});
+  sel.innerHTML='<option value="all">Все города</option>';
+  [...cities].sort().forEach(c=>{
+    const o=document.createElement('option');
+    o.value=c;o.textContent=c;sel.appendChild(o);
+  });
+  if([...cities].includes(cur))sel.value=cur;
+  else{sel.value='all';curCity='all';}
+}
+
+// ═══════════════════════ PERIODS UI ═══════════════════════
+function renderPeriodSelect(){
+  const sel=document.getElementById('periodSelect'),cur=sel.value;
+  sel.innerHTML='<option value="all">Все периоды</option>';
+  Object.keys(periods).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;sel.appendChild(o);});
+  if(cur in periods)sel.value=cur;
+  if(typeof renderCitySelect==='function')renderCitySelect();
+}
+function renderPeriodsList(){
+  const keys=Object.keys(periods);
+  if(!keys.length){set('periodsList','<div class="empty"><div class="empty-icon">📂</div><p>Нет данных</p></div>');return;}
+  set('periodsList',keys.map(k=>{
+    const p=periods[k];
+    const info=[p.vyrab?.length&&`Выработка: ${p.vyrab.length}`,p.fines?.length&&`Штрафы: ${p.fines.length}`,p.ops?.length&&`Операции: ${p.ops.length}`].filter(Boolean).join(' · ');
+    return`<div class="period-item">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="period-dot"></div>
+        <div><div class="period-name">${k}</div><div class="period-count">${info}</div></div>
+      </div>
+      <button class="btn btn-danger" style="padding:6px 12px;font-size:12px" onclick="delPeriod('${k}')">Удалить</button>
+    </div>`;
+  }).join(''));
+}
+function delPeriod(k){
+  if(!confirm(`Удалить "${k}"?`))return;
+  delete periods[k];if(curPeriod===k)curPeriod='all';
+  renderPeriodSelect();renderPeriodsList();refreshAll();
+}
+
+// ═══════════════════════ MANUAL ADD ═══════════════════════
+function parseTSV(tsv,keys,name){
+  const lines=tsv.trim().split('\n').filter(l=>l.trim());
+  if(!lines.length)return[];
+  const start=isNaN(parseFloat(lines[0].split('\t')[0]))?1:0;
+  return lines.slice(start).map(l=>{
+    const c=l.split('\t');
+    const r={_period:name};
+    keys.forEach((k,i)=>{r[k]=(c[i]||'').trim();});
+    return r;
+  }).filter(r=>r.id||r.date);
+}
+
+function addManual(){
+  const name=document.getElementById('pName').value.trim();
+  const type=document.getElementById('pType').value;
+  const tsv=document.getElementById('tsvData').value.trim();
+  if(!name){showAlert('addAlert','⚠️ Укажите название периода','err');return;}
+  if(!tsv){showAlert('addAlert','⚠️ Вставьте данные','err');return;}
+  const keys=type==='vyrab'?V_KEYS:type==='fines'?F_KEYS:O_KEYS;
+  const rows=parseTSV(tsv,keys,name);
+  if(!rows.length){showAlert('addAlert','❌ Не удалось распознать данные','err');return;}
+  if(!periods[name])periods[name]={};
+  periods[name][type]=rows;
+  renderPeriodSelect();renderPeriodsList();refreshAll();
+  document.getElementById('tsvData').value='';
+  const lbl={vyrab:'Выработка',fines:'Штрафы',ops:'Операции'}[type];
+  showAlert('addAlert',`✅ ${lbl} за "${name}" — ${rows.length} строк добавлено`,'ok');
+}
+
+// ═══════════════════════ GOOGLE SHEETS ═══════════════════════
+function connectGS(){reloadFromGitHub();}
+
+function parseCSV(csv,keys,name){
+  const lines=csv.split('\n').filter(l=>l.trim());
+  return lines.slice(1).map(l=>{
+    const c=l.split(',').map(x=>x.replace(/^"|"$/g,'').trim());
+    const r={_period:name};
+    keys.forEach((k,i)=>{r[k]=c[i]||'';});
+    return r;
+  }).filter(r=>r.id||r.date);
+}
+
+// ═══════════════════════ DEMO DATA ═══════════════════════
+
+// ═══════════════════════ GITHUB DATA LOADER ═══════════════════════
+// Repo config — автоматически определяется из текущего URL
+function getRepoConfig(){
+  const host=window.location.hostname;
+  if(host.includes('github.io')){
+    const parts=window.location.pathname.split('/').filter(Boolean);
+    const owner=host.replace('.github.io','');
+    const repo=parts[0]||'WB';
+    return{owner,repo,branch:'main'};
+  }
+  // Local dev fallback
+  return{owner:'max511028-bit',repo:'WB',branch:'main'};
+}
+
+const BASE_RAW='https://raw.githubusercontent.com';
+const cfg=getRepoConfig();
+
+// CSV parser — handles semicolon separator, comma decimals, BOM, CRLF
+function parseCSV(text, keyMap, periodName){
+  // Remove BOM
+  text=text.replace(/^\uFEFF/,'');
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return[];
+  // Detect separator
+  const sep=lines[0].includes(';')?';':',';
+  // Skip header row (first line)
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cells=splitCSVLine(lines[i],sep);
+    if(!cells[0]||cells[0].trim()==='')continue;
+    const r={_period:periodName};
+    keyMap.forEach((k,idx)=>{
+      let v=(cells[idx]||'').trim();
+      // Convert comma decimals to dot
+      if(/^-?\d+,\d+$/.test(v))v=v.replace(',','.');
+      r[k]=v;
+    });
+    rows.push(r);
+  }
+  return rows;
+}
+
+function splitCSVLine(line,sep){
+  // Handle quoted fields (e.g. "Буфет, (кофе)")
+  const res=[];
+  let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){inQ=!inQ;}
+    else if(c===sep&&!inQ){res.push(cur);cur='';}
+    else{cur+=c;}
+  }
+  res.push(cur);
+  return res;
+}
+
+
+// File name mapping (supports both Russian and Latin names)
+const FILE_MAP={
+  vyrab:['Выработка.csv','vyrab.csv','выработка.csv'],
+  fines:['Штрафы.csv','fines.csv','штрафы.csv'],
+  ops:['Операции.csv','ops.csv','операции.csv'],
+};
+
+async function fetchCSV(period, fileType){
+  const names=FILE_MAP[fileType];
+  for(const name of names){
+    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/${period}/${encodeURIComponent(name)}`;
+    try{
+      const r=await fetch(url);
+      if(r.ok){
+        const text=await r.text();
+        let keys;
+        if(fileType==='vyrab'){
+          keys=V_KEYS;
+        } else {
+          const clean=text.replace(/^﻿/,'');
+          const firstLine=clean.split(/\r?\n/)[0];
+          const sep=firstLine.includes(';')?';':',';
+          const firstCell=firstLine.split(sep)[0].replace(/"/g,'').trim();
+          const isNew=firstCell==='Компания';
+          if(fileType==='fines') keys=isNew?F_KEYS:F_KEYS_OLD;
+          else keys=isNew?O_KEYS:O_KEYS_OLD;
+        }
+        return parseCSV(text,keys,period);
+      }
+    }catch(e){}
+  }
+  return[];
+}
+
+async function loadAllPeriods(){
+  showLoading(true);
+  try{
+    // Load index.json
+    const idxUrl=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/index.json`;
+    const idxResp=await fetch(idxUrl);
+    if(!idxResp.ok)throw new Error('Не удалось загрузить data/index.json');
+    const allPeriods=await idxResp.json();
+
+    // Try to load each period — skip if files not found
+    let loaded=0;
+    for(const period of allPeriods){
+      const [vyrab,fines,ops]=await Promise.all([
+        fetchCSV(period,'vyrab'),
+        fetchCSV(period,'fines'),
+        fetchCSV(period,'ops'),
+      ]);
+      if(vyrab.length||fines.length||ops.length){
+        periods[period]={vyrab,fines,ops};
+        loaded++;
+      }
+    }
+
+    if(!loaded){
+      showLoadError('Данных пока нет. Загрузите CSV файлы в папку data/ на GitHub.');
+      showLoading(false);
+      return;
+    }
+
+    renderPeriodSelect();
+    renderCitySelect();
+    refreshAll();
+    updatePeriodBanner();
+
+    // Set latest period as default
+    const latestPeriod=Object.keys(periods).sort().reverse()[0];
+    if(latestPeriod){
+      curPeriod=latestPeriod;
+      const sel=document.getElementById('periodSelect');
+      if(sel)sel.value=latestPeriod;
+      refreshAll();
+      updatePeriodBanner();
+    }
+
+    showAlert('addAlert',`✅ Загружено ${loaded} период(ов): `+Object.keys(periods).join(', '),'ok');
+    const ghEl=document.getElementById('ghStatus');
+    if(ghEl)ghEl.innerHTML=`<div style="background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:10px;padding:12px 16px;font-size:13px">
+      <span style="color:var(--green);font-weight:600">✅ Подключено</span>
+      <span style="color:var(--muted);margin-left:8px">Загружено ${loaded} период(ов) · ${Object.values(periods).reduce((s,p)=>s+(p.vyrab?.length||0),0)} сотрудников</span>
+    </div>`;
+  }catch(e){
+    showLoadError('Ошибка загрузки: '+e.message);
+  }
+  showLoading(false);
+}
+
+function showLoadError(msg){
+  // Show error in admin screen and as banner
+  const el=document.getElementById('addAlert');
+  if(el){el.className='alert alert-err show';el.textContent='❌ '+msg;}
+  // Also show on main screen
+  const main=document.querySelector('.content');
+  if(main){
+    let err=document.getElementById('loadErrorBanner');
+    if(!err){
+      err=document.createElement('div');
+      err.id='loadErrorBanner';
+      err.style.cssText='background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:var(--red);padding:14px 20px;border-radius:12px;margin-bottom:20px;font-size:13px';
+      main.insertBefore(err,main.firstChild);
+    }
+    err.textContent='❌ '+msg;
+  }
+}
+
+// ── Manual reload button ──
+function reloadFromGitHub(){
+  Object.keys(periods).forEach(k=>delete periods[k]);
+  const el=document.getElementById('ghStatus');
+  if(el)el.innerHTML='<div style="font-size:13px;color:var(--muted)">⏳ Загрузка...</div>';
+  loadAllPeriods();
+}
+
+// ── loadDemo stays for testing ──
+function loadDemo(showMsg){
+  // No longer used in production — data comes from GitHub
+  if(showMsg)showAlert('addAlert','Демо-режим недоступен — данные загружаются с GitHub','ok');
+}
+
+
+// ═══════════════════════ MISSING FUNCTIONS ═══════════════════════
+
+// ── Period banner ──
+function updatePeriodBanner(){
+  const banner=document.getElementById('periodBanner');
+  const val=document.getElementById('periodBannerVal');
+  const city=document.getElementById('cityBannerVal');
+  if(!banner)return;
+  banner.style.display='flex';
+  if(val)val.textContent=curPeriod==='all'?'Все периоды':curPeriod;
+  if(city)city.textContent=curCity==='all'?'':' · '+curCity;
+}
+
+// ── Modal tabs ──
+function switchModalTab(id,el){
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.modal-tab-content').forEach(c=>c.classList.remove('active'));
+  if(el)el.classList.add('active');
+  const target=document.getElementById('mt'+id.charAt(0).toUpperCase()+id.slice(1));
+  if(target)target.classList.add('active');
+}
+
+// ── Period comparison ──
+function buildPeriodCompare(id){
+  const pKeys=Object.keys(periods);
+  if(pKeys.length<2)return'<div style="font-size:12px;color:var(--muted);padding:8px 0">Загрузите 2+ периода для сравнения</div>';
+  const rows=pKeys.map(pk=>{
+    const vRow=periods[pk].vyrab?.find(r=>r.id==id);
+    if(!vRow)return null;
+    const sal=Math.max(0,pn(vRow.netEarn))*RATE;
+    const fines=(periods[pk].fines||[]).filter(r=>r.id==id).reduce((s,r)=>s+pn(r.amount)-pn(r.ret),0);
+    const hrs=(periods[pk].ops||[]).filter(r=>r.id==id).reduce((s,r)=>s+pn(r.hours),0)||pn(vRow.hours);
+    const rph=hrs>0?sal/hrs:0;
+    return{period:pk,sal,fines,rph};
+  }).filter(Boolean);
+  if(rows.length<2)return'<div style="font-size:12px;color:var(--muted);padding:8px 0">Сотрудник только в одном периоде</div>';
+  return rows.map((r,i)=>{
+    const prev=rows[i-1];
+    const salDiff=prev?((r.sal-prev.sal)/Math.max(prev.sal,1)*100).toFixed(0):null;
+    const arrow=salDiff?`<span style="font-size:11px;color:${pn(salDiff)>=0?'var(--green)':'var(--red)'};margin-left:6px">${pn(salDiff)>=0?'▲':'▼'}${Math.abs(pn(salDiff))}%</span>`:'';
+    return`<div class="drow"><span class="drow-lbl" style="font-size:12px">${r.period}</span><span class="drow-val" style="font-size:12px">${fmt(r.sal)}${arrow} · ${fmt(r.rph)}/ч · штр. ${fmt(r.fines)}</span></div>`;
+  }).join('');
+}
+
+// ── Global search ──
+let gsSearchIdx=0;
+function openGSearch(){
+  document.getElementById('gsearchOverlay')?.classList.add('open');
+  setTimeout(()=>document.getElementById('gsearchInput')?.focus(),50);
+}
+function closeGSearch(e){
+  if(!e||e.target===document.getElementById('gsearchOverlay'))
+    document.getElementById('gsearchOverlay')?.classList.remove('open');
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')document.getElementById('gsearchOverlay')?.classList.remove('open');
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();openGSearch();}
+});
+function onGSearch(){
+  const q=document.getElementById('gsearchInput').value.toLowerCase().trim();
+  const res=document.getElementById('gsearchResults');
+  if(!q){res.innerHTML='<div class="gsearch-empty">Начните вводить имя сотрудника</div>';return;}
+  const all={};
+  Object.values(periods).forEach(p=>(p.vyrab||[]).forEach(r=>{if(!all[r.id])all[r.id]={r,fines:[],ops:[]};}));
+  Object.values(periods).forEach(p=>{
+    (p.fines||[]).forEach(f=>{if(all[f.id])all[f.id].fines.push(f);});
+    (p.ops||[]).forEach(o=>{if(all[o.id])all[o.id].ops.push(o);});
+  });
+  const matches=Object.values(all).filter(e=>(e.r.fio||'').toLowerCase().includes(q)).slice(0,12);
+  if(!matches.length){res.innerHTML='<div class="gsearch-empty">Ничего не найдено</div>';return;}
+  gsSearchIdx=0;
+  res.innerHTML=matches.map((e,i)=>{
+    const r=e.r;
+    const sal=getSal(r.netEarn, r.wh);
+    const fineNet=e.fines.reduce((s,f)=>s+pn(f.amount)-pn(f.ret),0);
+    const hrs=e.ops.reduce((s,o)=>s+pn(o.hours),0)||pn(r.hours);
+    const rph=hrs>0?sal/hrs:0;
+    const pph=hrs>0?(e.ops.reduce((s,o)=>s+pn(o.peaks),0)||pn(r.peaks))/hrs:0;
+    const fineShare=sal>0?fineNet/sal:0;
+    const sc=calcScore(rph,fineShare,pph,pn(r.days),r.hourly==='Да');
+    return`<div class="gsearch-result${i===0?' sel':''}" onclick="gsSelect('${r.id}','${r._period||''}')">
+      <div class="gsearch-score ${sc.cls}">${sc.grade}</div>
+      <div class="gsearch-meta">
+        <div class="gsearch-name">${r.fio||'—'}</div>
+        <div class="gsearch-sub">${r.wh||'—'} · ${r.days||0} дн.</div>
+      </div>
+      <div class="gsearch-sal">${fmt(sal)}</div>
+    </div>`;
+  }).join('');
+}
+function onGSearchKey(e){
+  const items=document.querySelectorAll('.gsearch-result');
+  if(e.key==='ArrowDown')gsSearchIdx=Math.min(gsSearchIdx+1,items.length-1);
+  else if(e.key==='ArrowUp')gsSearchIdx=Math.max(gsSearchIdx-1,0);
+  else if(e.key==='Enter'){items[gsSearchIdx]?.click();return;}
+  items.forEach((el,i)=>el.classList.toggle('sel',i===gsSearchIdx));
+  items[gsSearchIdx]?.scrollIntoView({block:'nearest'});
+}
+function gsSelect(id,period){
+  document.getElementById('gsearchOverlay')?.classList.remove('open');
+  const inp=document.getElementById('gsearchInput');
+  if(inp)inp.value='';
+  openEmp(id,period);
+}
+
+// ── Export all ──
+function exportAllXlsx(){
+  const v=getV(),fAll=getF(),oAll=getO();
+  const fMap={},oMap={};
+  fAll.forEach(r=>{if(!fMap[r.id])fMap[r.id]={tot:0};fMap[r.id].tot+=pn(r.amount)-pn(r.ret);});
+  oAll.forEach(r=>{if(!oMap[r.id])oMap[r.id]={hr:0,pk:0};oMap[r.id].hr+=pn(r.hours);oMap[r.id].pk+=pn(r.peaks);});
+  const rows=[['ФИО','ID','Склад','ЗП на руки','₽/час','Штрафы','Доля штрафов','Пиков','Часов','Дней','Тип','Рейтинг']];
+  v.forEach(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const fm=fMap[r.id]||{tot:0};
+    const om=oMap[r.id]||{hr:0,pk:0};
+    const hrs=om.hr||pn(r.hours);
+    const rph=hrs>0?sal/hrs:0;
+    const pph=hrs>0?(om.pk||pn(r.peaks))/hrs:0;
+    const fineShare=sal>0?fm.tot/sal:0;
+    const sc=calcScore(rph,fineShare,pph,pn(r.days),r.hourly==='Да');
+    rows.push([r.fio,r.id,r.wh,sal.toFixed(2),rph.toFixed(2),fm.tot.toFixed(2),(fineShare*100).toFixed(1)+'%',(om.pk||pn(r.peaks)),hrs.toFixed(1),r.days,r.hourly==='Да'?'Почасовой':'Сдельный',sc.grade+' ('+sc.score+')']);
+  });
+  const csv=rows.map(r=>r.map(v=>{const sv=String(v==null?'':v);return sv.includes(',')||sv.includes('"')?`"${sv.replace(/"/g,'""')}"`:sv;}).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`Сотрудники_${curPeriod}.csv`;a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportEmpXlsx(){
+  const sub=document.getElementById('mSub')?.textContent||'';
+  const idM=sub.match(/ID: (\S+)/);
+  if(!idM)return;
+  const id=idM[1];
+  const name=document.getElementById('mName')?.textContent||id;
+  let vRow=null;
+  let fR=[],oR=[];
+  Object.values(periods).forEach(p=>{
+    const v=p.vyrab?.find(r=>r.id==id);
+    if(v&&!vRow)vRow=v;
+    fR=fR.concat((p.fines||[]).filter(r=>r.id==id));
+    oR=oR.concat((p.ops||[]).filter(r=>r.id==id));
+  });
+  const sal=getSal(vRow?.netEarn, vRow?.wh);
+  const totalHrs=oR.reduce((s,r)=>s+pn(r.hours),0)||pn(vRow?.hours);
+  const rph=totalHrs>0?sal/totalHrs:0;
+  const rows=[['КАРТОЧКА СОТРУДНИКА'],[''],['ФИО',name],['ID',id],['Склад',vRow?.wh||'—'],['Дата найма',vRow?.hire||'—'],[''],
+    ['── ЗАРАБОТОК ──'],['Выработка по тарификатору',pn(vRow?.tarif)],['Общие вычеты',pn(vRow?.totalDed)],
+    ['Чистая выработка',pn(vRow?.netEarn)],['ЗП на руки (70%)',sal.toFixed(2)],[''],
+    ['── ПРОИЗВОДИТЕЛЬНОСТЬ ──'],['Дней',vRow?.days||0],['Часов',fmtN(totalHrs,2)],['₽/час',rph.toFixed(2)],[''],
+    ['── ШТРАФЫ ──'],['Дата','Причина','Тип','Сумма','Возврат']];
+  fR.sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(r=>{
+    rows.push([r.date,r.reason,r.type,pn(r.amount),pn(r.ret)]);
+  });
+  rows.push([''],['── ОПЕРАЦИИ ──'],['Дата','Тип работ','Пиков','Часов','Выработка','₽/час']);
+  oR.sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(r=>{
+    const rphRow=pn(r.hours)>0?(pn(r.earn)*RATE/pn(r.hours)).toFixed(2):0;
+    rows.push([r.date,r.opType,pn(r.peaks),pn(r.hours),pn(r.earn),rphRow]);
+  });
+  const csv=rows.map(r=>r.map(v=>{const sv=String(v==null?'':v);return sv.includes(',')||sv.includes('"')?`"${sv.replace(/"/g,'""')}"`:sv;}).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`Карточка_${name.replace(/ /g,'_')}.csv`;a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Quick filter employees ──
+let curEmpFilterLocal='all';
+function setEmpFilter(f,el){
+  curEmpFilter=f;
+  document.querySelectorAll('.qf-btn').forEach(b=>b.classList.remove('active'));
+  if(el)el.classList.add('active');
+  renderEmployees();
+}
+
+// ── Modal fine list with sort ──
+let modalFineSort='date';
+function sortModalFines(key){
+  modalFineSort=key;
+  const sub=document.getElementById('mSub')?.textContent||'';
+  const idM=sub.match(/ID: (\S+)/);
+  if(!idM)return;
+  const id=idM[1];
+  let fR=[];
+  Object.values(periods).forEach(p=>{fR=fR.concat((p.fines||[]).filter(r=>r.id==id));});
+  fR.sort((a,b)=>modalFineSort==='amount'?pn(b.amount)-pn(a.amount):String(b.date).localeCompare(String(a.date)));
+  renderFineList(id,fR);
+}
+function renderFineList(id,fR){
+  set('mm-flist',fR.length?`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Все штрафы (${fR.length})</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="sortModalFines('date')" style="padding:3px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:${modalFineSort==='date'?'var(--accent)':'var(--surface2)'};color:${modalFineSort==='date'?'#fff':'var(--muted)'}">По дате</button>
+        <button onclick="sortModalFines('amount')" style="padding:3px 8px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:${modalFineSort==='amount'?'var(--accent)':'var(--surface2)'};color:${modalFineSort==='amount'?'#fff':'var(--muted)'}">По сумме</button>
+      </div>
+    </div>
+    ${fR.map(r=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(37,42,58,.5);gap:8px">
+      <div style="flex:1;min-width:0"><div style="font-size:12px;line-height:1.4;word-break:break-word">${r.reason||'—'}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:2px">${r.date||''} · ${ftBadge(r.type)}${pn(r.ret)?` · <span style="color:var(--green)">возврат ${fmt(pn(r.ret))}</span>`:''}</div></div>
+      <div style="flex-shrink:0;color:var(--red);font-family:Unbounded;font-size:12px;font-weight:600">${fmt(pn(r.amount))}</div>
+    </div>`).join('')}`:'<div style="color:var(--muted);font-size:13px;padding:8px 0">Штрафов нет</div>');
+}
+
+function buildModalOps(oR){
+  const ot={};
+  oR.forEach(r=>{
+    if(!ot[r.opType])ot[r.opType]={pk:0,hr:0,er:0,days:new Set()};
+    ot[r.opType].pk+=pn(r.peaks);ot[r.opType].hr+=pn(r.hours);
+    ot[r.opType].er+=pn(r.earn);ot[r.opType].days.add(r.date);
+  });
+  const entries=Object.entries(ot).sort((a,b)=>b[1].pk-a[1].pk);
+  if(!entries.length)return'<div style="color:var(--muted);font-size:13px">Нет данных об операциях</div>';
+  let html=`<div style="font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em"><span>Тип</span><span style="text-align:right">Пики</span><span style="text-align:right">Часов</span><span style="text-align:right">₽/час</span></div>`;
+  entries.forEach(([t,v])=>{
+    const rphNet=v.hr>0?(v.er/v.hr*RATE).toFixed(0):0;
+    const pph=v.hr>0?(v.pk/v.hr).toFixed(0):0;
+    const cfg=OP_CFG[t]||{color:'#6b7494'};
+    html+=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;align-items:center;padding:8px 2px;border-bottom:1px solid rgba(37,42,58,.5)">
+      <div>${opBadge(t)}<div style="font-size:10px;color:var(--muted);margin-top:3px">${v.days.size} дн.</div></div>
+      <div style="text-align:right;font-family:Unbounded;font-size:12px;font-weight:700;color:${cfg.color}">${fmtN(v.pk,0)}<div style="font-size:10px;font-family:Golos Text;color:var(--muted)">${pph} пик/ч</div></div>
+      <div style="text-align:right;font-size:13px">${fmtN(v.hr,1)}</div>
+      <div style="text-align:right;font-family:Unbounded;font-size:12px;font-weight:700;color:var(--green)">${fmt(pn(rphNet))}</div>
+    </div>`;
+  });
+  const byDay={};
+  oR.forEach(r=>{if(r.date&&r.opType){if(!byDay[r.date])byDay[r.date]=[];byDay[r.date].push(r);}});
+  const days=Object.keys(byDay).sort();
+  if(days.length){
+    html+=`<div style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">По дням</div>`;
+    days.forEach(d=>{
+      const dRows=byDay[d];
+      const dpk=dRows.reduce((s,r)=>s+pn(r.peaks),0);
+      const dhr=dRows.reduce((s,r)=>s+pn(r.hours),0);
+      const types=[...new Set(dRows.map(r=>r.opType))].map(t=>opBadge(t)).join(' ');
+      html+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(37,42,58,.4);font-size:12px">
+        <div style="color:var(--muted)">${d}</div>
+        <div>${types}</div>
+        <div><span style="font-family:Unbounded;font-size:12px;color:var(--yellow)">${fmtN(dpk,0)}</span> пик · <span style="color:var(--blue)">${fmtN(dhr,1)}</span> ч</div>
+      </div>`;
+    });
+  }
+  return html;
+}
+
+// ── Chart tooltip ──
+function showChartTip(e,html){
+  const t=document.getElementById('chartTooltip');
+  if(!t)return;
+  t.innerHTML=html;t.style.display='block';
+  t.style.left=(e.clientX+12)+'px';t.style.top=(e.clientY-36)+'px';
+}
+function hideChartTip(){
+  const t=document.getElementById('chartTooltip');
+  if(t)t.style.display='none';
+}
+document.addEventListener('mousemove',e=>{
+  const t=document.getElementById('chartTooltip');
+  if(t&&t.style.display==='block'){t.style.left=(e.clientX+12)+'px';t.style.top=(e.clientY-36)+'px';}
+});
+
+// ── SVG Charts ──
+function svgBar(data,{width=700,height=240,barColor='#6c8fff',labelKey='date',valueKey='val',fmt2=v=>v,avgLine=true}={}){
+  if(!data.length)return'<div style="padding:30px;text-align:center;color:var(--muted)">Нет данных</div>';
+  const vals=data.map(d=>d[valueKey]);
+  const maxV=Math.max(...vals,1);
+  const avgV=vals.reduce((s,v)=>s+v,0)/vals.length;
+  const bw=Math.max(8,Math.min(44,Math.floor((width-60)/data.length)-3));
+  const chartW=Math.max(width,(bw+3)*data.length+60);
+  const h=height-60;
+  let bars='',labels='',grid='',avgEl='';
+  [0,0.25,0.5,0.75,1].forEach(p=>{
+    const gv=Math.round(maxV*p);
+    const y=30+h-(gv/maxV*h);
+    grid+=`<line x1="50" y1="${y}" x2="${chartW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+    grid+=`<text x="44" y="${y+4}" text-anchor="end" fill="#6b7494" font-size="9">${gv>=1000?(gv/1000).toFixed(1)+'k':gv}</text>`;
+  });
+  if(avgLine&&avgV>0){
+    const ay=30+h-(avgV/maxV*h);
+    avgEl=`<line x1="50" y1="${ay}" x2="${chartW}" y2="${ay}" stroke="#6c8fff" stroke-width="1.5" stroke-dasharray="6,3" opacity="0.6"/>
+    <text x="${chartW-4}" y="${ay-4}" text-anchor="end" fill="#6c8fff" font-size="9" font-weight="600">Ср: ${fmt2(avgV)}</text>`;
+  }
+  data.forEach((d,i)=>{
+    const bh=Math.max(2,(d[valueKey]/maxV)*h);
+    const x=50+i*(bw+3);
+    const y=30+h-bh;
+    const lbl=String(d[labelKey]).slice(-5);
+    bars+=`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="${barColor}" opacity="0.82"
+      onmouseenter="showChartTip(event,'<b>${d[labelKey]}</b><br>${fmt2(d[valueKey])}')"
+      onmouseleave="hideChartTip()"
+      onmouseover="this.setAttribute('opacity','1')" onmouseout="this.setAttribute('opacity','0.82')" style="cursor:pointer"/>`;
+    if(bw>=16)bars+=`<text x="${x+bw/2}" y="${y-3}" text-anchor="middle" fill="#e8ecf5" font-size="8" opacity="0.7">${d[valueKey]>=1000?(d[valueKey]/1000).toFixed(1)+'k':Math.round(d[valueKey])}</text>`;
+    if(data.length<=40||i%Math.ceil(data.length/30)===0)
+      labels+=`<text x="${x+bw/2}" y="${30+h+14}" text-anchor="middle" fill="#6b7494" font-size="9" transform="rotate(-40,${x+bw/2},${30+h+14})">${lbl}</text>`;
+  });
+  return`<div class="chart-bar-wrap"><svg viewBox="0 0 ${chartW} ${height}" style="width:100%;min-width:${chartW}px;height:${height}px" xmlns="http://www.w3.org/2000/svg">${grid}${avgEl}${bars}${labels}</svg></div>`;
+}
+
+function svgMultiBar(data,series,{width=700,height=260,labelKey='date'}={}){
+  if(!data.length)return'<div style="padding:30px;text-align:center;color:var(--muted)">Нет данных</div>';
+  const avgs={};
+  series.forEach(s=>{const vals=data.map(d=>d[s.key]||0).filter(v=>v>0);avgs[s.key]=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;});
+  const maxV=Math.max(...data.flatMap(d=>series.map(s=>d[s.key]||0)),1);
+  const bw=Math.max(6,Math.min(30,Math.floor((width-60)/data.length/series.length)-1));
+  const groupW=bw*series.length+4;
+  const chartW=Math.max(width,groupW*data.length+60);
+  const h=height-65;
+  let bars='',labels='',grid='',avgLines='',legend='';
+  [0,0.25,0.5,0.75,1].forEach(p=>{
+    const gv=Math.round(maxV*p);
+    const y=30+h-(gv/maxV*h);
+    grid+=`<line x1="50" y1="${y}" x2="${chartW}" y2="${y}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+    grid+=`<text x="44" y="${y+4}" text-anchor="end" fill="#6b7494" font-size="9">${gv>=1000?(gv/1000).toFixed(1)+'k':gv}</text>`;
+  });
+  series.forEach((s,i)=>{
+    if(avgs[s.key]>0){const ay=30+h-(avgs[s.key]/maxV*h);avgLines+=`<line x1="50" y1="${ay}" x2="${chartW}" y2="${ay}" stroke="${s.color}" stroke-width="1" stroke-dasharray="5,3" opacity="0.5"/>`;}
+    const avgTxt=avgs[s.key]>0?` (ср: ${avgs[s.key]>=1000?(avgs[s.key]/1000).toFixed(1)+'k':Math.round(avgs[s.key])})`:'' ;
+    legend+=`<rect x="${55+i*120}" y="5" width="10" height="10" rx="2" fill="${s.color}"/>
+    <text x="${68+i*120}" y="14" fill="#9ca3af" font-size="10">${s.label}${avgTxt}</text>`;
+  });
+  data.forEach((d,i)=>{
+    const gx=50+i*groupW;
+    const tipParts=series.map(s=>`${s.label}: ${(d[s.key]||0)>=1000?((d[s.key]||0)/1000).toFixed(1)+'k':Math.round(d[s.key]||0)}`).join('<br>');
+    series.forEach((s,si)=>{
+      const v=d[s.key]||0;
+      const bh=Math.max(v>0?2:0,(v/maxV)*h);
+      const y=30+h-bh;
+      bars+=`<rect x="${gx+si*bw}" y="${y}" width="${bw-1}" height="${bh}" rx="2" fill="${s.color}" opacity="0.82"
+        onmouseenter="showChartTip(event,'<b>${d[labelKey]}</b><br>${tipParts}')"
+        onmouseleave="hideChartTip()"
+        onmouseover="this.setAttribute('opacity','1')" onmouseout="this.setAttribute('opacity','0.82')" style="cursor:pointer"/>`;
+    });
+    const lbl=String(d[labelKey]).slice(-5);
+    if(data.length<=40||i%Math.ceil(data.length/30)===0)
+      labels+=`<text x="${gx+groupW/2}" y="${30+h+14}" text-anchor="middle" fill="#6b7494" font-size="9" transform="rotate(-40,${gx+groupW/2},${30+h+14})">${lbl}</text>`;
+  });
+  return`<div class="chart-bar-wrap"><svg viewBox="0 0 ${chartW} ${height}" style="width:100%;min-width:${chartW}px;height:${height}px" xmlns="http://www.w3.org/2000/svg">${legend}${grid}${avgLines}${bars}${labels}</svg></div>`;
+}
+
+let curChartTab='daily';
+function chTab(id,el){
+  document.querySelectorAll('#chTabs .tab').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  curChartTab=id;
+  ['Daily','Perf','Fines','Optypes','Rph'].forEach(k=>{
+    const el2=document.getElementById('ch'+k);
+    if(el2)el2.style.display=k.toLowerCase()===id?'block':'none';
+  });
+  renderCharts();
+}
+
+function renderCharts(){
+  const o=getO(),f=getF(),v=getV();
+  const daySet=new Set(o.map(r=>r.date).filter(Boolean));
+  const shiftsTotal=o.length;
+  const dayMap={};
+  o.forEach(r=>{if(r.date)dayMap[r.date]=(dayMap[r.date]||0)+1;});
+  const maxDay=Math.max(0,...Object.values(dayMap));
+  const avgDay=daySet.size>0?(shiftsTotal/daySet.size).toFixed(1):0;
+  set('ch-shifts',fmtN(shiftsTotal,0));set('ch-days',daySet.size);set('ch-maxday',maxDay);set('ch-avgday',avgDay);
+  // Employee cost
+  const empV={};v.forEach(r=>{empV[r.id]=r;});
+  const empO={};
+  o.forEach(r=>{if(!empO[r.id])empO[r.id]={id:r.id,fio:r.fio,hr:0,pk:0,er:0};empO[r.id].hr+=pn(r.hours);empO[r.id].pk+=pn(r.peaks);empO[r.id].er+=pn(r.earn);});
+  const empCostArr=Object.values(empO).map(e=>{
+    const vr=empV[e.id];const sal=Math.max(0,pn(vr?.netEarn||0))*RATE;
+    const rph=e.hr>0?(sal/e.hr).toFixed(0):0;const pph=e.hr>0?(e.pk/e.hr).toFixed(0):0;
+    return{...e,sal,rph:pn(rph),pph:pn(pph),wh:vr?.wh||'—'};
+  }).filter(e=>e.hr>0).sort((a,b)=>b.rph-a.rph);
+  const avgRph=empCostArr.length?empCostArr.reduce((s,e)=>s+e.rph,0)/empCostArr.length:0;
+  const medRph=empCostArr.length?empCostArr[Math.floor(empCostArr.length/2)].rph:0;
+  set('ch-emp-cnt',empCostArr.length+' чел.');
+  const empCostRows=empCostArr.map(e=>{
+    const rphDiff=medRph>0?((e.rph-medRph)/medRph*100).toFixed(0):0;
+    return`<tr onclick="openEmp('${e.id}','')"><td class="td-name" style="font-size:13px">${e.fio||'—'}</td>
+      <td>${fmtN(e.hr,1)}</td><td class="td-mono g">${fmt(e.sal)}</td>
+      <td class="td-mono" style="color:var(--accent)">${fmt(e.rph)}${rphDiff!=='0'?`<span style="font-size:10px;margin-left:4px;color:${pn(rphDiff)>0?'var(--green)':'var(--red)'}">${pn(rphDiff)>0?'+':''}${rphDiff}%</span>`:''}</td>
+      <td>${fmtN(e.pk,0)}</td><td><span class="badge ${e.pph>500?'b-green':e.pph>250?'b-yellow':'b-red'}">${fmtN(e.pph,0)}</span></td>
+      <td><span class="badge b-yellow" style="font-size:10px">${e.wh}</span></td></tr>`;
+  }).join('')||emptyRow(7);
+  const empAvgRow=empCostArr.length?`<tr style="background:rgba(108,143,255,.06);border-top:2px solid rgba(108,143,255,.2);font-weight:600">
+    <td style="font-size:11px;color:var(--accent)">≈ СРЕДНЕЕ / МЕДИАНА</td><td>—</td><td>—</td>
+    <td class="td-mono" style="color:var(--accent)">${fmt(avgRph)} / ${fmt(medRph)}</td><td>—</td><td>—</td><td>—</td></tr>`:'';
+  set('bEmpCost',empCostRows+empAvgRow);
+  // Cost by type
+  const tm={};
+  o.forEach(r=>{if(!r.opType)return;if(!tm[r.opType])tm[r.opType]={t:r.opType,er:0,hr:0,pk:0};tm[r.opType].er+=pn(r.earn);tm[r.opType].hr+=pn(r.hours);tm[r.opType].pk+=pn(r.peaks);});
+  const tArr=Object.values(tm).filter(t=>t.hr>0).sort((a,b)=>(b.er/b.hr)-(a.er/a.hr));
+  const medRphNet=tArr.reduce((s,t)=>s+t.hr,0)>0?(tArr.reduce((s,t)=>s+t.er,0)*RATE/tArr.reduce((s,t)=>s+t.hr,0)):0;
+  set('bCostHour',tArr.map(t=>{
+    const rph=(t.er/t.hr).toFixed(0),rphNet=(t.er/t.hr*RATE).toFixed(0),pph=(t.pk/t.hr).toFixed(0);
+    const cfg=OP_CFG[t.t]||{color:'#6b7494'};
+    const rphDiff=medRphNet>0?((pn(rphNet)-medRphNet)/medRphNet*100).toFixed(0):0;
+    return`<tr><td>${opBadge(t.t)}</td><td>${fmt(t.er)}</td><td>${fmtN(t.hr,1)}</td>
+      <td class="td-mono" style="color:${cfg.color}">${fmt(pn(rph))}</td>
+      <td class="td-mono g">${fmt(pn(rphNet))}${rphDiff!=='0'?`<span style="font-size:10px;margin-left:4px;color:${pn(rphDiff)>0?'var(--green)':'var(--red)'}">${pn(rphDiff)>0?'+':''}${rphDiff}%</span>`:''}</td>
+      <td>${fmtN(pn(pph),0)}</td></tr>`;
+  }).join('')||emptyRow(6));
+  if(curChartTab==='daily')renderChartDaily(o);
+  else if(curChartTab==='perf')renderChartPerf(o);
+  else if(curChartTab==='fines')renderChartFines(f);
+  else if(curChartTab==='optypes')renderChartOptypes(o);
+  else if(curChartTab==='rph')renderChartRph(o,v);
+}
+
+function renderChartRph(o,v){
+  // Build ЗП/час per day — average of all employees who worked that day
+  const vMap={};
+  v.forEach(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    vMap[r.id]=sal;
+  });
+  const dayMap={};
+  o.forEach(r=>{
+    if(!r.date||!r.id)return;
+    if(!dayMap[r.date])dayMap[r.date]={totalSal:0,totalHrs:0,empHrs:{}};
+    const day=dayMap[r.date];
+    day.totalHrs+=pn(r.hours);
+    if(!day.empHrs[r.id])day.empHrs[r.id]=0;
+    day.empHrs[r.id]+=pn(r.hours);
+  });
+  // For each day: weighted avg ₽/hour
+  const data=Object.entries(dayMap).sort((a,b)=>a[0]<b[0]?-1:1).map(([date,d])=>{
+    let totalEarnProrated=0, totalHrs=0;
+    Object.entries(d.empHrs).forEach(([eid,hrs])=>{
+      const sal=vMap[eid]||0;
+      // Prorate ЗП по часам этого дня vs всего периода
+      const allHrs=o.filter(r=>r.id==eid).reduce((s,r)=>s+pn(r.hours),0);
+      const salDay=allHrs>0?sal*(hrs/allHrs):0;
+      totalEarnProrated+=salDay;
+      totalHrs+=hrs;
+    });
+    const rph=totalHrs>0?totalEarnProrated/totalHrs:0;
+    return{date,val:Math.round(rph)};
+  }).filter(d=>d.val>0);
+  set('chartRphWrap',svgBar(data,{barColor:'#34d399',valueKey:'val',fmt2:v=>v.toFixed(0)+' ₽/ч',avgLine:true}));
+}
+
+function renderChartDaily(o){
+  const dm={};o.forEach(r=>{if(r.date)dm[r.date]=(dm[r.date]||new Set()).add(r.id);});
+  const data=Object.entries(dm).sort((a,b)=>a[0]<b[0]?-1:1).map(([date,s])=>({date,val:s.size}));
+  set('chartDailyWrap',svgBar(data,{barColor:'#6c8fff',valueKey:'val',fmt2:v=>v+' чел.'}));
+}
+function renderChartPerf(o){
+  const dm={};o.forEach(r=>{if(!r.date)return;if(!dm[r.date])dm[r.date]={date:r.date,peaks:0,hours:0};dm[r.date].peaks+=pn(r.peaks);dm[r.date].hours+=pn(r.hours);});
+  set('chartPerfWrap',svgMultiBar(Object.values(dm).sort((a,b)=>a.date<b.date?-1:1),[{key:'peaks',label:'Пики',color:'#fbbf24'},{key:'hours',label:'Часы',color:'#38bdf8'}],{labelKey:'date'}));
+}
+function renderChartFines(f){
+  const dm={};f.forEach(r=>{if(r.date)dm[r.date]=(dm[r.date]||0)+pn(r.amount)-pn(r.ret);});
+  set('chartFinesWrap',svgBar(Object.entries(dm).sort((a,b)=>a[0]<b[0]?-1:1).map(([date,val])=>({date,val:Math.max(0,val)})),{barColor:'#f87171',valueKey:'val',fmt2:v=>v.toFixed(0)+' ₽'}));
+}
+function renderChartOptypes(o){
+  const tm={};o.forEach(r=>{if(!r.opType||!r.date)return;if(!tm[r.opType])tm[r.opType]={};tm[r.opType][r.date]=(tm[r.opType][r.date]||0)+pn(r.peaks);});
+  const types=Object.keys(tm).filter(t=>t&&t!=='Часы').slice(0,5);
+  const allDates=[...new Set(o.map(r=>r.date).filter(Boolean))].sort();
+  const data=allDates.map(date=>{const d={date};types.forEach(t=>{d[t]=tm[t]?.[date]||0;});return d;});
+  const colors=['#38bdf8','#34d399','#fbbf24','#fb923c','#a78bfa'];
+  set('chartOptypesWrap',svgMultiBar(data,types.map((t,i)=>({key:t,label:t.substring(0,10),color:colors[i]||'#6b7494'})),{labelKey:'date'}));
+}
+
+// ── Risk zone ──
+function toggleRiskRow(id){document.getElementById('risk-expand-'+id)?.classList.toggle('open');}
+function setRiskGrade(grade){
+  curRiskGradeFilter=grade;
+  ['all','F','D','C'].forEach(g=>{
+    const el=document.getElementById('risk-tier-'+g);
+    if(el)el.style.borderColor=g===grade?'var(--accent)':'';
+  });
+  renderRisk();
+}
+function setRiskType(type,el){
+  curRiskTypeFilter=type;
+  document.querySelectorAll('.qf-btn').forEach(b=>b.classList.remove('active'));
+  if(el)el.classList.add('active');
+  renderRisk();
+}
+
+function renderRisk(){
+  const v=getV(),fAll=getF(),oAll=getO();
+  const thresh=(pn(document.getElementById('riskThreshold')?.value)||20)/100;
+  const fMap={},oMap={};
+  fAll.forEach(r=>{if(!fMap[r.id])fMap[r.id]={tot:0,prod:0,home:0,cnt:0};const net=pn(r.amount)-pn(r.ret);fMap[r.id].tot+=net;fMap[r.id].cnt++;if(classifyFine(r.reason)==='work')fMap[r.id].prod+=net;else fMap[r.id].home+=net;});
+  oAll.forEach(r=>{if(!oMap[r.id])oMap[r.id]={hr:0,pk:0,er:0};oMap[r.id].hr+=pn(r.hours);oMap[r.id].pk+=pn(r.peaks);oMap[r.id].er+=pn(r.earn);});
+  const empData=v.map(r=>{
+    const sal=getSal(r.netEarn, r.wh);
+    const fm=fMap[r.id]||{tot:0,prod:0,home:0,cnt:0};
+    const om=oMap[r.id]||{hr:0,pk:0,er:0};
+    const hrs=om.hr||pn(r.hours);
+    const rph=hrs>0?sal/hrs:0,pph=hrs>0?om.pk/hrs:0;
+    const fineShare=sal>0?fm.tot/sal:0;
+    const isHourly=r.hourly==='Да';
+    const sc=calcScore(rph,fineShare,pph,pn(r.days),isHourly);
+    return{r,sal,fm,om,hrs,rph,pph,fineShare,isHourly,sc};
+  });
+  const rphVals=empData.filter(e=>e.rph>0).map(e=>e.rph).sort((a,b)=>a-b);
+  const medianRph=rphVals.length?rphVals[Math.floor(rphVals.length/2)]:0;
+  const withRisk=empData.map(e=>({...e,riskFines:e.fineShare>=thresh,riskLowRph:e.rph>0&&e.rph<medianRph*0.6&&!e.isHourly,riskHourly:e.isHourly&&pn(e.r.days)>0})).filter(e=>e.riskFines||e.riskLowRph||e.riskHourly);
+  set('risk-cnt-f',withRisk.filter(e=>e.sc.grade==='F').length);
+  set('risk-cnt-d',withRisk.filter(e=>e.sc.grade==='D').length);
+  set('risk-cnt-c',withRisk.filter(e=>e.sc.grade==='C').length);
+  set('risk-cnt',withRisk.length);
+  let filtered=withRisk;
+  if(curRiskGradeFilter==='F')filtered=filtered.filter(e=>e.sc.grade==='F');
+  else if(curRiskGradeFilter==='D')filtered=filtered.filter(e=>e.sc.grade==='D');
+  else if(curRiskGradeFilter==='C')filtered=filtered.filter(e=>e.sc.grade==='C');
+  if(curRiskTypeFilter==='fines')filtered=filtered.filter(e=>e.riskFines);
+  else if(curRiskTypeFilter==='lowrph')filtered=filtered.filter(e=>e.riskLowRph);
+  else if(curRiskTypeFilter==='hourly')filtered=filtered.filter(e=>e.riskHourly);
+  const sortKey=document.getElementById('riskSortSel')?.value||'score';
+  filtered.sort((a,b)=>{
+    if(sortKey==='score')return a.sc.score-b.sc.score;
+    if(sortKey==='fineShare')return b.fineShare-a.fineShare;
+    if(sortKey==='rph')return a.rph-b.rph;
+    if(sortKey==='sal')return b.sal-a.sal;
+    return a.sc.score-b.sc.score;
+  });
+  if(!filtered.length){set('riskCards','<div class="empty"><div class="empty-icon">✅</div><h4>Нет сотрудников</h4><p>По текущим фильтрам всё в порядке</p></div>');return;}
+  const tiers=[
+    {grade:'F',label:'Критично',color:'var(--red)',items:filtered.filter(e=>e.sc.grade==='F')},
+    {grade:'D',label:'Внимание',color:'var(--yellow)',items:filtered.filter(e=>e.sc.grade==='D')},
+    {grade:'C',label:'Следить',color:'var(--accent)',items:filtered.filter(e=>!['F','D'].includes(e.sc.grade))},
+  ].filter(t=>t.items.length);
+  set('riskCards',tiers.map(tier=>`
+    <div class="risk-tier">
+      <div class="risk-tier-header">
+        <div class="risk-tier-badge" style="color:${tier.color};background:rgba(108,143,255,.1)">${tier.grade}</div>
+        <span class="risk-tier-title" style="color:${tier.color}">${tier.label}</span>
+        <span class="risk-tier-cnt">${tier.items.length} чел.</span>
+      </div>
+      ${tier.items.map(e=>{
+        const tags=[];
+        if(e.riskFines)tags.push(`<span class="risk-tag-sm rt-fines">штрафы ${(e.fineShare*100).toFixed(0)}%</span>`);
+        if(e.riskLowRph)tags.push(`<span class="risk-tag-sm rt-low-rph">₽/час ${fmt(e.rph)}</span>`);
+        if(e.riskHourly)tags.push(`<span class="risk-tag-sm rt-hourly">почасовой</span>`);
+        const uid=e.r.id+'_r';
+        return`<div>
+          <div class="risk-row" onclick="toggleRiskRow('${uid}')">
+            <div class="score-badge ${e.sc.cls}" style="width:34px;height:34px;font-size:12px;flex-shrink:0">${e.sc.grade}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.r.fio||'—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                <span>${e.r.wh||'—'}</span><span>·</span><span>${e.r.days||0} дн.</span>${tags.join('')}
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-family:Unbounded;font-size:13px;font-weight:700;color:var(--green)">${fmt(e.sal)}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px">${e.rph>0?fmt(e.rph)+'/ч':'—'}</div>
+            </div>
+            <div style="color:var(--muted);font-size:12px;margin-left:8px">▾</div>
+          </div>
+          <div class="risk-row-expand" id="risk-expand-${uid}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:12px">
+              <div class="mob-stat"><div class="mob-stat-lbl">ЗП на руки</div><div class="mob-stat-val" style="color:var(--green)">${fmt(e.sal)}</div></div>
+              <div class="mob-stat"><div class="mob-stat-lbl">₽/час</div><div class="mob-stat-val" style="color:var(--accent)">${e.rph>0?fmt(e.rph):'—'}</div></div>
+              ${e.fm.prod>0?`<div class="mob-stat" style="background:rgba(248,113,113,.08)"><div class="mob-stat-lbl" style="color:var(--red)">Произв. штрафы</div><div class="mob-stat-val" style="color:var(--red)">${fmt(e.fm.prod)}</div></div>`:''}
+              ${e.fm.home>0?`<div class="mob-stat"><div class="mob-stat-lbl">Буфет</div><div class="mob-stat-val" style="color:var(--muted)">${fmt(e.fm.home)}</div></div>`:''}
+              <div class="mob-stat"><div class="mob-stat-lbl">Рейтинг</div><div class="mob-stat-val">${e.sc.score}/100</div></div>
+            </div>
+            ${e.sc.reasons.length?`<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px">${e.sc.reasons.map(r=>'· '+r).join(' · ')}</div>`:''}
+            <button onclick="openEmp('${e.r.id}','${e.r._period||''}');event.stopPropagation()" style="padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--accent)">Открыть карточку →</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`).join(''));
+}
+
+
+// ═══════════════════════ ADMIN AUTH ═══════════════════════
+const ADMIN_HASH = 'dc7e59c6ff7551b0bb1ae14bfa425623642de23dca4b1997c2fdc9409e3f3a55';
+const ADMIN_SESSION_KEY = 'wb_admin_session';
+const ADMIN_SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function isAdminAuthed(){
+  try{
+    const s = localStorage.getItem(ADMIN_SESSION_KEY);
+    if(!s) return false;
+    const {expires} = JSON.parse(s);
+    return Date.now() < expires;
+  } catch(e){ return false; }
+}
+
+function setAdminSession(){
+  localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({expires: Date.now() + ADMIN_SESSION_TTL}));
+}
+
+function clearAdminSession(){
+  localStorage.removeItem(ADMIN_SESSION_KEY);
+}
+
+async function checkAdminPwd(){
+  const val = document.getElementById('adminPwdInput')?.value || '';
+  const err = document.getElementById('adminPwdErr');
+  if(!val){ if(err) err.textContent = 'Введите пароль'; return; }
+  const hash = await sha256(val);
+  if(hash === ADMIN_HASH){
+    setAdminSession();
+    document.getElementById('adminLoginOverlay')?.classList.remove('show');
+    document.getElementById('adminPwdInput').value = '';
+    if(err) err.textContent = '';
+    document.getElementById('adminLogoutBtn').style.display = 'block';
+    renderRateSettings();
+    renderPeriodsList();
+  } else {
+    if(err) err.textContent = '❌ Неверный пароль';
+    document.getElementById('adminPwdInput').value = '';
+    document.getElementById('adminPwdInput').focus();
+  }
+}
+
+function adminLogout(){
+  clearAdminSession();
+  document.getElementById('adminLogoutBtn').style.display = 'none';
+  go('overview');
+}
+
+// Intercept admin screen navigation
+const _origGo = go;
+go = function(id){
+  if(id === 'admin'){
+    if(!isAdminAuthed()){
+      // Show login overlay first, then navigate
+      _origGo('admin');
+      document.getElementById('adminLoginOverlay')?.classList.add('show');
+      setTimeout(()=>document.getElementById('adminPwdInput')?.focus(), 100);
+      return;
+    }
+    document.getElementById('adminLogoutBtn').style.display = 'block';
+    renderRateSettings();
+    renderPeriodsList();
+  }
+  _origGo(id);
+};
+
+// ═══════════════════════ RATE SETTINGS ═══════════════════════
+const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/69ec56d6856a6821896e423d';
+const JSONBIN_KEY = '$2a$10$Z6D9P/PIrScqDFqj.zWHzOj1weNOyndrzYTlN4wIsl3yyxvagfQIy';
+const JSONBIN_MASTER = '$2a$10$c3DaB8yPy4hbi7THoFIyL.mj4LGf/7FL8ut6ueio4rATt8QgohhvK';
+let rateSettings = { global: 70, overrides: {} };
+
+async function loadRateSettings(){
+  // First load from localStorage as fast fallback
+  try{
+    const local = localStorage.getItem('wb_rates');
+    if(local) rateSettings = JSON.parse(local);
+  } catch(e){}
+  // Then fetch fresh from JSONBin (shared across all users)
+  try{
+    const r = await fetch(JSONBIN_URL + '/latest', {
+      headers: {'X-Access-Key': JSONBIN_KEY, 'X-Bin-Meta': 'false'}
+    });
+    if(r.ok){
+      const data = await r.json();
+      rateSettings = data.record;
+      localStorage.setItem('wb_rates', JSON.stringify(rateSettings));
+    }
+  } catch(e){ console.warn('JSONBin load failed, using local cache'); }
+}
+
+async function saveRates(){
+  // Read global rate
+  const globalVal = pn(document.getElementById('globalRateInput')?.value) || 70;
+  rateSettings.global = Math.max(50, Math.min(90, globalVal));
+  // Read per-warehouse overrides
+  document.querySelectorAll('.rate-wh-input').forEach(inp=>{
+    const wh = inp.dataset.wh;
+    const val = pn(inp.value);
+    if(val > 0 && val !== rateSettings.global){
+      rateSettings.overrides[wh] = Math.max(50, Math.min(90, val));
+    } else {
+      delete rateSettings.overrides[wh];
+    }
+  });
+  // Save to localStorage as cache
+  localStorage.setItem('wb_rates', JSON.stringify(rateSettings));
+  // Save to JSONBin (shared for all users)
+  const btn = document.querySelector('[onclick="saveRates()"]');
+  if(btn){ btn.textContent = '⏳ Сохраняем...'; btn.disabled = true; }
+  try{
+    const r = await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Access-Key': JSONBIN_KEY
+      },
+      body: JSON.stringify(rateSettings)
+    });
+    if(r.ok){
+      showAlert('ratesAlert', '✅ Ставки сохранены и применены для всех пользователей', 'ok');
+    } else {
+      showAlert('ratesAlert', '⚠️ Сохранено локально, ошибка синхронизации: ' + r.status, 'ok');
+    }
+  } catch(e){
+    showAlert('ratesAlert', '⚠️ Сохранено локально (нет подключения к сети)', 'ok');
+  }
+  if(btn){ btn.textContent = '💾 Сохранить ставки'; btn.disabled = false; }
+  renderRateSettings();
+  refreshAll();
+}
+
+async function resetRates(){
+  rateSettings = { global: 70, overrides: {} };
+  localStorage.removeItem('wb_rates');
+  document.getElementById('globalRateInput').value = 70;
+  document.getElementById('globalRateSlider').value = 70;
+  try{
+    await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json','X-Master-Key': JSONBIN_MASTER},
+      body: JSON.stringify(rateSettings)
+    });
+  } catch(e){}
+  renderRateSettings();
+  refreshAll();
+  showAlert('ratesAlert', '✅ Ставки сброшены к 70% для всех пользователей', 'ok');
+}
+
+function onGlobalRateChange(val){
+  const v = Math.max(50, Math.min(90, pn(val) || 70));
+  const slider = document.getElementById('globalRateSlider');
+  const input = document.getElementById('globalRateInput');
+  if(slider) slider.value = v;
+  if(input) input.value = v;
+}
+
+function applyRateToAll(){
+  const globalVal = pn(document.getElementById('globalRateInput')?.value) || 70;
+  rateSettings.overrides = {};
+  document.querySelectorAll('.rate-wh-input').forEach(inp=>{ inp.value = globalVal; });
+}
+
+function renderRateSettings(){
+  // Collect all warehouses from loaded data
+  const whSet = new Set();
+  Object.values(periods).forEach(p=>{
+    (p.vyrab||[]).forEach(r=>{ if(r.wh) whSet.add(r.wh); });
+  });
+  const warehouses = [...whSet].sort();
+  const el = document.getElementById('rateByWarehouse');
+  if(!el) return;
+  // Sync global slider/input
+  const gi = document.getElementById('globalRateInput');
+  const gs = document.getElementById('globalRateSlider');
+  if(gi) gi.value = rateSettings.global;
+  if(gs) gs.value = rateSettings.global;
+  if(!warehouses.length){
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:12px 0">Загрузите данные чтобы увидеть список складов</div>';
+    return;
+  }
+  el.innerHTML = warehouses.map(wh=>{
+    const override = rateSettings.overrides[wh];
+    const val = override !== undefined ? override : rateSettings.global;
+    const isOverride = override !== undefined && override !== rateSettings.global;
+    return `<div class="rate-row">
+      <div class="rate-label">
+        <div>${wh}</div>
+        ${isOverride ? `<div style="font-size:11px;color:var(--accent)">↳ переопределено (глобально: ${rateSettings.global}%)</div>` : '<div style="font-size:11px;color:var(--muted)">использует глобальную ставку</div>'}
+      </div>
+      <input class="rate-input rate-wh-input" type="number" data-wh="${wh}"
+        value="${val}" min="50" max="90"
+        style="border-color:${isOverride ? 'var(--accent)' : 'var(--border)'}"
+        oninput="this.style.borderColor=pn(this.value)!==rateSettings.global?'var(--accent)':'var(--border)'">
+      <span class="rate-badge">%</span>
+      <span style="font-size:11px;color:var(--muted)">≈ ${fmt(50000 * val / 100)} с 50к выраб.</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Get effective rate for a warehouse ──
+function getRate(wh){
+  if(rateSettings.overrides[wh] !== undefined)
+    return rateSettings.overrides[wh] / 100;
+  return rateSettings.global / 100;
+}
+
+// ═══════════════════════ ZERO FILTER ═══════════════════════
+// Override getV to filter out employees with all zeros
+const _origGetV = getV;
+getV = function(){
+  return _origGetV().filter(r =>
+    pn(r.days) > 0 || pn(r.hours) > 0 || pn(r.peaks) > 0 || pn(r.netEarn) !== 0
+  );
+};
+
+// ═══════════════════════ INIT ═══════════════════════
+window.addEventListener('DOMContentLoaded',async ()=>{
+  await loadRateSettings();
+  loadAllPeriods();
+});
+</script>
+</body>
+</html>

@@ -10,9 +10,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy HTML files to VPS
+      - name: Deploy all files to VPS
         run: |
           echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
           chmod 600 /tmp/vps_key
-          scp -i /tmp/vps_key -o StrictHostKeyChecking=no index.html okk.html root@195.208.119.67:/var/www/okk/
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitattributes' \
+            -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \
+            . root@195.208.119.67:/var/www/okk/
           rm /tmp/vps_key
