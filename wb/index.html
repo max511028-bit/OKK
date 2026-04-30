@@ -805,8 +805,33 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
 <script>
 // ═══════════════════════ DATA ═══════════════════════
 let periods={}, curPeriod='all', curSearch='', curCity='all', sortSt={}, curEmpFilter='all', curRiskGradeFilter='all', curRiskTypeFilter='all', curRiskSort='score';
+let allFines=[], allOps=[];
 const RATE=0.70; // default fallback
 function getSal(netEarn, wh){ return Math.max(0, pn(netEarn)) * getRate(wh); }
+
+// Parse "DD.MM.YYYY" or "YYYY-MM-DD" → Date
+function parseRowDate(str){
+  if(!str)return null;
+  if(/^\d{2}\.\d{2}\.\d{4}$/.test(str)){
+    const[d,m,y]=str.split('.');return new Date(`${y}-${m}-${d}`);
+  }
+  const d=new Date(str);return isNaN(d)?null:d;
+}
+// Parse period key "2026-01-01_2026-01-15" → {start,end} (inclusive)
+function parsePeriodRange(key){
+  const p=key.split('_');
+  if(p.length!==2)return null;
+  return{start:new Date(p[0]),end:new Date(p[1])};
+}
+// Filter rows from a global array to only those within the given period
+function filterByPeriod(rows,key){
+  const range=parsePeriodRange(key);
+  if(!range)return rows;
+  return rows.filter(r=>{
+    const d=parseRowDate(r.date);
+    return d&&d>=range.start&&d<=range.end;
+  });
+}
 
 const V_KEYS=['id','fio','hire','wh','lastPeak','firstWH','days','hours','avgShift','peaks','tarif','fineTarif','retPenalty','finePenalty','retWriteoff','writeoff','totalEarn','totalDed','earnAfterDed','netEarn','office','hourly'];
 const F_KEYS_OLD=['date','id','fio','city','reason','wh','amount','type','ret'];
@@ -843,17 +868,13 @@ function getV(){
   return r;
 }
 function getF(){
-  let r=[];
-  if(curPeriod==='all')Object.values(periods).forEach(p=>r=r.concat(p.fines||[]));
-  else r=(periods[curPeriod]?.fines)||[];
+  let r=curPeriod==='all'?allFines:(periods[curPeriod]?.fines||[]);
   if(curCity!=='all')r=r.filter(x=>(x.wh||x.city||'')===curCity);
   if(curSearch){const q=curSearch.toLowerCase();r=r.filter(x=>(x.fio||'').toLowerCase().includes(q));}
   return r;
 }
 function getO(){
-  let r=[];
-  if(curPeriod==='all')Object.values(periods).forEach(p=>r=r.concat(p.ops||[]));
-  else r=(periods[curPeriod]?.ops)||[];
+  let r=curPeriod==='all'?allOps:(periods[curPeriod]?.ops||[]);
   if(curCity!=='all')r=r.filter(x=>(x.wh||'')===curCity);
   if(curSearch){const q=curSearch.toLowerCase();r=r.filter(x=>(x.fio||'').toLowerCase().includes(q));}
   return r;
@@ -1521,16 +1542,8 @@ function connectGS(){reloadFromGitHub();}
 // ═══════════════════════ DEMO DATA ═══════════════════════
 
 // ═══════════════════════ GITHUB DATA LOADER ═══════════════════════
-// Repo config — автоматически определяется из текущего URL
+// Repo config — CSV данные всегда из репозитория WB
 function getRepoConfig(){
-  const host=window.location.hostname;
-  if(host.includes('github.io')){
-    const parts=window.location.pathname.split('/').filter(Boolean);
-    const owner=host.replace('.github.io','');
-    const repo=parts[0]||'WB';
-    return{owner,repo,branch:'main'};
-  }
-  // Local dev fallback
   return{owner:'max511028-bit',repo:'WB',branch:'main'};
 }
 
@@ -1611,15 +1624,37 @@ async function fetchCSV(period, fileType){
   return[];
 }
 
-// Load a single period's CSV files into periods[key]
+// Fetch a single global CSV (штрафы/операции живут в data/ без подпапки периода)
+async function fetchGlobalCSV(fileType){
+  const names=FILE_MAP[fileType];
+  for(const name of names){
+    const url=`${BASE_RAW}/${cfg.owner}/${cfg.repo}/${cfg.branch}/data/${encodeURIComponent(name)}`;
+    try{
+      const r=await fetch(url);
+      if(r.ok){
+        const text=await r.text();
+        const clean=text.replace(/^\uFEFF/,'');
+        const firstLine=clean.split(/\r?\n/)[0];
+        const sep=firstLine.includes(';')?';':',';
+        const firstCell=firstLine.split(sep)[0].replace(/"/g,'').trim();
+        const isNew=firstCell==='Компания';
+        const keys=fileType==='fines'?(isNew?F_KEYS:F_KEYS_OLD):(isNew?O_KEYS:O_KEYS_OLD);
+        return parseCSV(text,keys,'global');
+      }
+    }catch(e){}
+  }
+  return[];
+}
+
+// Load a single period's vyrab into periods[key]; fines/ops sliced from globals
 async function loadPeriod(key){
-  const [vyrab,fines,ops]=await Promise.all([
-    fetchCSV(key,'vyrab'),
-    fetchCSV(key,'fines'),
-    fetchCSV(key,'ops'),
-  ]);
-  if(vyrab.length||fines.length||ops.length){
-    periods[key]={vyrab,fines,ops};
+  const vyrab=await fetchCSV(key,'vyrab');
+  if(vyrab.length){
+    periods[key]={
+      vyrab,
+      fines:filterByPeriod(allFines,key),
+      ops:filterByPeriod(allOps,key),
+    };
     return true;
   }
   return false;
@@ -1643,7 +1678,13 @@ async function loadAllPeriods(){
       return;
     }
 
-    // 2. Find the latest period that actually has data (iterate from end)
+    // 2. Load global fines and ops (single files, split by period client-side)
+    [allFines,allOps]=await Promise.all([
+      fetchGlobalCSV('fines'),
+      fetchGlobalCSV('ops'),
+    ]);
+
+    // 3. Find the latest period that actually has vyrab data (iterate from end)
     let latest=null;
     for(let i=allPeriodKeys.length-1;i>=0;i--){
       const ok=await loadPeriod(allPeriodKeys[i]);
