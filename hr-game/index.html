@@ -1,1 +1,1343 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HR-Игра — Скоро</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',sans-serif;background:#0F172A;color:#F1F5F9;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}.icon{font-size:64px}.title{font-size:28px;font-weight:700}.sub{font-size:15px;color:#64748B}.back{margin-top:12px;color:#3B82F6;text-decoration:none;font-size:14px}</style></head><body><div class="icon">🎮</div><div class="title">Дашборд HR-Игра</div><div class="sub">Раздел в разработке</div><a class="back" href="../">← На главную</a></body></html>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Тренажёр возражений</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#ffffff;--bg2:#f7f7f5;--bg3:#f0ede8;
+  --text:#1a1a1a;--text2:#666;--text3:#999;
+  --border:#e0ddd8;--border2:#c8c5c0;
+  --blue:#185FA5;--blue-light:#E6F1FB;--blue-dark:#0C447C;
+  --green:#3B6D11;--green-light:#EAF3DE;
+  --amber:#854F0B;--amber-light:#FAEEDA;
+  --red:#A32D2D;--red-light:#FCEBEB;
+  --purple:#534AB7;--purple-light:#EEEDFE;
+  --radius:8px;--radius-lg:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1e1e1c;--bg2:#2a2a27;--bg3:#313130;
+  --text:#f0ede8;--text2:#a0a09a;--text3:#666;
+  --border:#3a3a36;--border2:#4a4a46;
+  --blue:#378ADD;--blue-light:#0c2a45;--blue-dark:#85B7EB;
+  --green:#639922;--green-light:#1a2e08;
+  --amber:#EF9F27;--amber-light:#2a1e06;
+  --red:#E24B4A;--red-light:#2a0e0e;
+  --purple:#7F77DD;--purple-light:#1e1c3a;
+}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg3);min-height:100vh;line-height:1.5}
+.screen{display:none}.screen.active{display:block}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.nav-logo{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--text)}
+.nav-right{display:flex;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;border:1px solid var(--border2);border-radius:var(--radius);background:transparent;color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit}
+.btn:hover{background:var(--bg2)}.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}.btn-primary:hover{background:var(--blue-dark);border-color:var(--blue-dark);color:#fff}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-danger{background:var(--red);color:#fff;border-color:var(--red)}.btn-danger:hover{background:#791F1F;border-color:#791F1F;color:#fff}
+.btn-ghost{border-color:transparent;color:var(--text2)}.btn-ghost:hover{background:var(--bg2);color:var(--text)}
+.page{max-width:680px;margin:0 auto;padding:28px 20px}
+.page-wide{max-width:820px;margin:0 auto;padding:28px 20px}
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px}
+input,textarea,select{width:100%;padding:9px 12px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;transition:border-color .15s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
+label{font-size:12px;color:var(--text2);display:block;margin-bottom:5px}
+h1{font-size:24px;font-weight:700}h2{font-size:20px;font-weight:600}h3{font-size:16px;font-weight:600}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-blue{background:var(--blue-light);color:var(--blue-dark)}.badge-green{background:var(--green-light);color:var(--green)}
+.badge-amber{background:var(--amber-light);color:var(--amber)}.badge-red{background:var(--red-light);color:var(--red)}
+.badge-purple{background:var(--purple-light);color:var(--purple)}
+.prog-bar{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.prog-fill{height:6px;background:var(--blue);border-radius:3px;transition:width .4s ease}
+.ans-btn{text-align:left;padding:14px 16px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;cursor:pointer;width:100%;transition:border-color .15s,background .15s;font-family:inherit;display:block}
+.ans-btn:hover:not(:disabled){border-color:var(--blue);background:var(--blue-light);color:var(--blue-dark)}
+.ans-btn.s3{border-color:var(--green)!important;background:var(--green-light)!important;color:var(--green)!important}
+.ans-btn.s2{border-color:var(--blue)!important;background:var(--blue-light)!important;color:var(--blue-dark)!important}
+.ans-btn.s1{border-color:var(--amber)!important;background:var(--amber-light)!important;color:var(--amber)!important}
+.ans-btn.s0{border-color:var(--red)!important;background:var(--red-light)!important;color:var(--red)!important}
+.fb-box{border-radius:var(--radius);padding:14px 16px;font-size:13px;line-height:1.65;margin-top:14px;border:1px solid}
+.fb3{background:var(--green-light);border-color:var(--green);color:var(--green)}
+.fb2{background:var(--blue-light);border-color:var(--blue);color:var(--blue-dark)}
+.fb1{background:var(--amber-light);border-color:var(--amber);color:var(--amber)}
+.fb0{background:var(--red-light);border-color:var(--red);color:var(--red)}
+.lb-row{display:grid;grid-template-columns:40px 1fr 70px 80px 80px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+.lb-head{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.rnk{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.r1{background:#FAEEDA;color:#633806}.r2{background:#e8e8e8;color:#444}.r3{background:#FAEEDA;color:#854F0B}.rn{background:var(--bg2);color:var(--text2)}
+.tab-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px}
+.tab{padding:7px 14px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .15s;font-family:inherit}
+.tab:hover{background:var(--bg2);color:var(--text)}.tab.on{background:var(--bg);color:var(--text);border-color:var(--border2);font-weight:600}
+.q-item{background:var(--bg2);border-radius:var(--radius);padding:14px;margin-bottom:10px;border:1px solid var(--border)}
+.q-item-text{font-size:13px;font-weight:600;margin-bottom:10px;line-height:1.4}
+.a-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:5px}
+.sdot{width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.d3{background:var(--green-light);color:var(--green)}.d2{background:var(--blue-light);color:var(--blue-dark)}.d1{background:var(--amber-light);color:var(--amber)}.d0{background:var(--red-light);color:var(--red)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:flex-start;justify-content:center;padding:20px;z-index:200;overflow-y:auto}
+.overlay.on{display:flex}
+.modal{background:var(--bg);border-radius:var(--radius-lg);padding:24px;width:100%;max-width:500px;border:1px solid var(--border);margin-top:40px;margin-bottom:40px}
+.sep{height:1px;background:var(--border);margin:16px 0}
+.flex{display:flex}.gap-8{gap:8px}.gap-12{gap:12px}
+.mt-4{margin-top:4px}.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}.mt-20{margin-top:20px}
+.mb-4{margin-bottom:4px}.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}.mb-20{margin-bottom:20px}
+.between{justify-content:space-between}.center{justify-content:center}.items-center{align-items:center}
+.w100{width:100%}.muted{color:var(--text2)}.small{font-size:12px}.fw6{font-weight:600}.text-center{text-align:center}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+.stat-box{background:var(--bg2);border-radius:var(--radius);padding:16px;text-align:center;border:1px solid var(--border)}
+.stat-num{font-size:28px;font-weight:700;margin-bottom:3px}.stat-lbl{font-size:11px;color:var(--text2)}
+.score-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.score-row:last-child{border-bottom:none}
+.empty-state{padding:32px 20px;text-align:center;color:var(--text2);font-size:14px;border:1px dashed var(--border);border-radius:var(--radius);margin-top:8px}
+.topic-count{font-size:11px;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:2px 8px;margin-left:6px}
+.hero{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:32px;text-align:center;margin-bottom:20px}
+.hero-icon{width:60px;height:60px;border-radius:50%;background:var(--blue-light);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.mini-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.mini-stat{background:var(--bg2);border-radius:var(--radius);padding:12px;text-align:center;border:1px solid var(--border)}
+.mini-num{font-size:20px;font-weight:700;margin-bottom:2px}.mini-lbl{font-size:11px;color:var(--text2)}
+.how-it-works{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px}
+.how-step{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}.how-step:last-child{margin-bottom:0}
+.step-num{width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.loading-bar{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--blue-light);border-radius:var(--radius);border:1px solid var(--blue);font-size:13px;color:var(--blue-dark);margin-bottom:16px}
+.spinner{width:16px;height:16px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}
+.bar-label{width:220px;flex-shrink:0;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.bar-track{flex:1;height:22px;background:var(--bg2);border-radius:4px;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:4px;transition:width .6s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:11px;font-weight:600;color:#fff;white-space:nowrap}
+.bar-count{width:60px;flex-shrink:0;font-size:11px;color:var(--text3);text-align:left}
+.bar-fill.good{background:var(--green)}
+.bar-fill.ok{background:var(--blue)}
+.bar-fill.bad{background:var(--amber)}
+.bar-fill.poor{background:var(--red)}
+
+
+/* === STREAK & ACHIEVEMENTS === */
+.streak-box{display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:12px}
+.streak-flame{font-size:28px;line-height:1}
+.streak-num{font-size:26px;font-weight:700;color:var(--amber);line-height:1}
+.streak-lbl{font-size:12px;color:var(--text2);margin-top:2px}
+.achiev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
+.achiev-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;text-align:center;transition:opacity .2s}
+.achiev-card.locked{opacity:.4;filter:grayscale(1)}
+.achiev-icon{font-size:28px;margin-bottom:6px}
+.achiev-name{font-size:12px;font-weight:600;margin-bottom:3px}
+.achiev-desc{font-size:11px;color:var(--text2);line-height:1.4}
+/* === TOAST ACHIEVEMENT === */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:var(--radius-lg);font-size:13px;font-weight:500;z-index:999;transition:transform .4s cubic-bezier(.34,1.56,.64,1);display:flex;align-items:center;gap:10px;max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,.2)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+/* === VS TEAM CHART === */
+.vs-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px}
+.vs-label{width:80px;flex-shrink:0;font-weight:600;font-size:12px}
+.vs-track{flex:1;height:22px;background:var(--bg2);border-radius:4px;overflow:hidden;position:relative}
+.vs-fill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap;transition:width .8s ease}
+.vs-me{background:var(--blue)}
+.vs-team{background:var(--text3)}
+/* === MY TOPICS === */
+.my-topic-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:13px}
+.my-topic-name{width:200px;flex-shrink:0;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.my-topic-track{flex:1;height:22px;background:var(--bg2);border-radius:4px;overflow:hidden}
+.my-topic-fill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;font-size:11px;font-weight:700;color:#fff;transition:width .6s ease}
+.delta-badge{font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;flex-shrink:0;width:52px;text-align:center}
+.delta-up{background:var(--green-light);color:var(--green)}
+.delta-down{background:var(--red-light);color:var(--red)}
+.delta-eq{background:var(--bg2);color:var(--text2)}
+
+.setup-banner{padding:16px;background:var(--amber-light);border:1px solid var(--amber);border-radius:var(--radius);font-size:13px;color:var(--amber);margin-bottom:16px;line-height:1.6}
+@media(max-width:600px){
+  .lb-row{grid-template-columns:32px 1fr 56px 64px}.lb-row>:nth-child(5){display:none}
+  .nav{padding:12px 16px}.page,.page-wide{padding:20px 14px}
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <span class="nav-logo">
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M7 10l2 2 4-4"/></svg>
+    Тренажёр возражений
+  </span>
+  <div class="nav-right">
+    <button class="btn btn-sm" onclick="gotoLb()">Рейтинг</button>
+    <button class="btn btn-sm" onclick="gotoProfile()">Мой профиль</button>
+    <button class="btn btn-sm" onclick="gotoStats()">Аналитика</button>
+    <button class="btn btn-sm" onclick="showAdminLogin()">Админ</button>
+  </div>
+</div>
+
+<div class="screen active" id="sc-home">
+  <div class="page" style="max-width:540px">
+    <div id="home-enter">
+      <div class="hero">
+        <div class="hero-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+        <h1 style="font-size:22px;margin-bottom:8px">Тренажёр возражений</h1>
+        <p class="muted" style="font-size:14px;max-width:360px;margin:0 auto">Отточи навык работы с возражениями кандидатов в формате игры</p>
+      </div>
+      <div class="card">
+        <h3 class="mb-16">Начать тренировку</h3>
+        <label>Ваше ФИО</label>
+        <input id="inp-name" type="text" placeholder="Иванова Анна Сергеевна" style="margin-top:5px">
+        <button class="btn btn-primary w100 mt-12" style="padding:11px" onclick="enterName()">Начать</button>
+      </div>
+    </div>
+    <div id="home-ready" style="display:none">
+      <div class="flex between items-center mb-20">
+        <div><h1>Привет, <span id="span-name" style="color:var(--blue)"></span>!</h1><p class="muted mt-4 small">Готов к тренировке?</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="resetName()">Сменить имя</button>
+      </div>
+      <div id="home-stats-wrap" class="mb-16"></div>
+      <div class="how-it-works mb-16">
+        <div class="fw6 mb-12" style="font-size:14px">Как проходит тест</div>
+        <div class="how-step"><div class="step-num">1</div><div style="font-size:13px;color:var(--text2)">Ты получаешь <strong style="color:var(--text)">5 вопросов</strong> — по одному из 5 случайно выбранных тем</div></div>
+        <div class="how-step"><div class="step-num">2</div><div style="font-size:13px;color:var(--text2)">Выбираешь лучший ответ на возражение кандидата из 4 вариантов</div></div>
+        <div class="how-step"><div class="step-num">3</div><div style="font-size:13px;color:var(--text2)">Получаешь <span class="badge badge-green">3 балла</span> <span class="badge badge-blue">2</span> <span class="badge badge-amber">1</span> <span class="badge badge-red">0</span> и рекомендацию</div></div>
+        <div class="how-step"><div class="step-num">4</div><div style="font-size:13px;color:var(--text2)">Попадаешь в общий рейтинг и соревнуешься с коллегами</div></div>
+      </div>
+      <button class="btn btn-primary w100" style="padding:13px;font-size:15px" onclick="startAttempt()">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+        Начать попытку
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sc-quiz">
+  <div class="page">
+    <div class="flex between items-center mb-12">
+      <div><div class="small muted" id="qz-step"></div><div style="margin-top:5px" id="qz-topic-label"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="confirmExit()">✕ Выйти</button>
+    </div>
+    <div class="prog-bar mb-20"><div class="prog-fill" id="prog" style="width:0%"></div></div>
+    <div class="card">
+      <div class="small muted mb-8" style="text-transform:uppercase;letter-spacing:.04em;font-weight:600">Возражение кандидата</div>
+      <div id="qz-text" style="font-size:15px;font-weight:600;line-height:1.55;margin-bottom:20px;padding:14px;background:var(--bg2);border-radius:var(--radius);border-left:3px solid var(--blue)"></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Выберите лучший ответ рекрутёра:</div>
+      <div id="qz-answers" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div id="qz-fb"></div>
+      <div id="qz-next" style="display:none;margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sc-results">
+  <div class="page" style="max-width:540px">
+    <div class="card">
+      <div class="text-center" style="padding:8px 0 16px">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--blue-light);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+          <svg width="24" height="24" viewBox="0 0 20 20" fill="none" stroke="var(--blue)" stroke-width="1.5"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.1l-4.76 2.55.91-5.3L2.3 7.6l5.3-.8z"/></svg>
+        </div>
+        <h2 id="res-title">Попытка завершена!</h2>
+        <p class="muted small mt-8" id="res-name"></p>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-num" id="res-score">0</div><div class="stat-lbl">Баллов из 15</div></div>
+        <div class="stat-box"><div class="stat-num" id="res-pct">0%</div><div class="stat-lbl">Результат</div></div>
+      </div>
+      <div class="sep"></div>
+      <div class="fw6 mb-10" style="font-size:14px">Разбор по вопросам</div>
+      <div id="res-breakdown"></div>
+      <div class="sep"></div>
+      <div class="flex gap-8 center">
+        <button class="btn btn-primary" onclick="startAttempt()">Ещё попытка</button>
+        <button class="btn" onclick="gotoLb()">Рейтинг</button>
+        <button class="btn btn-ghost" onclick="gotoHome()">На главную</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sc-lb">
+  <div class="page">
+    <div class="flex between items-center mb-16">
+      <h2>Рейтинг рекрутёров</h2>
+      <button class="btn btn-sm" onclick="gotoHome()">На главную</button>
+    </div>
+    <!-- Tabs -->
+    <div style="display:flex;gap:4px;background:var(--bg2);padding:4px;border-radius:var(--radius);margin-bottom:16px;width:fit-content">
+      <button id="lb-tab-all" onclick="switchLbTab('all')"
+        style="padding:7px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit;background:var(--bg);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .15s">
+        Общий
+      </button>
+      <button id="lb-tab-week" onclick="switchLbTab('week')"
+        style="padding:7px 18px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;background:transparent;color:var(--text2);transition:all .15s">
+        Эта неделя
+      </button>
+    </div>
+    <div id="lb-loading" class="loading-bar"><div class="spinner"></div>Загружаем рейтинг...</div>
+    <!-- All-time leaderboard -->
+    <div class="card" id="lb-card-all" style="display:none">
+      <div class="lb-row lb-head" style="padding-bottom:8px">
+        <div></div><div>Имя</div><div style="text-align:center">Попыток</div><div style="text-align:center">Ср. балл</div><div style="text-align:center">Итого</div>
+      </div>
+      <div id="lb-list-all"></div>
+    </div>
+    <!-- Weekly leaderboard -->
+    <div class="card" id="lb-card-week" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <p class="small muted" id="lb-week-label"></p>
+        <span class="badge badge-blue">Обновляется каждый пн</span>
+      </div>
+      <div class="lb-row lb-head" style="padding-bottom:8px">
+        <div></div><div>Имя</div><div style="text-align:center">Попыток</div><div style="text-align:center">Ср. балл</div><div style="text-align:center">Баллы</div>
+      </div>
+      <div id="lb-list-week"></div>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="screen" id="sc-profile">
+  <div class="page" style="max-width:640px">
+    <div class="flex between items-center mb-20">
+      <h2>Мой профиль</h2>
+      <button class="btn btn-sm" onclick="gotoHome()">На главную</button>
+    </div>
+    <div id="profile-loading" class="loading-bar"><div class="spinner"></div>Загружаем данные...</div>
+    <div id="profile-body" style="display:none">
+
+      <!-- Streak -->
+      <div class="streak-box mb-4" id="profile-streak"></div>
+
+      <!-- Summary stats -->
+      <div class="stat-grid mb-16" id="profile-summary"></div>
+
+      <!-- Я vs Команда -->
+      <div class="card mb-16">
+        <div class="fw6 mb-4" style="font-size:15px">Я vs Команда</div>
+        <p class="small muted mb-16">Сравнение твоего среднего результата с командой по каждой теме</p>
+        <div id="profile-vs"></div>
+      </div>
+
+      <!-- Мои темы -->
+      <div class="card mb-16">
+        <div class="fw6 mb-4" style="font-size:15px">Мои темы</div>
+        <p class="small muted mb-16">Твои результаты по темам — от слабых к сильным</p>
+        <div id="profile-topics"></div>
+      </div>
+
+      <!-- Ачивки -->
+      <div class="card">
+        <div class="fw6 mb-4" style="font-size:15px">Достижения</div>
+        <p class="small muted mb-8">Разблокировано: <span id="achiev-count" style="font-weight:600;color:var(--blue)">0</span></p>
+        <div class="achiev-grid" id="profile-achievements"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sc-stats">
+  <div class="page" style="max-width:760px">
+    <div class="flex between items-center mb-20">
+      <h2>Аналитика команды</h2>
+      <button class="btn btn-sm" onclick="gotoHome()">На главную</button>
+    </div>
+    <div id="stats-loading" class="loading-bar"><div class="spinner"></div>Загружаем аналитику...</div>
+    <div id="stats-body" style="display:none">
+      <div class="stat-grid mb-16" id="stats-summary"></div>
+      <div class="card mb-16">
+        <div class="fw6 mb-4" style="font-size:15px">Результаты по темам</div>
+        <p class="small muted mb-16">Средний % правильных ответов по каждой теме — отсортировано от худшего к лучшему</p>
+        <div id="chart-topics"></div>
+      </div>
+      <div class="card mb-16">
+        <div class="fw6 mb-4" style="font-size:15px">Топ-5 проблемных возражений</div>
+        <p class="small muted mb-16">Вопросы с наименьшим средним баллом — зоны роста команды</p>
+        <div id="chart-worst"></div>
+      </div>
+      <div class="card">
+        <div class="fw6 mb-4" style="font-size:15px">Топ-5 лучших возражений</div>
+        <p class="small muted mb-16">Вопросы с наибольшим средним баллом — сильные стороны команды</p>
+        <div id="chart-best"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="sc-admin">
+  <div class="page-wide">
+    <div class="flex between items-center mb-16" style="flex-wrap:wrap;gap:8px">
+      <h2>Панель администратора</h2>
+      <div class="flex gap-8" style="flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="openAddTopic()">+ Новая тема</button>
+        <button class="btn btn-sm" onclick="openAddQ()">+ Новый вопрос</button>
+        <button class="btn btn-danger btn-sm" onclick="doLogout()">Выйти</button>
+      </div>
+    </div>
+    <div id="admin-sync-status" style="display:none;margin-bottom:16px"></div>
+    <div class="mb-16" style="font-size:13px;color:var(--blue-dark);padding:12px 16px;background:var(--blue-light);border-radius:var(--radius);border:1px solid var(--blue)">
+      <strong>Для работы теста нужно минимум 5 тем с вопросами.</strong> Каждая попытка = 5 случайных вопросов из 5 разных тем. Изменения сохраняются в Google Таблицу и видны всем.
+    </div>
+    <div class="tab-row" id="admin-tabs"></div>
+    <div id="admin-body"></div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-admin-login">
+  <div class="modal">
+    <h3 class="mb-16">Вход для администратора</h3>
+    <label>Логин</label><input id="al-user" type="text" placeholder="admin" style="margin-top:5px;margin-bottom:12px">
+    <label>Пароль</label><input id="al-pass" type="password" placeholder="••••••" style="margin-top:5px">
+    <div id="al-err" style="display:none;color:var(--red);font-size:12px;margin-top:8px;padding:8px 12px;background:var(--red-light);border-radius:var(--radius)">Неверный логин или пароль</div>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary w100" onclick="doLogin()">Войти</button>
+      <button class="btn w100" onclick="closeOv('ov-admin-login')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-add-topic">
+  <div class="modal" style="max-width:420px">
+    <h3 class="mb-16" id="ot-title">Новая тема</h3>
+    <input type="hidden" id="ot-idx">
+    <label>Название темы</label><input id="ot-name" type="text" placeholder="Например: Зарплата" style="margin-top:5px;margin-bottom:12px">
+    <label>Описание (необязательно)</label><input id="ot-desc" type="text" placeholder="Короткое описание" style="margin-top:5px">
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary w100" onclick="saveTopic()">Сохранить</button>
+      <button class="btn w100" onclick="closeOv('ov-add-topic')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ov-add-q">
+  <div class="modal" style="max-width:560px">
+    <h3 class="mb-16" id="oq-title">Новый вопрос</h3>
+    <input type="hidden" id="oq-qid">
+    <label>Тема</label><select id="oq-topic" style="margin-top:5px;margin-bottom:14px"></select>
+    <label>Возражение кандидата</label>
+    <textarea id="oq-q" rows="2" style="margin-top:5px;margin-bottom:16px;resize:vertical" placeholder="Кандидат: «Текст возражения...»"></textarea>
+    <div style="display:grid;gap:12px">
+      <div style="padding:14px;background:var(--green-light);border-radius:var(--radius);border:1px solid var(--green)">
+        <div class="fw6 small mb-8" style="color:var(--green)">Ответ 3 балла — идеальный</div>
+        <textarea id="oq-a3" rows="2" style="resize:vertical;margin-bottom:6px" placeholder="Текст ответа рекрутёра..."></textarea>
+        <input id="oq-f3" type="text" placeholder="Рекомендация: почему этот ответ лучший">
+      </div>
+      <div style="padding:14px;background:var(--blue-light);border-radius:var(--radius);border:1px solid var(--blue)">
+        <div class="fw6 small mb-8" style="color:var(--blue-dark)">Ответ 2 балла — хороший</div>
+        <textarea id="oq-a2" rows="2" style="resize:vertical;margin-bottom:6px" placeholder="Текст ответа рекрутёра..."></textarea>
+        <input id="oq-f2" type="text" placeholder="Рекомендация: что можно улучшить">
+      </div>
+      <div style="padding:14px;background:var(--amber-light);border-radius:var(--radius);border:1px solid var(--amber)">
+        <div class="fw6 small mb-8" style="color:var(--amber)">Ответ 1 балл — неочевидно неправильный</div>
+        <textarea id="oq-a1" rows="2" style="resize:vertical;margin-bottom:6px" placeholder="Текст ответа рекрутёра..."></textarea>
+        <input id="oq-f1" type="text" placeholder="Рекомендация: в чём ошибка">
+      </div>
+      <div style="padding:14px;background:var(--red-light);border-radius:var(--radius);border:1px solid var(--red)">
+        <div class="fw6 small mb-8" style="color:var(--red)">Ответ 0 баллов — неправильный</div>
+        <textarea id="oq-a0" rows="2" style="resize:vertical;margin-bottom:6px" placeholder="Текст ответа рекрутёра..."></textarea>
+        <input id="oq-f0" type="text" placeholder="Рекомендация: почему это плохо">
+      </div>
+    </div>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary w100" onclick="saveQ()">Сохранить</button>
+      <button class="btn w100" onclick="closeOv('ov-add-q')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====================================================
+// ВАЖНО: вставьте сюда URL вашего Apps Script после деплоя
+// ====================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbyyiLQSpMJznwkxG8w_G3S_p6dk6PuCArFfyeaK1zL9mgbPbWnMmvoW1FuKW8Cgm31sBg/exec';
+// ====================================================
+
+const ADMIN = {u:'admin',p:'recruiter2024'};
+
+let S = {
+  recruiterName: '',
+  adminIn: false,
+  adminTab: 0,
+  topics: [],
+  leaderboard: [],
+  weeklyLeaderboard: [],
+  attempt: {questions:[], idx:0, scores:[], answered:false}
+};
+
+// ---- Cache helpers ----
+const CACHE = {
+  get(key) { try { const v = localStorage.getItem('rt_cache_'+key); return v ? JSON.parse(v) : null; } catch(e) { return null; } },
+  set(key, val) { try { localStorage.setItem('rt_cache_'+key, JSON.stringify(val)); } catch(e) {} },
+  clear(key) { try { localStorage.removeItem('rt_cache_'+key); } catch(e) {} }
+};
+
+// ---- API helpers ----
+async function apiGet(action) {
+  if (!API_URL) return null;
+  try {
+    const r = await fetch(API_URL + '?action=' + action);
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+async function apiPost(data) {
+  if (!API_URL) return null;
+  try {
+    const action = data.action;
+    let url = API_URL + '?action=' + action;
+    if (action === 'saveResult') {
+      url += '&name=' + encodeURIComponent(data.name)
+           + '&score=' + data.score
+           + '&pct=' + data.pct;
+    } else if (action === 'saveTopics') {
+      url += '&topics=' + encodeURIComponent(JSON.stringify(data.topics));
+    } else if (action === 'saveDetails') {
+      url += '&name=' + encodeURIComponent(data.name)
+           + '&details=' + encodeURIComponent(JSON.stringify(data.details));
+    }
+    const r = await fetch(url);
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+function isApiConfigured() {
+  return !!API_URL;
+}
+
+// ---- Load topics ----
+async function loadTopics(forceRefresh) {
+  // 1. Load from cache instantly
+  const cached = CACHE.get('topics');
+  if (cached && cached.length > 0) {
+    S.topics = cached;
+    if (!forceRefresh) {
+      // Refresh in background silently
+      apiGet('getTopics').then(res => {
+        if (res && res.topics) {
+          S.topics = res.topics;
+          CACHE.set('topics', res.topics);
+        }
+      });
+      return; // return immediately with cached data
+    }
+  }
+  // 2. No cache — must wait for network
+  if (isApiConfigured()) {
+    const res = await apiGet('getTopics');
+    if (res && res.topics) {
+      S.topics = res.topics;
+      CACHE.set('topics', res.topics);
+      return;
+    }
+  }
+  try {
+    const t = localStorage.getItem('rt_v3');
+    S.topics = t ? JSON.parse(t) : [];
+  } catch(e) { S.topics = []; }
+}
+
+async function saveTopicsToAPI() {
+  if (isApiConfigured()) {
+    showSyncStatus('Сохраняем...', 'loading');
+    const res = await apiPost({action:'saveTopics', topics: S.topics});
+    if (res && res.ok) {
+      CACHE.set('topics', S.topics); // update cache immediately
+      showSyncStatus('Сохранено в Google Таблицу ✓', 'ok');
+    } else {
+      showSyncStatus('Ошибка сохранения', 'err');
+    }
+  } else {
+    localStorage.setItem('rt_v3', JSON.stringify(S.topics));
+  }
+}
+
+function showSyncStatus(msg, type) {
+  const el = document.getElementById('admin-sync-status');
+  if (!el) return;
+  const colors = {loading:'var(--blue-light)', ok:'var(--green-light)', err:'var(--red-light)'};
+  const textColors = {loading:'var(--blue-dark)', ok:'var(--green)', err:'var(--red)'};
+  el.style.display = 'block';
+  el.style.padding = '10px 14px';
+  el.style.borderRadius = 'var(--radius)';
+  el.style.fontSize = '13px';
+  el.style.background = colors[type];
+  el.style.color = textColors[type];
+  el.textContent = msg;
+  if (type !== 'loading') setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+// ---- Load leaderboard ----
+async function loadLeaderboard(forceRefresh) {
+  // 1. Load from cache instantly
+  const cached = CACHE.get('leaderboard');
+  if (cached) {
+    S.leaderboard = cached;
+    if (!forceRefresh) {
+      // Refresh in background
+      apiGet('getLeaderboard').then(res => {
+        if (res && res.leaderboard) {
+          S.leaderboard = res.leaderboard;
+          CACHE.set('leaderboard', res.leaderboard);
+        }
+      });
+      return;
+    }
+  }
+  // 2. No cache — wait for network
+  if (isApiConfigured()) {
+    const res = await apiGet('getLeaderboard');
+    if (res && res.leaderboard) {
+      S.leaderboard = res.leaderboard;
+      CACHE.set('leaderboard', res.leaderboard);
+      return;
+    }
+  }
+  try {
+    const lb = localStorage.getItem('rt_lb_v3');
+    S.leaderboard = lb ? JSON.parse(lb) : [];
+  } catch(e) { S.leaderboard = []; }
+}
+
+async function saveResult(name, score, pct) {
+  // Update local cache immediately so stats feel instant
+  let entry = S.leaderboard.find(x => x.name === name);
+  if (!entry) { entry = {name, attempts:0, totalScore:0, avgPct:0}; S.leaderboard.push(entry); }
+  entry.attempts++;
+  entry.totalScore += score;
+  entry.avgPct = parseFloat(((entry.avgPct*(entry.attempts-1)+pct)/entry.attempts).toFixed(1));
+  CACHE.set('leaderboard', S.leaderboard);
+  // Send to server in background — don't await
+  if (isApiConfigured()) {
+    apiPost({action:'saveResult', name, score, pct}).then(() => {
+      // Refresh leaderboard cache after save
+      apiGet('getLeaderboard').then(res => {
+        if (res && res.leaderboard) CACHE.set('leaderboard', res.leaderboard);
+      });
+    });
+  }
+}
+
+// ---- Navigation ----
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('sc-'+id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+async function gotoHome() {
+  if (S.recruiterName) {
+    document.getElementById('home-enter').style.display = 'none';
+    document.getElementById('home-ready').style.display = 'block';
+    document.getElementById('span-name').textContent = S.recruiterName;
+    // Show instantly from cache, update in background
+    loadLeaderboard().then(() => renderHomeStats());
+    renderHomeStats(); // render immediately with whatever we have
+  } else {
+    document.getElementById('home-enter').style.display = 'block';
+    document.getElementById('home-ready').style.display = 'none';
+  }
+  show('home');
+}
+
+// Track active leaderboard tab
+let lbTab = 'all';
+
+function switchLbTab(tab) {
+  lbTab = tab;
+  const allBtn = document.getElementById('lb-tab-all');
+  const weekBtn = document.getElementById('lb-tab-week');
+  const allCard = document.getElementById('lb-card-all');
+  const weekCard = document.getElementById('lb-card-week');
+  if (tab === 'all') {
+    allBtn.style.background = 'var(--bg)'; allBtn.style.color = 'var(--text)'; allBtn.style.fontWeight = '600'; allBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,.08)';
+    weekBtn.style.background = 'transparent'; weekBtn.style.color = 'var(--text2)'; weekBtn.style.fontWeight = '500'; weekBtn.style.boxShadow = 'none';
+    allCard.style.display = 'block'; weekCard.style.display = 'none';
+  } else {
+    weekBtn.style.background = 'var(--bg)'; weekBtn.style.color = 'var(--text)'; weekBtn.style.fontWeight = '600'; weekBtn.style.boxShadow = '0 1px 3px rgba(0,0,0,.08)';
+    allBtn.style.background = 'transparent'; allBtn.style.color = 'var(--text2)'; allBtn.style.fontWeight = '500'; allBtn.style.boxShadow = 'none';
+    weekCard.style.display = 'block'; allCard.style.display = 'none';
+  }
+}
+
+async function gotoLb() {
+  show('lb');
+  lbTab = 'all';
+  switchLbTab('all');
+  const cachedAll = CACHE.get('leaderboard');
+  const cachedWeek = CACHE.get('weekly');
+  if (cachedAll && cachedAll.length > 0) {
+    // Show cached instantly
+    S.leaderboard = cachedAll;
+    document.getElementById('lb-loading').style.display = 'none';
+    document.getElementById('lb-card-all').style.display = 'block';
+    renderLbAll();
+    if (cachedWeek) { S.weeklyLeaderboard = cachedWeek; renderLbWeek(); }
+    // Refresh both in background
+    apiGet('getLeaderboard').then(res => {
+      if (res && res.leaderboard) { S.leaderboard = res.leaderboard; CACHE.set('leaderboard', res.leaderboard); renderLbAll(); }
+    });
+    apiGet('getWeeklyLeaderboard').then(res => {
+      if (res && res.leaderboard) { S.weeklyLeaderboard = res.leaderboard; CACHE.set('weekly', res.leaderboard); renderLbWeek(); }
+    });
+  } else {
+    // No cache — show spinner, wait for network
+    document.getElementById('lb-loading').style.display = 'flex';
+    document.getElementById('lb-card-all').style.display = 'none';
+    const [allRes, weekRes] = await Promise.all([
+      apiGet('getLeaderboard'),
+      apiGet('getWeeklyLeaderboard')
+    ]);
+    if (allRes && allRes.leaderboard) { S.leaderboard = allRes.leaderboard; CACHE.set('leaderboard', allRes.leaderboard); }
+    if (weekRes && weekRes.leaderboard) { S.weeklyLeaderboard = weekRes.leaderboard; CACHE.set('weekly', weekRes.leaderboard); }
+    document.getElementById('lb-loading').style.display = 'none';
+    document.getElementById('lb-card-all').style.display = 'block';
+    renderLbAll();
+    renderLbWeek();
+  }
+}
+
+function enterName() {
+  const v = document.getElementById('inp-name').value.trim();
+  if (!v) { document.getElementById('inp-name').focus(); return; }
+  S.recruiterName = v;
+  document.getElementById('home-enter').style.display = 'none';
+  document.getElementById('home-ready').style.display = 'block';
+  document.getElementById('span-name').textContent = v;
+  // Show immediately, load in background
+  loadLeaderboard().then(() => renderHomeStats());
+  renderHomeStats();
+}
+
+function resetName() {
+  document.getElementById('inp-name').value = '';
+  document.getElementById('home-enter').style.display = 'block';
+  document.getElementById('home-ready').style.display = 'none';
+}
+
+function renderHomeStats() {
+  const e = S.leaderboard.find(x => x.name === S.recruiterName);
+  const el = document.getElementById('home-stats-wrap');
+  if (!e) { el.innerHTML = ''; return; }
+  const streak = getStreak();
+  const streakHtml = streak > 0
+    ? `<div class="streak-box mb-8"><div class="streak-flame">🔥</div><div><div class="streak-num">${streak}</div><div class="streak-lbl">день${streak===1?'':'я'} подряд</div></div></div>`
+    : '';
+  el.innerHTML = streakHtml + `<div class="card mb-16"><div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text2)">Ваша статистика</div><div class="mini-stats"><div class="mini-stat"><div class="mini-num">${e.attempts}</div><div class="mini-lbl">Попыток</div></div><div class="mini-stat"><div class="mini-num">${Math.round(e.avgPct)}%</div><div class="mini-lbl">Средний результат</div></div><div class="mini-stat"><div class="mini-num">${e.totalScore}</div><div class="mini-lbl">Итого баллов</div></div></div></div>`;
+}
+
+async function startAttempt() {
+  await loadTopics(); // instant if cached
+  const valid = S.topics.filter(t => t.questions && t.questions.length > 0);
+  if (valid.length < 5) { alert('Для начала теста нужно минимум 5 тем с вопросами.\n\nСейчас тем с вопросами: ' + valid.length); return; }
+  const shuffled = [...valid].sort(() => Math.random()-.5).slice(0,5);
+  S.attempt.questions = shuffled.map(t => {
+    const q = t.questions[Math.floor(Math.random()*t.questions.length)];
+    return {topicName: t.name, q};
+  });
+  S.attempt.idx = 0; S.attempt.scores = []; S.attempt.answered = false; S.attempt.finishing = false;
+  show('quiz'); renderQ();
+}
+
+function renderQ() {
+  const {idx, questions} = S.attempt;
+  const total = questions.length;
+  const item = questions[idx];
+  const pct = Math.round((idx/total)*100);
+  document.getElementById('prog').style.width = pct+'%';
+  document.getElementById('qz-step').textContent = 'Вопрос '+(idx+1)+' из '+total;
+  document.getElementById('qz-topic-label').innerHTML = '<span class="badge badge-blue">'+item.topicName+'</span>';
+  document.getElementById('qz-text').textContent = item.q.q;
+  document.getElementById('qz-fb').innerHTML = '';
+  const nb = document.getElementById('qz-next'); nb.style.display='none'; nb.innerHTML='';
+  S.attempt.answered = false;
+  const shuffled = [...item.q.answers].sort(() => Math.random()-.5);
+  document.getElementById('qz-answers').innerHTML = shuffled.map((a,i) =>
+    `<button class="ans-btn" onclick="pickAns(${i})" data-s="${a.s}" data-f="${encodeURIComponent(a.f)}">${a.t}</button>`
+  ).join('');
+}
+
+function pickAns(i) {
+  if (S.attempt.answered) return;
+  S.attempt.answered = true;
+  const btns = document.querySelectorAll('.ans-btn');
+  const clicked = btns[i];
+  const score = parseInt(clicked.dataset.s);
+  const fb = decodeURIComponent(clicked.dataset.f);
+  S.attempt.scores.push(score);
+  btns.forEach(b => { b.disabled=true; const s=parseInt(b.dataset.s); b.classList.add('s'+s); });
+  const lbls = ['Неправильно — 0 баллов','Неочевидно неправильно — 1 балл','Хороший ответ — 2 балла','Отличный ответ — 3 балла'];
+  const fbc = ['fb0','fb1','fb2','fb3'];
+  document.getElementById('qz-fb').innerHTML = `<div class="fb-box ${fbc[score]}"><div style="font-weight:700;margin-bottom:6px">${lbls[score]}</div>${fb}</div>`;
+  const isLast = S.attempt.idx >= S.attempt.questions.length-1;
+  const nb = document.getElementById('qz-next');
+  nb.innerHTML = `<button class="btn btn-primary" onclick="${isLast?'finishAttempt()':'nextQ()'}"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="margin-right:4px"><path d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"/></svg>${isLast?'Завершить тест':'Следующий вопрос'}</button>`;
+  nb.style.display = 'block';
+}
+
+function nextQ() { S.attempt.idx++; renderQ(); }
+
+async function finishAttempt() {
+  if (S.attempt.finishing) return;
+  S.attempt.finishing = true;
+  const total = S.attempt.scores.reduce((a,b) => a+b, 0);
+  const max = S.attempt.questions.length * 3;
+  const pct = Math.round((total/max)*100);
+  const titles = ['Есть над чем поработать!','Неплохо — продолжайте!','Хороший результат!','Отлично!','Мастер возражений!'];
+  const ti = pct<30?0:pct<50?1:pct<70?2:pct<90?3:4;
+  document.getElementById('res-title').textContent = titles[ti];
+  document.getElementById('res-name').textContent = S.recruiterName;
+  document.getElementById('res-score').textContent = total+' / '+max;
+  document.getElementById('res-pct').textContent = pct+'%';
+  const fbcls = ['badge-red','badge-amber','badge-blue','badge-green'];
+  const scoreLabels = ['Неправильно — 0','Неочевидно — 1','Хорошо — 2','Отлично — 3'];
+  document.getElementById('res-breakdown').innerHTML = S.attempt.questions.map((item,i) => {
+    const sc = S.attempt.scores[i]??0;
+    return `<div class="score-row"><span class="badge badge-purple" style="max-width:55%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.topicName}</span><span class="badge ${fbcls[sc]}">${scoreLabels[sc]}</span></div>`;
+  }).join('');
+  // Show results immediately — save in background
+  updateStreak();
+  checkAchievements(total, pct);
+  show('results');
+  // Fire-and-forget saves
+  saveResult(S.recruiterName, total, pct);
+  const details = S.attempt.questions.map((item, i) => ({
+    topicName: item.topicName,
+    questionText: item.q.q.substring(0, 120),
+    score: S.attempt.scores[i] ?? 0
+  }));
+  apiPost({action: 'saveDetails', name: S.recruiterName, details});
+}
+
+function confirmExit() { if (confirm('Выйти из теста? Прогресс текущей попытки не сохранится.')) gotoHome(); }
+
+function renderLbAll() {
+  const sorted = [...S.leaderboard].sort((a,b) => b.totalScore - a.totalScore);
+  const el = document.getElementById('lb-list-all');
+  if (!el) return;
+  if (!sorted.length) { el.innerHTML = '<div class="empty-state">Рейтинг пока пуст — пройдите первый тест!</div>'; return; }
+  const myName = S.recruiterName;
+  el.innerHTML = sorted.map((e,i) => {
+    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+    const p = Math.round(e.avgPct);
+    const bc = p>=80?'badge-green':p>=50?'badge-blue':p>=30?'badge-amber':'badge-red';
+    const isMe = e.name === myName;
+    return `<div class="lb-row" style="${isMe?'background:var(--blue-light);border-radius:var(--radius);margin:0 -4px;padding-left:4px;padding-right:4px':''}">
+      <div><span class="rnk ${rc}">${i+1}</span></div>
+      <div style="font-weight:${i<3||isMe?600:400}">${e.name}${isMe?' <span style="font-size:10px;color:var(--blue)">• вы</span>':''}</div>
+      <div style="text-align:center;color:var(--text2)">${e.attempts}</div>
+      <div style="text-align:center"><span class="badge ${bc}">${p}%</span></div>
+      <div style="text-align:center;font-weight:600">${e.totalScore}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderLbWeek() {
+  const el = document.getElementById('lb-list-week');
+  if (!el) return;
+  // Update week label
+  const now = new Date();
+  const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay()+6)%7));
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toLocaleDateString('ru-RU', {day:'numeric', month:'long'});
+  const lbl = document.getElementById('lb-week-label');
+  if (lbl) lbl.textContent = fmt(mon) + ' — ' + fmt(sun);
+
+  const weekly = S.weeklyLeaderboard || [];
+  const sorted = [...weekly].sort((a,b) => b.totalScore - a.totalScore);
+  if (!sorted.length) {
+    el.innerHTML = '<div class="empty-state">На этой неделе ещё никто не проходил тест — будь первым!</div>';
+    return;
+  }
+  const myName = S.recruiterName;
+  el.innerHTML = sorted.map((e,i) => {
+    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+    const p = Math.round(e.avgPct);
+    const bc = p>=80?'badge-green':p>=50?'badge-blue':p>=30?'badge-amber':'badge-red';
+    const isMe = e.name === myName;
+    // Trend icon
+    const trendIcon = e.trend === 'up' ? '<span style="color:var(--green);font-size:11px">▲</span>' :
+                      e.trend === 'down' ? '<span style="color:var(--red);font-size:11px">▼</span>' : '';
+    return `<div class="lb-row" style="${isMe?'background:var(--blue-light);border-radius:var(--radius);margin:0 -4px;padding-left:4px;padding-right:4px':''}">
+      <div><span class="rnk ${rc}">${i+1}</span></div>
+      <div style="font-weight:${i<3||isMe?600:400}">${e.name}${isMe?' <span style="font-size:10px;color:var(--blue)">• вы</span>':''} ${trendIcon}</div>
+      <div style="text-align:center;color:var(--text2)">${e.attempts}</div>
+      <div style="text-align:center"><span class="badge ${bc}">${p}%</span></div>
+      <div style="text-align:center;font-weight:600">${e.totalScore}</div>
+    </div>`;
+  }).join('');
+}
+
+// Keep old renderLb as alias for compatibility
+function renderLb() { renderLbAll(); }
+
+// ---- Admin ----
+function showAdminLogin() {
+  if (S.adminIn) { renderAdmin(); show('admin'); return; }
+  document.getElementById('al-user').value = '';
+  document.getElementById('al-pass').value = '';
+  document.getElementById('al-err').style.display = 'none';
+  openOv('ov-admin-login');
+}
+
+async function doLogin() {
+  const u = document.getElementById('al-user').value.trim();
+  const p = document.getElementById('al-pass').value.trim();
+  if (u===ADMIN.u && p===ADMIN.p) {
+    S.adminIn = true;
+    closeOv('ov-admin-login');
+    await loadTopics();
+    renderAdmin();
+    show('admin');
+  } else {
+    document.getElementById('al-err').style.display = 'block';
+  }
+}
+function doLogout() { S.adminIn = false; gotoHome(); }
+
+function openOv(id) { document.getElementById(id).classList.add('on'); }
+function closeOv(id) { document.getElementById(id).classList.remove('on'); }
+
+function renderAdmin() {
+  document.getElementById('admin-tabs').innerHTML = S.topics.map((t,i) =>
+    `<button class="tab ${i===S.adminTab?'on':''}" onclick="switchTab(${i})">${t.name}<span class="topic-count">${t.questions?t.questions.length:0}</span></button>`
+  ).join('');
+  renderAdminBody();
+}
+function switchTab(i) { S.adminTab=i; renderAdmin(); }
+
+function renderAdminBody() {
+  const t = S.topics[S.adminTab];
+  if (!t) { document.getElementById('admin-body').innerHTML='<div class="empty-state">Нет тем. Создайте первую!</div>'; return; }
+  document.getElementById('admin-body').innerHTML = `
+    <div class="flex between items-center mb-16" style="flex-wrap:wrap;gap:8px">
+      <div class="flex items-center gap-12"><h3>${t.name}</h3>${t.desc?`<span class="small muted">${t.desc}</span>`:''}</div>
+      <div class="flex gap-8">
+        <button class="btn btn-sm" onclick="openEditTopic(${S.adminTab})">Изменить тему</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTopic(${S.adminTab})">Удалить тему</button>
+      </div>
+    </div>
+    ${(t.questions&&t.questions.length>0) ? t.questions.map((q,qi) => `
+      <div class="q-item">
+        <div class="q-item-text">${q.q}</div>
+        <div>${q.answers.map(a=>`<div class="a-row"><span class="sdot d${a.s}">${a.s}</span><span class="small muted" style="line-height:1.4">${a.t}</span></div>`).join('')}</div>
+        <div class="flex gap-8 mt-8">
+          <button class="btn btn-sm" onclick="openEditQ(${S.adminTab},${qi})">Изменить</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQ(${S.adminTab},${qi})">Удалить</button>
+        </div>
+      </div>`).join('') : '<div class="empty-state">В этой теме пока нет вопросов.</div>'}`;
+}
+
+function openAddTopic() {
+  document.getElementById('ot-idx').value='';
+  document.getElementById('ot-title').textContent='Новая тема';
+  document.getElementById('ot-name').value='';
+  document.getElementById('ot-desc').value='';
+  openOv('ov-add-topic');
+}
+function openEditTopic(i) {
+  const t = S.topics[i];
+  document.getElementById('ot-idx').value=i;
+  document.getElementById('ot-title').textContent='Изменить тему';
+  document.getElementById('ot-name').value=t.name;
+  document.getElementById('ot-desc').value=t.desc||'';
+  openOv('ov-add-topic');
+}
+async function saveTopic() {
+  const name = document.getElementById('ot-name').value.trim();
+  if (!name) { alert('Введите название темы'); return; }
+  const desc = document.getElementById('ot-desc').value.trim();
+  const idx = document.getElementById('ot-idx').value;
+  if (idx!=='') { S.topics[parseInt(idx)].name=name; S.topics[parseInt(idx)].desc=desc; }
+  else { S.topics.push({id:'t'+Date.now(),name,desc,questions:[]}); S.adminTab=S.topics.length-1; }
+  await saveTopicsToAPI();
+  closeOv('ov-add-topic'); renderAdmin();
+}
+async function deleteTopic(i) {
+  if (!confirm('Удалить тему "'+S.topics[i].name+'" и все её вопросы?')) return;
+  S.topics.splice(i,1);
+  if (S.adminTab>=S.topics.length) S.adminTab=Math.max(0,S.topics.length-1);
+  await saveTopicsToAPI();
+  renderAdmin();
+}
+
+function openAddQ() {
+  const sel = document.getElementById('oq-topic');
+  sel.innerHTML = S.topics.map((t,i) => `<option value="${i}" ${i===S.adminTab?'selected':''}>${t.name}</option>`).join('');
+  document.getElementById('oq-title').textContent='Новый вопрос';
+  document.getElementById('oq-qid').value='';
+  ['oq-q','oq-a3','oq-f3','oq-a2','oq-f2','oq-a1','oq-f1','oq-a0','oq-f0'].forEach(id => document.getElementById(id).value='');
+  openOv('ov-add-q');
+}
+function openEditQ(ti,qi) {
+  const q = S.topics[ti].questions[qi];
+  const sel = document.getElementById('oq-topic');
+  sel.innerHTML = S.topics.map((t,i) => `<option value="${i}" ${i===ti?'selected':''}>${t.name}</option>`).join('');
+  document.getElementById('oq-title').textContent='Изменить вопрос';
+  document.getElementById('oq-qid').value=ti+'_'+qi;
+  document.getElementById('oq-q').value=q.q;
+  [3,2,1,0].forEach(s => {
+    const a = q.answers.find(x=>x.s===s)||{};
+    document.getElementById('oq-a'+s).value=a.t||'';
+    document.getElementById('oq-f'+s).value=a.f||'';
+  });
+  openOv('ov-add-q');
+}
+async function saveQ() {
+  const ti = parseInt(document.getElementById('oq-topic').value);
+  const qidRaw = document.getElementById('oq-qid').value;
+  const qtext = document.getElementById('oq-q').value.trim();
+  if (!qtext) { alert('Введите текст возражения'); return; }
+  const answers = [3,2,1,0].map(s => ({
+    s, t: document.getElementById('oq-a'+s).value.trim(), f: document.getElementById('oq-f'+s).value.trim()
+  })).filter(a=>a.t);
+  if (answers.length<2) { alert('Добавьте хотя бы 2 варианта ответа'); return; }
+  const newQ = {id:'q'+Date.now(), q:qtext, answers};
+  if (!S.topics[ti].questions) S.topics[ti].questions=[];
+  if (qidRaw) { const p=qidRaw.split('_'); S.topics[parseInt(p[0])].questions[parseInt(p[1])]=newQ; }
+  else S.topics[ti].questions.push(newQ);
+  S.adminTab=ti;
+  await saveTopicsToAPI();
+  closeOv('ov-add-q'); renderAdmin();
+}
+async function deleteQ(ti,qi) {
+  if (!confirm('Удалить этот вопрос?')) return;
+  S.topics[ti].questions.splice(qi,1);
+  await saveTopicsToAPI();
+  renderAdminBody();
+}
+
+
+async function gotoStats() {
+  show('stats');
+  const cached = CACHE.get('stats');
+  if (cached) {
+    // Show instantly from cache
+    document.getElementById('stats-loading').style.display = 'none';
+    document.getElementById('stats-body').style.display = 'block';
+    renderStats(cached);
+    // Refresh in background
+    apiGet('getStats').then(res => {
+      if (res && res.topicStats) {
+        CACHE.set('stats', res);
+        renderStats(res);
+      }
+    });
+  } else {
+    document.getElementById('stats-loading').style.display = 'flex';
+    document.getElementById('stats-body').style.display = 'none';
+    const res = await apiGet('getStats');
+    document.getElementById('stats-loading').style.display = 'none';
+    document.getElementById('stats-body').style.display = 'block';
+    if (!res || !res.topicStats) {
+      document.getElementById('stats-body').innerHTML = '<div class="empty-state">Данных пока нет — пройдите первые тесты!</div>';
+      return;
+    }
+    CACHE.set('stats', res);
+    renderStats(res);
+  }
+}
+
+function renderStats(data) {
+  const {topicStats, questionStats, totalAnswers} = data;
+
+  // Summary cards
+  const avgAll = topicStats.length ? Math.round(topicStats.reduce((s,t) => s+t.avgPct, 0) / topicStats.length) : 0;
+  const worst = topicStats[0] || {};
+  const best = topicStats[topicStats.length-1] || {};
+  document.getElementById('stats-summary').innerHTML = `
+    <div class="stat-box"><div class="stat-num">${totalAnswers}</div><div class="stat-lbl">Всего ответов</div></div>
+    <div class="stat-box"><div class="stat-num">${avgAll}%</div><div class="stat-lbl">Средний результат</div></div>
+    <div class="stat-box" style="border-color:var(--red)"><div class="stat-num" style="color:var(--red);font-size:14px">${worst.name || '—'}</div><div class="stat-lbl">Слабая тема</div></div>
+    <div class="stat-box" style="border-color:var(--green)"><div class="stat-num" style="color:var(--green);font-size:14px">${best.name || '—'}</div><div class="stat-lbl">Сильная тема</div></div>
+  `;
+
+  // Topics chart
+  const topicsHtml = topicStats.map(t => {
+    const cls = t.avgPct >= 80 ? 'good' : t.avgPct >= 60 ? 'ok' : t.avgPct >= 40 ? 'bad' : 'poor';
+    return `<div class="bar-row">
+      <div class="bar-label" title="${t.name}">${t.name}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${cls}" style="width:${t.avgPct}%">${t.avgPct}%</div>
+      </div>
+      <div class="bar-count">${t.count} отв.</div>
+    </div>`;
+  }).join('');
+  document.getElementById('chart-topics').innerHTML = topicsHtml || '<p class="muted small">Нет данных</p>';
+
+  // Worst 5 questions
+  const worst5 = questionStats.slice(0, 5);
+  document.getElementById('chart-worst').innerHTML = worst5.map(q => {
+    const cls = q.avgPct >= 60 ? 'ok' : q.avgPct >= 40 ? 'bad' : 'poor';
+    const short = q.questionText.length > 70 ? q.questionText.substring(0,70)+'…' : q.questionText;
+    return `<div class="bar-row">
+      <div class="bar-label" title="${q.questionText}" style="font-size:12px"><span style="color:var(--text3)">${q.topicName}</span><br>${short}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${cls}" style="width:${q.avgPct}%">${q.avgPct}%</div>
+      </div>
+      <div class="bar-count">${q.count} отв.</div>
+    </div>`;
+  }).join('') || '<p class="muted small">Нет данных</p>';
+
+  // Best 5 questions
+  const best5 = [...questionStats].sort((a,b) => b.avgPct - a.avgPct).slice(0, 5);
+  document.getElementById('chart-best').innerHTML = best5.map(q => {
+    const short = q.questionText.length > 70 ? q.questionText.substring(0,70)+'…' : q.questionText;
+    return `<div class="bar-row">
+      <div class="bar-label" title="${q.questionText}" style="font-size:12px"><span style="color:var(--text3)">${q.topicName}</span><br>${short}</div>
+      <div class="bar-track">
+        <div class="bar-fill good" style="width:${q.avgPct}%">${q.avgPct}%</div>
+      </div>
+      <div class="bar-count">${q.count} отв.</div>
+    </div>`;
+  }).join('') || '<p class="muted small">Нет данных</p>';
+}
+
+
+// ===================================================
+// STREAK
+// ===================================================
+function getStreak() {
+  try {
+    const key = 'rt_streak_' + S.recruiterName;
+    const data = JSON.parse(localStorage.getItem(key) || '{"streak":0,"lastDate":""}');
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    if (data.lastDate === today) return data.streak;
+    if (data.lastDate === yesterday) return data.streak;
+    return 0;
+  } catch(e) { return 0; }
+}
+
+function updateStreak() {
+  try {
+    const key = 'rt_streak_' + S.recruiterName;
+    const data = JSON.parse(localStorage.getItem(key) || '{"streak":0,"lastDate":""}');
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    if (data.lastDate === today) return; // already updated today
+    if (data.lastDate === yesterday) {
+      data.streak++;
+    } else {
+      data.streak = 1;
+    }
+    data.lastDate = today;
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch(e) {}
+}
+
+// ===================================================
+// ACHIEVEMENTS
+// ===================================================
+const ACHIEVEMENTS = [
+  {id:'first',icon:'🎯',name:'Первый шаг',desc:'Пройти первый тест',check:(s)=>s.attempts>=1},
+  {id:'try5',icon:'💪',name:'Тренируюсь',desc:'5 попыток',check:(s)=>s.attempts>=5},
+  {id:'try20',icon:'🏋️',name:'Упорный',desc:'20 попыток',check:(s)=>s.attempts>=20},
+  {id:'pct80',icon:'⭐',name:'Отличник',desc:'80%+ в одной попытке',check:(s)=>s.bestPct>=80},
+  {id:'pct100',icon:'🏆',name:'Мастер',desc:'100% в одной попытке',check:(s)=>s.bestPct>=100},
+  {id:'streak3',icon:'🔥',name:'Три дня',desc:'3 дня подряд',check:(s)=>s.streak>=3},
+  {id:'streak7',icon:'🌟',name:'Неделя',desc:'7 дней подряд',check:(s)=>s.streak>=7},
+  {id:'score50',icon:'💎',name:'Полтинник',desc:'50 баллов итого',check:(s)=>s.totalScore>=50},
+  {id:'score200',icon:'👑',name:'Чемпион',desc:'200 баллов итого',check:(s)=>s.totalScore>=200},
+];
+
+function getAchievData() {
+  try {
+    return JSON.parse(localStorage.getItem('rt_achiev_' + S.recruiterName) || '{}');
+  } catch(e) { return {}; }
+}
+function saveAchievData(data) {
+  try { localStorage.setItem('rt_achiev_' + S.recruiterName, JSON.stringify(data)); } catch(e) {}
+}
+
+function checkAchievements(scoreThisAttempt, pctThisAttempt) {
+  const entry = S.leaderboard.find(x => x.name === S.recruiterName) || {};
+  const streak = getStreak();
+  // We need bestPct — store it locally
+  const key = 'rt_best_' + S.recruiterName;
+  let bestPct = parseInt(localStorage.getItem(key) || '0');
+  if (pctThisAttempt > bestPct) { bestPct = pctThisAttempt; localStorage.setItem(key, bestPct); }
+  const state = {
+    attempts: entry.attempts || 0,
+    totalScore: entry.totalScore || 0,
+    bestPct,
+    streak
+  };
+  const unlocked = getAchievData();
+  const newOnes = [];
+  ACHIEVEMENTS.forEach(a => {
+    if (!unlocked[a.id] && a.check(state)) {
+      unlocked[a.id] = true;
+      newOnes.push(a);
+    }
+  });
+  saveAchievData(unlocked);
+  // Show toasts for new achievements
+  if (newOnes.length > 0) showAchievToasts(newOnes, 0);
+}
+
+function showAchievToasts(list, idx) {
+  if (idx >= list.length) return;
+  const a = list[idx];
+  showToast(a.icon + '  ' + a.name + ' — ' + a.desc, 3000, () => showAchievToasts(list, idx+1));
+}
+
+function showToast(msg, duration = 3000, cb) {
+  const t = document.getElementById('toast');
+  const parts = msg.split('  ');
+  document.getElementById('toast-icon').textContent = parts[0] || '';
+  document.getElementById('toast-text').textContent = parts.slice(1).join('  ') || msg;
+  t.classList.add('show');
+  setTimeout(() => {
+    t.classList.remove('show');
+    if (cb) setTimeout(cb, 400);
+  }, duration);
+}
+
+// ===================================================
+// PROFILE PAGE
+// ===================================================
+async function gotoProfile() {
+  show('profile');
+  const cachedLb = CACHE.get('leaderboard');
+  const cachedStats = CACHE.get('stats_' + S.recruiterName);
+  if (cachedLb && cachedStats) {
+    // Show instantly
+    S.leaderboard = cachedLb;
+    document.getElementById('profile-loading').style.display = 'none';
+    document.getElementById('profile-body').style.display = 'block';
+    renderProfile(cachedStats);
+    // Refresh in background
+    Promise.all([
+      apiGet('getLeaderboard'),
+      apiGet('getStats&name=' + encodeURIComponent(S.recruiterName))
+    ]).then(([lbRes, statsRes]) => {
+      if (lbRes && lbRes.leaderboard) { S.leaderboard = lbRes.leaderboard; CACHE.set('leaderboard', lbRes.leaderboard); }
+      if (statsRes && statsRes.topicStats) { CACHE.set('stats_' + S.recruiterName, statsRes); }
+      renderProfile(statsRes || cachedStats);
+    });
+  } else {
+    document.getElementById('profile-loading').style.display = 'flex';
+    document.getElementById('profile-body').style.display = 'none';
+    const [lbRes, statsRes] = await Promise.all([
+      apiGet('getLeaderboard'),
+      apiGet('getStats&name=' + encodeURIComponent(S.recruiterName))
+    ]);
+    if (lbRes && lbRes.leaderboard) { S.leaderboard = lbRes.leaderboard; CACHE.set('leaderboard', lbRes.leaderboard); }
+    if (statsRes) CACHE.set('stats_' + S.recruiterName, statsRes);
+    document.getElementById('profile-loading').style.display = 'none';
+    document.getElementById('profile-body').style.display = 'block';
+    renderProfile(statsRes);
+  }
+}
+
+function renderProfile(statsRes) {
+  const me = S.leaderboard.find(x => x.name === S.recruiterName) || {};
+  const streak = getStreak();
+  const unlocked = getAchievData();
+  const key = 'rt_best_' + S.recruiterName;
+  const bestPct = parseInt(localStorage.getItem(key) || '0');
+
+  // Streak block
+  document.getElementById('profile-streak').innerHTML = `
+    <div class="streak-flame">${streak > 0 ? '🔥' : '⬜'}</div>
+    <div style="flex:1">
+      <div class="streak-num">${streak}</div>
+      <div class="streak-lbl">день${streak===1?'':'я'} подряд — ${streak===0?'начни сегодня!':streak>=7?'невероятно!':streak>=3?'отличный темп!':'продолжай!'}</div>
+    </div>
+    ${streak >= 3 ? '<div style="font-size:24px">⚡</div>' : ''}
+  `;
+
+  // Summary
+  const myPct = Math.round(me.avgPct || 0);
+  const teamAvg = S.leaderboard.length > 1
+    ? Math.round(S.leaderboard.reduce((s,e) => s + (e.avgPct||0), 0) / S.leaderboard.length)
+    : myPct;
+  const diff = myPct - teamAvg;
+  const diffLabel = diff > 0 ? `+${diff}% к среднему` : diff < 0 ? `${diff}% к среднему` : 'на уровне команды';
+  const diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text2)';
+  document.getElementById('profile-summary').innerHTML = `
+    <div class="stat-box"><div class="stat-num">${me.attempts || 0}</div><div class="stat-lbl">Попыток</div></div>
+    <div class="stat-box"><div class="stat-num">${myPct}%</div><div class="stat-lbl">Средний результат</div></div>
+    <div class="stat-box"><div class="stat-num">${bestPct}%</div><div class="stat-lbl">Лучший результат</div></div>
+    <div class="stat-box"><div class="stat-num" style="color:${diffColor};font-size:18px">${diffLabel}</div><div class="stat-lbl">vs Команда</div></div>
+  `;
+
+  // VS Team by topics
+  if (statsRes && statsRes.topicStats && statsRes.topicStats.length) {
+    // Get my personal stats from Details via topicStats filtered by name
+    // We use personal data if available from statsRes.myTopicStats
+    // For now build vs from team data and my data if present
+    const myTopicStats = statsRes.myTopicStats || [];
+    const teamTopicMap = {};
+    statsRes.topicStats.forEach(t => { teamTopicMap[t.name] = t.avgPct; });
+
+    if (myTopicStats.length > 0) {
+      const vsHtml = myTopicStats.map(t => {
+        const teamPct = teamTopicMap[t.name] || 0;
+        const myP = t.avgPct;
+        const delta = myP - teamPct;
+        const deltaCls = delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : 'delta-eq';
+        const deltaStr = delta > 0 ? `+${delta}%` : delta < 0 ? `${delta}%` : '=';
+        return `<div class="vs-row">
+          <div style="width:160px;flex-shrink:0;font-size:12px;color:var(--text2);text-align:right;padding-right:10px">${t.name}</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:11px;width:32px;text-align:right;color:var(--blue);font-weight:600">Я</span>
+              <div class="vs-track" style="flex:1"><div class="vs-fill vs-me" style="width:${myP}%">${myP}%</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;width:32px;text-align:right;color:var(--text3)">Все</span>
+              <div class="vs-track" style="flex:1"><div class="vs-fill vs-team" style="width:${teamPct}%">${teamPct}%</div></div>
+            </div>
+          </div>
+          <span class="delta-badge ${deltaCls}">${deltaStr}</span>
+        </div>`;
+      }).join('');
+      document.getElementById('profile-vs').innerHTML = vsHtml;
+
+      // My topics chart (worst to best)
+      const sorted = [...myTopicStats].sort((a,b) => a.avgPct - b.avgPct);
+      document.getElementById('profile-topics').innerHTML = sorted.map(t => {
+        const cls = t.avgPct >= 80 ? 'good' : t.avgPct >= 60 ? 'ok' : t.avgPct >= 40 ? 'bad' : 'poor';
+        const icon = t.avgPct >= 80 ? '💪' : t.avgPct >= 60 ? '👍' : t.avgPct >= 40 ? '⚠️' : '🔴';
+        return `<div class="my-topic-row">
+          <div class="my-topic-name">${icon} ${t.name}</div>
+          <div class="my-topic-track" style="flex:1">
+            <div class="my-topic-fill ${cls}" style="width:${t.avgPct}%">${t.avgPct}%</div>
+          </div>
+          <div style="width:50px;text-align:right;font-size:11px;color:var(--text2)">${t.count} отв.</div>
+        </div>`;
+      }).join('');
+    } else {
+      document.getElementById('profile-vs').innerHTML = '<p class="muted small">Пройди ещё тесты чтобы увидеть сравнение с командой по темам</p>';
+      document.getElementById('profile-topics').innerHTML = '<p class="muted small">Данные появятся после нескольких попыток</p>';
+    }
+  } else {
+    document.getElementById('profile-vs').innerHTML = '<p class="muted small">Данных пока нет — пройди первые тесты!</p>';
+    document.getElementById('profile-topics').innerHTML = '<p class="muted small">Данных пока нет</p>';
+  }
+
+  // Achievements
+  const unlockedCount = ACHIEVEMENTS.filter(a => unlocked[a.id]).length;
+  document.getElementById('achiev-count').textContent = unlockedCount + ' / ' + ACHIEVEMENTS.length;
+  document.getElementById('profile-achievements').innerHTML = ACHIEVEMENTS.map(a => {
+    const isUnlocked = !!unlocked[a.id];
+    return `<div class="achiev-card ${isUnlocked?'':'locked'}">
+      <div class="achiev-icon">${a.icon}</div>
+      <div class="achiev-name">${a.name}</div>
+      <div class="achiev-desc">${a.desc}</div>
+    </div>`;
+  }).join('');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Enter' && document.getElementById('ov-admin-login').classList.contains('on')) doLogin();
+});
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target===ov) ov.classList.remove('on'); });
+});
+
+gotoHome();
+// Preload topics and leaderboard into cache on startup
+setTimeout(() => {
+  apiGet('getTopics').then(res => { if (res && res.topics) CACHE.set('topics', res.topics); });
+  apiGet('getLeaderboard').then(res => { if (res && res.leaderboard) CACHE.set('leaderboard', res.leaderboard); });
+}, 300);
+</script>
+
+<div class="toast" id="toast"><span id="toast-icon"></span><span id="toast-text"></span></div>
+</body>
+</html>

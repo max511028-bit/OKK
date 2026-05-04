@@ -308,6 +308,36 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
 </style>
 </head>
 <body>
+<script>
+(function(){
+  var H='7c36cbe784c6442e1467a8e1ab61a2dbb7836de8ad882a210c21be8d35290917',K='p_auth';
+  if(sessionStorage.getItem(K)===H)return;
+  document.addEventListener('DOMContentLoaded',function(){
+    var o=document.createElement('div');
+    o.id='_pov';
+    o.style.cssText='position:fixed;inset:0;background:#0d1117;display:flex;align-items:center;justify-content:center;z-index:2147483647;font-family:Inter,system-ui,sans-serif';
+    o.innerHTML='<div style="background:#161b22;border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:44px 40px;width:360px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.6)">'
+      +'<div style="font-size:42px;margin-bottom:18px">🔒</div>'
+      +'<div style="font-size:22px;font-weight:700;color:#f0f6fc;margin-bottom:8px">Доступ закрыт</div>'
+      +'<div style="font-size:14px;color:#8b949e;margin-bottom:28px">Введите пароль для входа</div>'
+      +'<input id="_pi" type="password" placeholder="Пароль" style="width:100%;padding:13px 16px;background:#0d1117;border:1px solid rgba(255,255,255,.15);border-radius:10px;color:#f0f6fc;font-size:15px;outline:none;margin-bottom:10px;box-sizing:border-box" />'
+      +'<div id="_pe" style="color:#f85149;font-size:13px;margin-bottom:12px;min-height:18px"></div>'
+      +'<button id="_pb" style="width:100%;padding:13px;background:#238636;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .15s">Войти</button>'
+      +'</div>';
+    document.body.appendChild(o);
+    setTimeout(function(){document.getElementById('_pi').focus();},80);
+    document.getElementById('_pi').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('_pb').click();});
+    document.getElementById('_pb').addEventListener('click',function(){
+      var v=document.getElementById('_pi').value;
+      crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)).then(function(buf){
+        var h=[].slice.call(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+        if(h===H){sessionStorage.setItem(K,H);document.getElementById('_pov').remove();}
+        else{document.getElementById('_pe').textContent='Неверный пароль';document.getElementById('_pi').value='';}
+      });
+    });
+  });
+})();
+</script>
 
 <div class="loading-overlay" id="loadingOverlay">
   <div class="spinner"></div>
