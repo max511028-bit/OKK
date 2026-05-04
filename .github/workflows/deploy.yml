@@ -21,3 +21,12 @@ jobs:
             -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \
             . root@195.208.119.67:/var/www/okk/
           rm /tmp/vps_key
+
+      - name: Run server setup (nginx + Ollama + Recruiter service)
+        run: |
+          echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
+          chmod 600 /tmp/vps_key
+          ssh -i /tmp/vps_key -o StrictHostKeyChecking=no \
+            root@195.208.119.67 \
+            'bash /var/www/okk/scripts/setup-server.sh'
+          rm /tmp/vps_key
