@@ -23,7 +23,6 @@ jobs:
           rm /tmp/vps_key
 
       - name: Upload Google service account credentials
-        if: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_INFO != '' }}
         run: |
           echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
           chmod 600 /tmp/vps_key
