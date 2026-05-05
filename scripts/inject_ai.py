@@ -251,14 +251,17 @@ function _loadModels(){{
   const sel=document.getElementById('_ai_model_sel');
   if(!sel)return;
   sel.innerHTML='<option>⏳ Загрузка...</option>';
-  fetch(`${{_OLLAMA}}/tags`).then(r=>r.json()).then(function(data){{
+  fetch(`${{_OLLAMA}}/tags`).then(function(r){{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}}).then(function(data){{
     _models=(data.models||[]).map(m=>m.name).sort();
-    if(!_models.length)throw new Error('Нет моделей');
+    if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${{m}}">${{m}}</option>`).join('');
     const pref=['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
-  }}).catch(function(e){{sel.innerHTML='<option>⚠️ Ошибка</option>';}});
+  }}).catch(function(e){{
+    sel.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';
+    sel.onclick=function(){{if(!_models.length){{sel.onclick=null;_loadModels();}}}};
+  }});
 }}
 
 async function _ask(msg){{
@@ -283,7 +286,7 @@ async function _ask(msg){{
     _hist.push({{role:'user',content:msg}},{{role:'assistant',content:reply}});
     if(_hist.length>20)_hist.splice(0,2);
   }}catch(e){{
-    if(thinking)thinking.innerHTML='<span style="color:#f85149">⚠️ '+e.message+'</span>';
+    if(thinking){{const sp=document.createElement('span');sp.style.color='#f85149';sp.textContent='⚠️ '+(e.message||'Ошибка');thinking.innerHTML='';thinking.appendChild(sp);}}
   }}
   if(btn)btn.disabled=false;
   if(inp){{inp.disabled=false;inp.focus();}}
@@ -310,7 +313,7 @@ function _toggle(){{
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)_loadModels();
+  if(_open&&!_models.length)setTimeout(_loadModels,50);
 }}
 
 function _clear(){{
@@ -345,7 +348,7 @@ document.addEventListener('DOMContentLoaded',function(){{
       <span class="ai-title">{title}</span>
       <select id="_ai_model_sel"></select>
       <button id="_ai_clear" onclick="_clear()" title="Очистить чат">🗑</button>
-      <button id="_ai_clear" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
+      <button id="_ai_close" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
     </div>
     <div id="_ai_msgs">
       <div class="_ai_msg bot">{greeting_escaped}</div>

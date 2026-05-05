@@ -89,6 +89,18 @@ select option{background:#1e293b}
 
 /* === RECRUITER GRID === */
 .recruiter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-bottom:24px}
+.rec-medals{display:flex;gap:6px;margin:6px 0 4px;min-height:22px;flex-wrap:wrap}
+.medal{font-size:18px;cursor:help;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
+.period-compare{background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(139,92,246,.05));border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px}
+.period-compare .cmp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:14px}
+.period-compare .cmp-month{color:var(--text3);font-size:12px;text-transform:uppercase}
+.period-compare .cmp-diff{margin-left:auto;font-weight:700;padding:2px 10px;border-radius:12px}
+.period-compare.cmp-pos .cmp-diff{background:rgba(16,185,129,.18);color:#10B981}
+.period-compare.cmp-neg .cmp-diff{background:rgba(239,68,68,.18);color:#EF4444}
+.period-compare.cmp-neu .cmp-diff{background:rgba(148,163,184,.18);color:#94A3B8}
+.cmp-crit{font-size:12px;color:var(--text2);padding:2px 0}
+.cmp-crit.cmp-pos strong{color:#10B981}
+.cmp-crit.cmp-neg strong{color:#EF4444}
 .rec-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .2s;animation:cardIn .4s ease both}
 .rec-card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.3);border-color:rgba(59,130,246,.4)}
 @keyframes cardIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
@@ -1572,12 +1584,90 @@ function renderRecruiterGrid(data) {
       </div>
       <div class="rec-score ${scoreClass(r.total)}">${r.total.toFixed(0)}%</div>
       <div class="rec-calls">Проверено звонков: ${r.calls}</div>
+      <div class="rec-medals">${computeMedalsHtml(r.name)}</div>
       <div class="rec-footer">
         <div class="sparkline-wrap">${hasSparkline ? spark : ''}</div>
         <button class="btn btn-sm btn-ghost" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();aiAskFromCard(${nameJson})">🤖 AI</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// GAMIFICATION MEDALS
+// ═══════════════════════════════════════════════
+function computeMedalsHtml(name) {
+  const all = state.data.calls;
+  if (!all || !all.length) return '';
+  const rec = all.filter(r => r.name === name);
+  if (!rec.length) return '';
+  const medals = [];
+  // 1) Best of month — top score in latest month with data
+  const monthsSorted = MONTHS_ORDER.filter(m => all.some(r => r.month === m));
+  const latestMonth = monthsSorted[monthsSorted.length-1];
+  if (latestMonth) {
+    const peers = all.filter(r => r.month === latestMonth);
+    const topScore = Math.max(...peers.map(r => r.total));
+    const my = peers.find(r => r.name === name);
+    if (my && my.total === topScore && peers.length >= 3) {
+      medals.push({icon:'🥇', title:'Лучший рекрутер месяца ('+latestMonth+')'});
+    }
+  }
+  // 2) 3-month progress streak
+  const myByMonth = {};
+  rec.forEach(r => { myByMonth[r.month] = r.total; });
+  const myMonths = MONTHS_ORDER.filter(m => myByMonth[m]!=null);
+  if (myMonths.length >= 3) {
+    const last3 = myMonths.slice(-3).map(m => myByMonth[m]);
+    if (last3[1] > last3[0] && last3[2] > last3[1]) {
+      medals.push({icon:'📈', title:'Прогресс 3 месяца подряд'});
+    }
+  }
+  // 3) Quality >90%
+  const myAvg = rec.reduce((s,r)=>s+r.total,0) / rec.length;
+  if (myAvg >= 90) medals.push({icon:'⭐', title:'Качество выше 90%'});
+  // 4) Many calls
+  const totalCalls = rec.reduce((s,r)=>s+(r.calls||0),0);
+  if (totalCalls >= 50) medals.push({icon:'🎧', title:'50+ проверенных звонков'});
+  return medals.map(m => `<span class="medal" title="${m.title}">${m.icon}</span>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+// BEFORE/AFTER PERIOD COMPARISON
+// ═══════════════════════════════════════════════
+function getRecruiterPeriodDiff(name) {
+  const all = state.data.calls.filter(r => r.name === name);
+  if (all.length < 2) return null;
+  const monthsSorted = MONTHS_ORDER.filter(m => all.some(r => r.month === m));
+  if (monthsSorted.length < 2) return null;
+  const prevM = monthsSorted[monthsSorted.length-2];
+  const curM = monthsSorted[monthsSorted.length-1];
+  const prev = all.find(r => r.month === prevM);
+  const cur = all.find(r => r.month === curM);
+  if (!prev || !cur) return null;
+  const diff = cur.total - prev.total;
+  const critDiffs = [];
+  for (const k of CRITERIA_NAMES) {
+    const a = prev.criteria[k], b = cur.criteria[k];
+    if (!isNaN(a) && !isNaN(b)) critDiffs.push({name:k, prev:a, cur:b, diff:b-a});
+  }
+  critDiffs.sort((a,b) => Math.abs(b.diff) - Math.abs(a.diff));
+  return {prevM, curM, prev:prev.total, cur:cur.total, diff, critDiffs};
+}
+
+function renderPeriodCompareBadge(name) {
+  const d = getRecruiterPeriodDiff(name);
+  if (!d) return '';
+  const cls = d.diff > 1 ? 'cmp-pos' : d.diff < -1 ? 'cmp-neg' : 'cmp-neu';
+  const sign = d.diff > 0 ? '+' : '';
+  return `<div class="period-compare ${cls}">
+    <div class="cmp-row"><span class="cmp-month">${d.prevM}</span> <strong>${d.prev.toFixed(0)}%</strong> → <span class="cmp-month">${d.curM}</span> <strong>${d.cur.toFixed(0)}%</strong> <span class="cmp-diff">${sign}${d.diff.toFixed(1)}%</span></div>
+    ${d.critDiffs.slice(0,3).map(c=>{
+      const s = c.diff>0?'+':'';
+      const cc = c.diff>0?'cmp-pos':c.diff<0?'cmp-neg':'cmp-neu';
+      return `<div class="cmp-crit ${cc}">${c.name.length>30?c.name.slice(0,28)+'…':c.name}: <strong>${s}${c.diff.toFixed(0)}%</strong></div>`;
+    }).join('')}
+  </div>`;
 }
 
 function aiAskFromCard(name) {
@@ -1666,6 +1756,7 @@ function openModal(name) {
   const radarDiv = CRITERIA_NAMES.map(n=>divAvg[n]??null);
 
   document.getElementById('modal-body').innerHTML = `
+    ${renderPeriodCompareBadge(rec.name)}
     <div class="modal-grid">
       <div>
         <canvas id="modal-radar" height="280"></canvas>
@@ -2429,8 +2520,9 @@ async function loadOllamaModels() {
     if (badge) badge.textContent = `Ollama · ${ollamaModels.length} моделей`;
     if (status) status.textContent = `✓ ${ollamaModels.length} моделей загружено`;
   } catch(e) {
-    sel.innerHTML = '<option value="">⚠️ Ошибка загрузки моделей</option>';
+    sel.innerHTML = `<option value="">⚠️ ${e.message} — клик для повтора</option>`;
     if (status) status.textContent = `Ошибка: ${e.message}`;
+    sel.onclick = function(){ if(!ollamaModels.length){ sel.onclick=null; loadOllamaModels(); } };
   }
 }
 

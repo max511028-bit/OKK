@@ -2961,6 +2961,59 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 <script>
 
+// ═══════════════════════════════════════════════
+// AI COMMENTARY PER CHART
+// ═══════════════════════════════════════════════
+(function(){
+  const CHART_PROMPTS = {
+    'trendsChart':'Проанализируй тренды выручки и прибыли на графике. Где аномалии? Какой прогноз?',
+    'zpChart':'Проанализируй ФОТ и долю ФОТ в выручке. Какие выводы по эффективности?',
+    'customMetricChart':'Прокомментируй кастомную метрику: тренд, ключевые точки, рекомендация.',
+    'trendsProjChart':'Проанализируй динамику по проектам: лидеры, аутсайдеры, аномалии.',
+    'waterfallChart':'Объясни waterfall: куда ушла выручка, где потери, рекомендация.',
+    'divRevenueChart':'Сравни выручку дивизионов: лидер, аутсайдер, динамика.',
+    'divMarginChart':'Сравни рентабельность дивизионов и дай рекомендации.',
+    'clientsChart':'Топ-клиенты: концентрация риска, рекомендации по диверсификации.',
+    'citiesChart':'Анализ по городам: лидеры, риски, точки роста.'
+  };
+
+  function addAICommentaryButton(canvas){
+    const id = canvas.id;
+    if(!CHART_PROMPTS[id]) return;
+    const wrap = canvas.closest('.chart-wrap, .chart-bar, .chart-sm');
+    if(!wrap || wrap.querySelector('._ai_chart_btn')) return;
+    const btn = document.createElement('button');
+    btn.className='_ai_chart_btn';
+    btn.innerHTML='🤖 Объяснить';
+    btn.title='AI-комментарий к графику';
+    btn.style.cssText='position:absolute;top:6px;right:6px;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.4);color:#60a5fa;font-size:11px;font-weight:600;padding:4px 9px;border-radius:14px;cursor:pointer;z-index:10;backdrop-filter:blur(4px);';
+    btn.onclick=function(e){
+      e.stopPropagation();
+      const inp=document.getElementById('_ai_inp');
+      if(typeof _toggle==='function' && document.getElementById('_ai_panel')?.style.display!=='flex') _toggle();
+      setTimeout(function(){
+        const prompt=CHART_PROMPTS[id];
+        if(inp){ inp.value=prompt; }
+        if(typeof _send==='function') _send();
+      },200);
+    };
+    if(getComputedStyle(wrap).position==='static') wrap.style.position='relative';
+    wrap.appendChild(btn);
+  }
+
+  function attachAll(){
+    document.querySelectorAll('canvas[id]').forEach(addAICommentaryButton);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ()=>setTimeout(attachAll,500));
+  else setTimeout(attachAll,500);
+  // Re-attach when charts get rebuilt
+  setInterval(attachAll, 3000);
+})();
+
+</script>
+
+<script>
+
 // ===== AI FLOATING PANEL (FINANCE) =====
 (function(){
 const _OLLAMA = '/ollama/api';
@@ -3010,14 +3063,17 @@ function _loadModels(){
   const sel=document.getElementById('_ai_model_sel');
   if(!sel)return;
   sel.innerHTML='<option>⏳ Загрузка...</option>';
-  fetch(`${_OLLAMA}/tags`).then(r=>r.json()).then(function(data){
+  fetch(`${_OLLAMA}/tags`).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
     _models=(data.models||[]).map(m=>m.name).sort();
-    if(!_models.length)throw new Error('Нет моделей');
+    if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${m}">${m}</option>`).join('');
     const pref=['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
-  }).catch(function(e){sel.innerHTML='<option>⚠️ Ошибка</option>';});
+  }).catch(function(e){
+    sel.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';
+    sel.onclick=function(){if(!_models.length){sel.onclick=null;_loadModels();}};
+  });
 }
 
 async function _ask(msg){
@@ -3052,7 +3108,7 @@ async function _ask(msg){
     _hist.push({role:'user',content:msg},{role:'assistant',content:reply});
     if(_hist.length>20)_hist.splice(0,2);
   }catch(e){
-    if(thinking)thinking.innerHTML='<span style="color:#f85149">⚠️ '+e.message+'</span>';
+    if(thinking){const sp=document.createElement('span');sp.style.color='#f85149';sp.textContent='⚠️ '+(e.message||'Ошибка');thinking.innerHTML='';thinking.appendChild(sp);}
   }
   if(btn)btn.disabled=false;
   if(inp){inp.disabled=false;inp.focus();}
@@ -3079,7 +3135,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)_loadModels();
+  if(_open&&!_models.length)setTimeout(_loadModels,50);
 }
 
 function _clear(){
@@ -3144,7 +3200,7 @@ document.addEventListener('DOMContentLoaded',function(){
       <span class="ai-title">Финансовый аналитик</span>
       <select id="_ai_model_sel"></select>
       <button id="_ai_clear" onclick="_clear()" title="Очистить чат">🗑</button>
-      <button id="_ai_clear" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
+      <button id="_ai_close" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
     </div>
     <div id="_ai_msgs">
       <div class="_ai_msg bot">Привет! Я анализирую финансовые показатели компании — рентабельность, тренды и аномалии.<br><br>Спросите о прибыльных проектах, трендах по городам или аномалиях в данных.</div>

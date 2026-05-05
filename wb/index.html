@@ -361,6 +361,8 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
     <div class="nav-item" data-s="ops" onclick="go('ops')"><span class="nav-icon">⚡</span><span>Операции</span></div>
     <div class="nav-item" data-s="charts" onclick="go('charts')"><span class="nav-icon">📈</span><span>Графики</span></div>
     <div class="nav-item" data-s="risk" onclick="go('risk')"><span class="nav-icon">🚨</span><span>Зона риска</span></div>
+    <div class="nav-item" data-s="anomalies" onclick="go('anomalies')"><span class="nav-icon">📡</span><span>Аномалии</span></div>
+    <div class="nav-item" data-s="map" onclick="go('map')"><span class="nav-icon">🗺</span><span>Карта</span></div>
   </nav>
   <div class="sidebar-bottom">
     <div class="nav-item" data-s="admin" onclick="go('admin')"><span class="nav-icon">⚙️</span><span>Админка</span></div>
@@ -626,6 +628,37 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
             <th onclick="srt('tEmpCost',5)">Пиков/час</th>
             <th onclick="srt('tEmpCost',6)">Склад</th>
           </tr></thead><tbody id="bEmpCost"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANOMALIES -->
+    <div class="screen" id="screen-anomalies">
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="margin:0 0 10px;font-family:'Unbounded',sans-serif;font-size:14px">⚠️ Аномалии штрафов</h3>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">Сотрудники, у кого штрафы выросли в <b>3 раза или больше</b> относительно их среднего по другим периодам</div>
+        <div id="anomaliesBox">Загрузка...</div>
+        <div style="margin-top:14px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px dashed rgba(245,158,11,.4);border-radius:8px;font-size:12px;color:var(--text-2)">
+          💡 Telegram-уведомления будут отправляться руководителю склада при настройке бота. Кнопка <b>«Отправить отчёт»</b> формирует текст для пересылки.
+          <button class="btn btn-sm" style="margin-left:8px" onclick="copyAnomaliesReport()">📋 Скопировать отчёт</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAP -->
+    <div class="screen" id="screen-map">
+      <div class="card">
+        <h3 style="margin:0 0 10px;font-family:'Unbounded',sans-serif;font-size:14px">🗺 Карта складов</h3>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">Кликните на точку для мини-дашборда по складу</div>
+        <div id="mapBox" style="position:relative;width:100%;max-width:780px;margin:0 auto">
+          <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:14px;padding:20px;position:relative;aspect-ratio:16/9">
+            <svg viewBox="0 0 800 450" style="width:100%;height:100%" id="mapSvg">
+              <!-- Simplified Russia outline -->
+              <path d="M50,200 Q70,140 130,130 Q200,110 280,130 Q360,120 440,140 Q520,130 600,150 Q680,140 740,170 Q760,200 740,230 Q700,260 640,250 Q560,260 480,250 Q400,270 320,260 Q240,270 160,250 Q90,250 60,230 Z" fill="rgba(59,130,246,.15)" stroke="rgba(59,130,246,.4)" stroke-width="1.5"/>
+              <g id="mapMarkers"></g>
+            </svg>
+          </div>
+          <div id="mapDetail" style="margin-top:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;min-height:60px;color:var(--text-2);font-size:13px">Выберите склад на карте...</div>
         </div>
       </div>
     </div>
@@ -1486,7 +1519,7 @@ async function onPeriod(){
 }
 function onSearch(){curSearch=document.getElementById('searchInput').value;refreshAll();}
 function onCity(){curCity=document.getElementById('citySelect').value;refreshAll();}
-function refreshAll(){renderOverview();renderEmployees();renderFines();renderOps();renderCharts();renderRisk();updatePeriodBanner();}
+function refreshAll(){renderOverview();renderEmployees();renderFines();renderOps();renderCharts();renderRisk();updatePeriodBanner();renderAnomalies();renderMap();}
 
 function renderCitySelect(){
   const sel=document.getElementById('citySelect');
@@ -2570,11 +2603,169 @@ getV = function(){
   );
 };
 
+// ═══════════════════════ ANOMALIES ═══════════════════════
+function buildFineHistory(){
+  // Per-employee per-period fine totals
+  const map = {};
+  Object.entries(periods).forEach(([pk,pd])=>{
+    (pd.fines||[]).forEach(f=>{
+      const id = f.id || f.fio || 'unknown';
+      const amt = pn(f.amount) - pn(f.ret||0);
+      if(!map[id]) map[id]={fio:f.fio||id, periods:{}, wh:''};
+      map[id].periods[pk] = (map[id].periods[pk]||0) + amt;
+      // pick warehouse from vyrab data
+      if(!map[id].wh){
+        const v=(pd.vyrab||[]).find(x=>x.id===id||x.fio===f.fio);
+        if(v) map[id].wh = v.wh||'';
+      }
+    });
+  });
+  return map;
+}
+
+function detectAnomalies(){
+  const hist = buildFineHistory();
+  const allPeriods = Object.keys(periods).sort();
+  if(allPeriods.length < 2) return [];
+  const targetPeriod = curPeriod==='all' ? allPeriods[allPeriods.length-1] : curPeriod;
+  const otherPeriods = allPeriods.filter(p=>p!==targetPeriod);
+  const anomalies = [];
+  Object.entries(hist).forEach(([id,h])=>{
+    const cur = h.periods[targetPeriod] || 0;
+    if(cur < 1000) return; // only meaningful fines
+    const pastVals = otherPeriods.map(p=>h.periods[p]||0);
+    const pastNonZero = pastVals.filter(x=>x>0);
+    const baseAvg = pastNonZero.length ? pastNonZero.reduce((s,x)=>s+x,0)/pastNonZero.length : 0;
+    if(baseAvg > 0 && cur >= baseAvg * 3){
+      anomalies.push({id, fio:h.fio, wh:h.wh, cur, baseAvg, ratio: cur/baseAvg, period: targetPeriod});
+    } else if(baseAvg === 0 && cur >= 5000){
+      anomalies.push({id, fio:h.fio, wh:h.wh, cur, baseAvg:0, ratio: Infinity, period: targetPeriod});
+    }
+  });
+  anomalies.sort((a,b)=>b.cur-a.cur);
+  return anomalies;
+}
+
+function renderAnomalies(){
+  const box = document.getElementById('anomaliesBox');
+  if(!box) return;
+  const list = detectAnomalies();
+  if(!list.length){
+    box.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-2)">✅ Аномалий не обнаружено</div>';
+    return;
+  }
+  window._lastAnomalies = list;
+  box.innerHTML = list.map(a=>{
+    const ratioTxt = a.ratio===Infinity ? 'NEW' : '×'+a.ratio.toFixed(1);
+    return `<div class="risk-card" style="margin-bottom:8px;cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:600;font-size:14px">${a.fio||a.id}</div>
+          <div style="font-size:12px;color:var(--text-2)">Склад: ${a.wh||'—'} · Период: ${a.period}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:18px;font-weight:700;color:#f87171">${a.cur.toFixed(0)} ₽</div>
+          <div style="font-size:11px;color:var(--text-2)">было в среднем: ${a.baseAvg.toFixed(0)} ₽ <b style="color:#f59e0b">${ratioTxt}</b></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function copyAnomaliesReport(){
+  const list = window._lastAnomalies || detectAnomalies();
+  if(!list.length){ alert('Нет аномалий для отчёта'); return; }
+  const lines = [`⚠️ АНОМАЛИИ ШТРАФОВ за ${list[0].period}`,''];
+  list.forEach(a=>{
+    const ratioTxt = a.ratio===Infinity ? 'НОВЫЕ штрафы' : 'рост в '+a.ratio.toFixed(1)+'×';
+    lines.push(`• ${a.fio} (${a.wh||'—'}): ${a.cur.toFixed(0)} ₽ — ${ratioTxt} (среднее: ${a.baseAvg.toFixed(0)} ₽)`);
+  });
+  const txt = lines.join('\n');
+  navigator.clipboard.writeText(txt).then(()=>alert('✅ Отчёт скопирован — отправьте руководителю склада в Telegram'),
+    ()=>{prompt('Скопируйте текст:', txt);});
+}
+
+// ═══════════════════════ MAP ═══════════════════════
+const CITY_COORDS = {
+  'Москва':[450,200],'Подольск':[455,210],'Электросталь':[465,195],'Коледино':[440,210],'Внуково':[445,205],'Домодедово':[455,215],'Хабаровск':[710,290],
+  'Санкт-Петербург':[380,150],'СПб':[380,150],'Шушары':[380,155],'Пулково':[378,158],
+  'Екатеринбург':[540,200],'Казань':[490,210],'Новосибирск':[600,230],
+  'Ростов-на-Дону':[420,260],'Ростов':[420,260],'Краснодар':[410,275],'Самара':[505,225],
+  'Нижний Новгород':[475,205],'Н.Новгород':[475,205],'Уфа':[520,215],
+  'Челябинск':[545,220],'Пермь':[530,195],'Воронеж':[440,235],'Тула':[445,215],'Калуга':[440,210],
+  'Иваново':[465,195],'Ярославль':[460,180],'Тверь':[440,180],
+  'Волгоград':[455,250],'Ставрополь':[430,270],'Краснодарский край':[410,275],
+  'Тюмень':[565,205],'Омск':[580,225],'Барнаул':[610,235],'Красноярск':[630,225],
+  'Иркутск':[660,235],'Владивосток':[720,275],
+};
+
+function findCityCoord(name){
+  if(!name) return null;
+  const n = name.trim();
+  if(CITY_COORDS[n]) return CITY_COORDS[n];
+  for(const k of Object.keys(CITY_COORDS)){
+    if(n.includes(k) || k.includes(n)) return CITY_COORDS[k];
+  }
+  return null;
+}
+
+function renderMap(){
+  const g = document.getElementById('mapMarkers');
+  if(!g) return;
+  // Aggregate by warehouse city
+  const v = curPeriod==='all'?Object.values(periods).flatMap(p=>p.vyrab||[]):(periods[curPeriod]?.vyrab||[]);
+  const f = curPeriod==='all'?Object.values(periods).flatMap(p=>p.fines||[]):(periods[curPeriod]?.fines||[]);
+  const byWh = {};
+  v.forEach(r=>{ if(!r.wh) return; if(!byWh[r.wh]) byWh[r.wh]={count:0,earn:0,fines:0}; byWh[r.wh].count++; byWh[r.wh].earn+=pn(r.netEarn); });
+  f.forEach(r=>{ const wh = r.wh || (v.find(x=>x.id===r.id)?.wh); if(!wh) return; if(!byWh[wh]) byWh[wh]={count:0,earn:0,fines:0}; byWh[wh].fines += pn(r.amount)-pn(r.ret||0); });
+  let svg = '';
+  Object.entries(byWh).forEach(([wh,d])=>{
+    const c = findCityCoord(wh);
+    if(!c) return;
+    const r = Math.min(20, 4 + Math.sqrt(d.count));
+    const color = d.fines > d.earn*0.2 ? '#ef4444' : d.fines > d.earn*0.1 ? '#f59e0b' : '#10b981';
+    svg += `<circle cx="${c[0]}" cy="${c[1]}" r="${r}" fill="${color}" fill-opacity="0.7" stroke="${color}" stroke-width="2" style="cursor:pointer" onclick="showMapDetail('${wh.replace(/'/g,"\\\\'")}')"><title>${wh}: ${d.count} чел, ФОТ ${d.earn.toFixed(0)}₽, штрафы ${d.fines.toFixed(0)}₽</title></circle>`;
+    svg += `<text x="${c[0]}" y="${c[1]+r+12}" text-anchor="middle" fill="#cbd5e1" font-size="10" style="pointer-events:none">${wh}</text>`;
+  });
+  g.innerHTML = svg;
+}
+
+function showMapDetail(wh){
+  const det = document.getElementById('mapDetail');
+  if(!det) return;
+  const v = curPeriod==='all'?Object.values(periods).flatMap(p=>p.vyrab||[]):(periods[curPeriod]?.vyrab||[]);
+  const f = curPeriod==='all'?Object.values(periods).flatMap(p=>p.fines||[]):(periods[curPeriod]?.fines||[]);
+  const emp = v.filter(r=>r.wh===wh);
+  const totalEarn = emp.reduce((s,r)=>s+pn(r.netEarn),0);
+  const totalDays = emp.reduce((s,r)=>s+pn(r.days),0);
+  const empIds = new Set(emp.map(r=>r.id));
+  const finesArr = f.filter(r=>empIds.has(r.id) || r.wh===wh);
+  const totalFines = finesArr.reduce((s,r)=>s+pn(r.amount)-pn(r.ret||0),0);
+  const top5 = emp.slice().sort((a,b)=>pn(b.netEarn)-pn(a.netEarn)).slice(0,5);
+  det.innerHTML = `
+    <div style="font-weight:700;font-size:15px;margin-bottom:8px;color:var(--text-1)">📍 ${wh}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px">
+      <div><div style="font-size:11px;color:var(--text-2)">Сотрудников</div><div style="font-size:18px;font-weight:700">${emp.length}</div></div>
+      <div><div style="font-size:11px;color:var(--text-2)">ФОТ</div><div style="font-size:18px;font-weight:700">${totalEarn.toFixed(0)} ₽</div></div>
+      <div><div style="font-size:11px;color:var(--text-2)">Штрафы</div><div style="font-size:18px;font-weight:700;color:${totalFines>totalEarn*0.15?'#ef4444':'inherit'}">${totalFines.toFixed(0)} ₽</div></div>
+      <div><div style="font-size:11px;color:var(--text-2)">Чел/дней</div><div style="font-size:18px;font-weight:700">${totalDays.toFixed(0)}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">Топ-5 по выработке:</div>
+    <div style="font-size:13px">${top5.map(r=>`${r.fio} — ${pn(r.netEarn).toFixed(0)}₽`).join('<br>')||'—'}</div>`;
+}
+
+window.copyAnomaliesReport = copyAnomaliesReport;
+window.showMapDetail = showMapDetail;
+
 // ═══════════════════════ INIT ═══════════════════════
 window.addEventListener('DOMContentLoaded',async ()=>{
   await loadRateSettings();
   loadAllPeriods();
 });
+</script>
+
+<script>
+
 </script>
 
 <script>
@@ -2660,14 +2851,17 @@ function _loadModels(){
   const sel=document.getElementById('_ai_model_sel');
   if(!sel)return;
   sel.innerHTML='<option>⏳ Загрузка...</option>';
-  fetch(`${_OLLAMA}/tags`).then(r=>r.json()).then(function(data){
+  fetch(`${_OLLAMA}/tags`).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
     _models=(data.models||[]).map(m=>m.name).sort();
-    if(!_models.length)throw new Error('Нет моделей');
+    if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${m}">${m}</option>`).join('');
     const pref=['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
-  }).catch(function(e){sel.innerHTML='<option>⚠️ Ошибка</option>';});
+  }).catch(function(e){
+    sel.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';
+    sel.onclick=function(){if(!_models.length){sel.onclick=null;_loadModels();}};
+  });
 }
 
 async function _ask(msg){
@@ -2704,7 +2898,7 @@ async function _ask(msg){
     _hist.push({role:'user',content:msg},{role:'assistant',content:reply});
     if(_hist.length>20)_hist.splice(0,2);
   }catch(e){
-    if(thinking)thinking.innerHTML='<span style="color:#f85149">⚠️ '+e.message+'</span>';
+    if(thinking){const sp=document.createElement('span');sp.style.color='#f85149';sp.textContent='⚠️ '+(e.message||'Ошибка');thinking.innerHTML='';thinking.appendChild(sp);}
   }
   if(btn)btn.disabled=false;
   if(inp){inp.disabled=false;inp.focus();}
@@ -2731,7 +2925,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)_loadModels();
+  if(_open&&!_models.length)setTimeout(_loadModels,50);
 }
 
 function _clear(){
@@ -2796,7 +2990,7 @@ document.addEventListener('DOMContentLoaded',function(){
       <span class="ai-title">WB Аналитик</span>
       <select id="_ai_model_sel"></select>
       <button id="_ai_clear" onclick="_clear()" title="Очистить чат">🗑</button>
-      <button id="_ai_clear" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
+      <button id="_ai_close" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
     </div>
     <div id="_ai_msgs">
       <div class="_ai_msg bot">Привет! Я анализирую данные WB аутсорсинга — выработку, штрафы и операции сотрудников.<br><br>Спросите о топ-сотрудниках, зоне риска, причинах штрафов или выработке по складам.</div>

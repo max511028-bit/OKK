@@ -44,6 +44,15 @@ location /recruiter/_stcore/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 }
+
+# Задачник API (FastAPI on port 8601)
+location /tasks/api/ {
+    proxy_pass http://127.0.0.1:8601/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 60s;
+}
 NGINX_EOF
 
 # ── 2. Include snippet in site config if not already ──────────────────
@@ -127,7 +136,42 @@ else
   echo "Recruiter app.py not found, skipping service setup"
 fi
 
-# ── 6. Test and reload nginx ───────────────────────────────────────────
+# ── 6. Setup Задачник API as systemd service ──────────────────────────
+TASKS_DIR="/var/www/okk/tasks/api"
+
+if [ -f "$TASKS_DIR/main.py" ]; then
+  if [ -f "$TASKS_DIR/requirements.txt" ]; then
+    pip3 install -q -r "$TASKS_DIR/requirements.txt" 2>/dev/null || true
+  fi
+
+  cat > /etc/systemd/system/tasks-api.service << TASKS_EOF
+[Unit]
+Description=Задачник API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$TASKS_DIR
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8601
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=TASKS_DB=$TASKS_DIR/tasks.db
+
+[Install]
+WantedBy=multi-user.target
+TASKS_EOF
+
+  systemctl daemon-reload
+  systemctl enable tasks-api
+  systemctl restart tasks-api
+  echo "Задачник API service started on :8601"
+else
+  echo "Tasks API main.py not found, skipping"
+fi
+
+# ── 7. Test and reload nginx ───────────────────────────────────────────
 nginx -t && systemctl reload nginx && echo "nginx reloaded OK"
 
 echo "=== Setup complete ==="

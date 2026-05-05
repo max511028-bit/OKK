@@ -1,0 +1,3551 @@
+<!DOCTYPE html>
+<!-- saved from url=(0161)file:///C:/Users/Admin/Downloads/IT%20Command%20Center%20%E2%80%94%20%D0%92%D0%9A%D0%A0%20%D0%98%20%D0%A1%D0%A2%D0%A5%20%D0%A0%D0%BE%D1%81%D1%81%D0%B8%D1%8F.html -->
+<html lang="ru"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Задачник — Аналитический портал</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com/">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f4f1;
+  --surface: #ffffff;
+  --surface-2: #fafaf8;
+  --border: rgba(0,0,0,0.07);
+  --border-strong: rgba(0,0,0,0.12);
+  --text-primary: #0f0f0f;
+  --text-secondary: #6b6b6b;
+  --text-tertiary: #9a9a9a;
+  --accent: #1a56db;
+  --accent-light: #e8effe;
+  --green: #15803d;
+  --green-bg: #dcfce7;
+  --red: #dc2626;
+  --red-bg: #fee2e2;
+  --yellow: #d97706;
+  --yellow-bg: #fef3c7;
+  --blue: #2563eb;
+  --blue-bg: #dbeafe;
+  --purple: #7c3aed;
+  --purple-bg: #ede9fe;
+  --radius: 20px;
+  --radius-sm: 12px;
+  --radius-xs: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-hover: 0 12px 40px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.06);
+  --sidebar-w: 220px;
+  --transition: 0.22s cubic-bezier(0.4,0,0.2,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; }
+
+body {
+  font-family: 'Onest', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  overflow-x: hidden;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  z-index: 100;
+  padding: 20px 0;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.logo-mark {
+  width: 32px; height: 32px;
+  background: var(--text-primary);
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+}
+
+.logo-text { font-weight: 600; font-size: 13px; line-height: 1.3; color: var(--text-primary); }
+.logo-sub { font-size: 11px; color: var(--text-tertiary); font-weight: 400; }
+
+.nav-section { padding: 0 10px; margin-bottom: 4px; }
+.nav-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); padding: 8px 8px 4px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+  user-select: none;
+  position: relative;
+}
+.nav-item:hover { background: var(--bg); color: var(--text-primary); }
+.nav-item.active { background: var(--text-primary); color: #fff; }
+.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+.nav-item.active .nav-badge { background: rgba(255,255,255,0.2); color: #fff; }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 16px 18px 0;
+  border-top: 1px solid var(--border);
+}
+
+.focus-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  background: var(--yellow-bg);
+  color: var(--yellow);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition);
+}
+.focus-btn:hover { background: #fde68a; }
+.focus-btn.active { background: var(--yellow); color: #fff; }
+
+/* ── MAIN ── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(245,244,241,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.topbar-subtitle { font-size: 12px; color: var(--text-tertiary); margin-left: 4px; }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.cmd-hint {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.cmd-hint:hover { border-color: var(--text-primary); color: var(--text-primary); }
+.cmd-hint kbd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.health-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  background: var(--green-bg);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+/* ── CONTENT ── */
+.content { padding: 28px; flex: 1; }
+
+.view { display: none; }
+.view.active { display: block; animation: fadeIn 0.3s ease; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── SECTION HEADERS ── */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.section-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.section-sub { font-size: 13px; color: var(--text-tertiary); margin-top: 2px; }
+
+/* ── EXECUTIVE DASHBOARD ── */
+.exec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.exec-main {
+  background: var(--text-primary);
+  border-radius: var(--radius);
+  padding: 28px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  grid-column: span 1;
+}
+
+.exec-main::before {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 180px; height: 180px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 50%;
+}
+
+.health-score {
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -3px;
+  line-height: 1;
+  background: linear-gradient(135deg, #fff 60%, rgba(255,255,255,0.5));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.health-label { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 4px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; }
+
+.health-bar {
+  margin-top: 20px;
+  background: rgba(255,255,255,0.12);
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.health-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #6ee7b7);
+  border-radius: 2px;
+  width: 82%;
+  transition: width 1s ease;
+}
+
+.health-trend { margin-top: 12px; font-size: 12px; color: rgba(255,255,255,0.6); }
+.health-trend strong { color: #6ee7b7; }
+
+.exec-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  transition: all var(--transition);
+  cursor: default;
+}
+.exec-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+
+.exec-card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 10px; }
+.exec-card-value { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+.exec-card-desc { font-size: 12.5px; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; }
+
+.exec-card.risk { border-left: 3px solid var(--red); }
+.exec-card.warn { border-left: 3px solid var(--yellow); }
+.exec-card.info { border-left: 3px solid var(--accent); }
+
+/* ── AI INSIGHTS ── */
+.ai-block {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ai-badge {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--text-primary);
+  color: white;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.ai-pulse {
+  width: 7px; height: 7px;
+  background: #6ee7b7;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.8); } }
+
+.ai-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.ai-insight {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+  cursor: default;
+}
+.ai-insight:hover { border-color: var(--border-strong); background: var(--surface-2); }
+
+.ai-insight-icon { font-size: 20px; margin-bottom: 6px; }
+.ai-insight-text { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.ai-insight-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+.ai-insight.danger { border-color: var(--red); background: var(--red-bg); }
+.ai-insight.warning { border-color: var(--yellow); background: var(--yellow-bg); }
+.ai-insight.recommendation { border-color: var(--accent); background: var(--accent-light); }
+
+/* ── METRIC CARDS ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.metric-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition: all var(--transition);
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-3px); }
+
+.metric-number {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.metric-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+.metric-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 8px;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.metric-delta.up { background: var(--green-bg); color: var(--green); }
+.metric-delta.down { background: var(--red-bg); color: var(--red); }
+.metric-delta.neutral { background: var(--bg); color: var(--text-tertiary); }
+
+.metric-mini-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--border);
+}
+.metric-mini-fill {
+  height: 100%;
+  border-radius: 0 2px 0 0;
+  background: var(--accent);
+  transition: width 1s ease 0.2s;
+}
+
+/* ── CHARTS GRID ── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: all var(--transition);
+}
+.chart-card:hover { box-shadow: var(--shadow-hover); }
+.chart-card.wide { grid-column: span 2; }
+.chart-card.triple { grid-column: span 1; }
+
+.chart-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.chart-subtitle { font-size: 12px; color: var(--text-tertiary); margin-bottom: 18px; }
+.chart-container { position: relative; }
+
+/* ── GANTT ── */
+.gantt-container {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.gantt-header-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.gantt-task-col { width: 260px; flex-shrink: 0; padding: 12px 16px; font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; border-right: 1px solid var(--border); }
+.gantt-info-col { width: 80px; flex-shrink: 0; padding: 12px 8px; font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; border-right: 1px solid var(--border); text-align: center; }
+.gantt-timeline { flex: 1; display: flex; }
+
+.gantt-week {
+  flex: 1;
+  padding: 12px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-align: center;
+  border-right: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.gantt-week:last-child { border-right: none; }
+
+.gantt-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  min-height: 52px;
+  align-items: center;
+  transition: background var(--transition);
+}
+.gantt-row:hover { background: var(--surface-2); }
+.gantt-row:last-child { border-bottom: none; }
+
+.gantt-task-name {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.gantt-task-id { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-tertiary); margin-bottom: 3px; }
+.gantt-task-title { font-size: 12.5px; font-weight: 500; color: var(--text-primary); line-height: 1.3; }
+
+.gantt-info-cell { width: 80px; flex-shrink: 0; padding: 10px 8px; border-right: 1px solid var(--border); text-align: center; }
+.gantt-assignee { font-size: 11px; color: var(--text-secondary); }
+
+.gantt-bars { flex: 1; position: relative; display: flex; align-items: center; padding: 8px 0; }
+
+.gantt-grid-lines {
+  position: absolute;
+  top: 0; bottom: 0;
+  display: flex;
+  width: 100%;
+}
+.gantt-grid-line { flex: 1; border-right: 1px solid var(--border); }
+
+.gantt-bar {
+  position: absolute;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition);
+  z-index: 1;
+}
+.gantt-bar:hover { opacity: 0.85; transform: scaleY(1.1); }
+
+.gantt-bar.done { background: #16a34a; }
+.gantt-bar.inprogress { background: var(--accent); }
+.gantt-bar.overdue { background: var(--red); }
+.gantt-bar.planned { background: #94a3b8; }
+.gantt-bar.paused { background: var(--yellow); }
+
+.gantt-today-line {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: var(--red);
+  z-index: 2;
+}
+.gantt-today-label {
+  position: absolute;
+  top: -18px;
+  background: var(--red);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  transform: translateX(-50%);
+}
+
+/* ── KANBAN ── */
+.kanban-board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.kanban-col {
+  min-width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.kanban-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+}
+
+.kanban-col-title { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.kanban-col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.kanban-count {
+  font-size: 10px; font-weight: 700;
+  background: var(--bg);
+  color: var(--text-tertiary);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.kanban-cards {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.kanban-card {
+  background: var(--surface);
+  border-radius: var(--radius-xs);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: all var(--transition);
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.kanban-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.kanban-card:hover .card-actions { opacity: 1; }
+
+.kanban-card-title { font-size: 12.5px; font-weight: 600; margin-bottom: 8px; line-height: 1.3; }
+.kanban-card-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+
+.tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+.tag.prio-high { background: var(--red-bg); color: var(--red); }
+.tag.prio-med { background: var(--yellow-bg); color: var(--yellow); }
+.tag.prio-low { background: var(--green-bg); color: var(--green); }
+.tag.system { background: var(--blue-bg); color: var(--blue); }
+.tag.risk { background: var(--red-bg); color: var(--red); }
+
+.kanban-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 8px;
+}
+
+.assignee-chip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.assignee-avatar {
+  width: 20px; height: 20px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+}
+
+.due-date { font-size: 10px; color: var(--text-tertiary); font-family: 'JetBrains Mono', monospace; }
+.due-date.overdue { color: var(--red); font-weight: 700; }
+
+.card-actions {
+  position: absolute;
+  right: 10px; top: 10px;
+  display: flex; gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.card-action-btn {
+  width: 24px; height: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.card-action-btn:hover { background: var(--text-primary); color: white; border-color: transparent; }
+
+/* ── TABLE ── */
+.table-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 8px 14px;
+  flex: 1;
+  min-width: 220px;
+  transition: border-color var(--transition);
+}
+.search-box:focus-within { border-color: var(--accent); }
+.search-box input {
+  border: none; outline: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  width: 100%;
+}
+.search-box input::placeholder { color: var(--text-tertiary); }
+
+.filter-select {
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.filter-select:focus { border-color: var(--accent); }
+
+.table-wrap {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.table-scroll { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+thead th {
+  padding: 11px 14px;
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+thead th:hover { color: var(--text-primary); }
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+  cursor: pointer;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr.focused-hidden { display: none; }
+
+td {
+  padding: 10px 14px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.td-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-tertiary); }
+.td-task { white-space: normal; max-width: 200px; font-weight: 500; }
+.td-task small { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 400; margin-top: 1px; }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-done { background: var(--green-bg); color: var(--green); }
+.status-inprogress { background: var(--blue-bg); color: var(--blue); }
+.status-overdue { background: var(--red-bg); color: var(--red); }
+.status-notstarted { background: var(--bg); color: var(--text-tertiary); }
+.status-paused { background: var(--yellow-bg); color: var(--yellow); }
+.status-blocked { background: var(--red-bg); color: var(--red); }
+.status-testing { background: var(--purple-bg); color: var(--purple); }
+.status-rework { background: var(--yellow-bg); color: var(--yellow); }
+
+.risk-dot {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+}
+.risk-high { color: var(--red); }
+.risk-med { color: var(--yellow); }
+.risk-low { color: var(--green); }
+
+/* ── SIDE PANEL ── */
+.side-panel {
+  position: fixed;
+  right: 0; top: 0; bottom: 0;
+  width: 420px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.1);
+  z-index: 200;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+.side-panel.open { transform: translateX(0); }
+
+.panel-header {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.panel-close {
+  position: absolute; top: 16px; right: 18px;
+  width: 28px; height: 28px;
+  background: var(--bg);
+  border: none;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-secondary);
+  transition: all var(--transition);
+}
+.panel-close:hover { background: var(--text-primary); color: white; }
+
+.panel-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px; }
+.panel-title { font-size: 16px; font-weight: 700; line-height: 1.3; padding-right: 36px; }
+
+.panel-body { padding: 22px; }
+
+.panel-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.panel-field { margin-bottom: 18px; }
+.panel-field-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 5px; }
+.panel-field-value { font-size: 13.5px; color: var(--text-primary); }
+
+.panel-divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+.history-item {
+  display: flex; gap: 10px;
+  margin-bottom: 12px;
+}
+.history-dot {
+  width: 6px; height: 6px;
+  background: var(--border-strong);
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.history-text { font-size: 12px; color: var(--text-secondary); }
+.history-time { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
+
+/* ── COMMAND PALETTE ── */
+.cmd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 500;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.cmd-overlay.open { display: flex; }
+
+.cmd-modal {
+  width: 560px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+  overflow: hidden;
+  animation: cmdIn 0.18s ease;
+}
+@keyframes cmdIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+.cmd-input-wrap {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.cmd-input-wrap svg { width: 18px; height: 18px; color: var(--text-tertiary); flex-shrink: 0; }
+.cmd-input {
+  flex: 1;
+  border: none; outline: none;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: transparent;
+}
+.cmd-input::placeholder { color: var(--text-tertiary); }
+
+.cmd-results { padding: 8px; max-height: 320px; overflow-y: auto; }
+.cmd-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); padding: 8px 10px 4px; }
+
+.cmd-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: 13.5px;
+}
+.cmd-item:hover, .cmd-item.selected { background: var(--accent-light); color: var(--accent); }
+.cmd-item-icon { font-size: 16px; width: 22px; text-align: center; }
+.cmd-item-key {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ── WEEKLY REVIEW ── */
+.weekly-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.weekly-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+}
+.weekly-card.full { grid-column: span 2; }
+
+.wc-header { font-size: 13px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.wc-emoji { font-size: 18px; }
+
+.weekly-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.weekly-item:last-child { border-bottom: none; }
+.weekly-check { width: 18px; height: 18px; flex-shrink: 0; }
+.weekly-item-text { flex: 1; }
+.weekly-item-status { font-size: 11px; font-weight: 600; }
+
+/* ── FUNNEL ── */
+.funnel-wrap { display: flex; align-items: flex-end; gap: 0; width: 100%; }
+.funnel-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.funnel-bar-wrap { width: 100%; position: relative; }
+.funnel-bar {
+  border-radius: 6px 6px 0 0;
+  transition: height 1s ease;
+  min-height: 10px;
+}
+.funnel-label { font-size: 10px; color: var(--text-tertiary); text-align: center; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.funnel-num { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.funnel-pct { font-size: 10px; color: var(--text-tertiary); }
+.funnel-arrow { display: flex; align-items: center; font-size: 18px; color: var(--border-strong); padding-bottom: 30px; }
+
+/* ── HEATMAP ── */
+.heatmap-wrap { overflow-x: auto; }
+.heatmap { display: grid; gap: 3px; width: max-content; }
+.heatmap-cell {
+  width: 32px; height: 32px;
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  position: relative;
+}
+.heatmap-cell:hover { transform: scale(1.2); z-index: 1; }
+.hm-0 { background: #f1f5f9; color: transparent; }
+.hm-1 { background: #bfdbfe; color: #1e40af; }
+.hm-2 { background: #93c5fd; color: #1e3a8a; }
+.hm-3 { background: #3b82f6; color: white; }
+.hm-4 { background: #1d4ed8; color: white; }
+.hm-5 { background: #1e3a8a; color: white; }
+
+/* ── OVERLAY BLOCKER ── */
+.overlay-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: none;
+}
+.overlay-blocker.show { display: block; }
+
+/* ── TOOLTIP ── */
+.tooltip {
+  position: absolute;
+  background: var(--text-primary);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+/* ── ROADMAP ── */
+.roadmap-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.roadmap-item {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all var(--transition);
+  cursor: pointer;
+  border-left: 4px solid transparent;
+}
+.roadmap-item:hover { box-shadow: var(--shadow-hover); transform: translateX(4px); }
+.roadmap-item.q2 { border-color: var(--accent); }
+.roadmap-item.q3 { border-color: var(--green); }
+.roadmap-item.risk { border-color: var(--red); }
+
+.roadmap-quarter {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  min-width: 30px;
+}
+
+.roadmap-body { flex: 1; }
+.roadmap-title { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.roadmap-meta { display: flex; gap: 10px; font-size: 11.5px; color: var(--text-secondary); }
+
+.roadmap-progress-wrap { width: 120px; }
+.roadmap-progress-bar { background: var(--bg); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.roadmap-progress-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width 1s ease; }
+.roadmap-pct { font-size: 12px; font-weight: 700; text-align: right; }
+
+/* ── TZ VIEW ── */
+.tz-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.tz-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  transition: all var(--transition);
+  cursor: pointer;
+  border: 2px solid transparent;
+}
+.tz-card:hover { box-shadow: var(--shadow-hover); border-color: var(--accent); }
+.tz-card.no-tz { border-color: var(--red); background: var(--red-bg); }
+
+.tz-status { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+.tz-card-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-tertiary); margin-bottom: 4px; }
+.tz-card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; line-height: 1.3; }
+.tz-card-meta { font-size: 11.5px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 3px; }
+
+/* ── ANIMATION ── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.shake { animation: shake 0.4s ease; }
+
+@keyframes taskComplete {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); background: var(--green-bg); }
+  100% { transform: scale(1); }
+}
+.task-complete { animation: taskComplete 0.5s ease; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1200px) {
+  .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+  .exec-grid { grid-template-columns: 1fr 1fr; }
+  .ai-insights-grid { grid-template-columns: repeat(2, 1fr); }
+  .tz-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 900px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar { display: none; }
+  .main { margin-left: 0; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .exec-grid { grid-template-columns: 1fr; }
+  .charts-grid { grid-template-columns: 1fr; }
+  .charts-grid .wide { grid-column: span 1; }
+  .weekly-grid { grid-template-columns: 1fr; }
+  .weekly-card.full { grid-column: span 1; }
+  .tz-grid { grid-template-columns: 1fr; }
+  .side-panel { width: 100%; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Focus mode banner */
+.focus-banner {
+  background: var(--yellow);
+  color: white;
+  text-align: center;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  display: none;
+}
+.focus-banner.show { display: block; }
+
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">IT</div>
+    <div>
+      <div class="logo-text">Command Center</div>
+      <div class="logo-sub">ВКР И СТХ Россия</div>
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Обзор</div>
+    <div class="nav-item active" onclick="showView(&#39;dashboard&#39;)">
+      <span class="nav-icon">◉</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showView(&#39;analytics&#39;)">
+      <span class="nav-icon">📊</span> Аналитика
+    </div>
+    <div class="nav-item" onclick="showView(&#39;weekly&#39;)">
+      <span class="nav-icon">📋</span> Weekly Review
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Задачи</div>
+    <div class="nav-item" onclick="showView(&#39;tasks&#39;)">
+      <span class="nav-icon">✦</span> Задачи
+      <span class="nav-badge">5</span>
+    </div>
+    <div class="nav-item" onclick="showView(&#39;kanban&#39;)">
+      <span class="nav-icon">⊞</span> Kanban
+    </div>
+    <div class="nav-item" onclick="showView(&#39;gantt&#39;)">
+      <span class="nav-icon">⋯</span> Gantt
+    </div>
+    <div class="nav-item" onclick="showView(&#39;roadmap&#39;)">
+      <span class="nav-icon">↗</span> Roadmap
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Документы</div>
+    <div class="nav-item" onclick="showView(&#39;tz&#39;)">
+      <span class="nav-icon">📄</span> ТЗ
+      <span class="nav-badge">3</span>
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <button class="focus-btn" id="focusBtn" onclick="toggleFocus()">
+      <span>🎯</span> Только важное
+    </button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- FOCUS BANNER -->
+  <div class="focus-banner" id="focusBanner">🎯 Режим фокуса: показаны только просроченные, High Priority и блокеры</div>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="topbar-title" id="topbarTitle">Dashboard</span>
+    <span class="topbar-subtitle" id="topbarSub">— Неделя 20, II кв. 2026</span>
+    <div class="topbar-right">
+      <div class="health-chip">✦ IT Health: 82/100</div>
+      <div class="cmd-hint" onclick="openCmd()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        Поиск
+        <kbd>⌘K</kbd>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="view active" id="view-dashboard">
+
+      <div class="section-header">
+        <div>
+          <div class="section-title">Executive Dashboard</div>
+          <div class="section-sub">Статус IT-процессов · Обновлено 28 апреля 2026</div>
+        </div>
+      </div>
+
+      <div class="exec-grid">
+        <div class="exec-main">
+          <div class="health-label">IT Health Score</div>
+          <div class="health-score">82</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:4px;">из 100 баллов</div>
+          <div class="health-bar"><div class="health-fill"></div></div>
+          <div class="health-trend" style="margin-top:14px;">↑ <strong>+4</strong> к прошлой неделе · 47 активных задач</div>
+        </div>
+
+        <div class="exec-card risk">
+          <div class="exec-card-label">Главный риск недели</div>
+          <div class="exec-card-value" style="font-size:18px;line-height:1.4;">Интеграция<br>Яндекс / Bitrix</div>
+          <div class="exec-card-desc">IT-021 заблокирована — нет согласования обязательных полей. Риск срыва цепочки лидов.</div>
+        </div>
+
+        <div class="exec-card warn">
+          <div class="exec-card-label">Задачи под угрозой</div>
+          <div class="exec-card-value">8</div>
+          <div class="exec-card-desc">5 просрочены · 3 без ТЗ · без владельца результата. Нужно управленческое решение.</div>
+        </div>
+      </div>
+
+      <div class="exec-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px;">
+        <div class="exec-card info">
+          <div class="exec-card-label">Bottleneck</div>
+          <div class="exec-card-value" style="font-size:16px;">Максим — перегруз</div>
+          <div class="exec-card-desc">6 задач в работе одновременно. Рекомендуется перераспределение до пятницы.</div>
+        </div>
+
+        <div class="exec-card" style="border-left:3px solid var(--green);">
+          <div class="exec-card-label">Рекомендованное действие</div>
+          <div class="exec-card-value" style="font-size:14px;line-height:1.4;">Назначить владельца IT-021</div>
+          <div class="exec-card-desc">Определить дедлайн согласования ≤ 02.05. Провести встречу с Яндексом по полям CRM.</div>
+        </div>
+      </div>
+
+      <!-- AI BLOCK -->
+      <div class="ai-block">
+        <div class="ai-header">
+          <div class="ai-badge"><div class="ai-pulse"></div> AI Insights</div>
+          <span style="font-size:13px;color:var(--text-secondary);">Автоматический анализ состояния задач</span>
+        </div>
+        <div class="ai-insights-grid">
+          <div class="ai-insight danger">
+            <div class="ai-insight-icon">⏰</div>
+            <div class="ai-insight-text">5 задач просрочены</div>
+            <div class="ai-insight-sub">IT-021, IT-027, IT-033, IT-041, IT-051</div>
+          </div>
+          <div class="ai-insight danger">
+            <div class="ai-insight-icon">📄</div>
+            <div class="ai-insight-text">3 задачи без ТЗ</div>
+            <div class="ai-insight-sub">Риск разного понимания результата</div>
+          </div>
+          <div class="ai-insight warning">
+            <div class="ai-insight-icon">📊</div>
+            <div class="ai-insight-text">5 задач без метрики</div>
+            <div class="ai-insight-sub">Невозможно измерить эффект внедрения</div>
+          </div>
+          <div class="ai-insight warning">
+            <div class="ai-insight-icon">🔥</div>
+            <div class="ai-insight-text">Максим — перегруз</div>
+            <div class="ai-insight-sub">6 задач в работе, 3 в зоне риска срыва</div>
+          </div>
+          <div class="ai-insight danger">
+            <div class="ai-insight-icon">⛔</div>
+            <div class="ai-insight-text">Интеграция Яндекс/Bitrix</div>
+            <div class="ai-insight-sub">Блокирует 4 downstream-задачи</div>
+          </div>
+          <div class="ai-insight recommendation">
+            <div class="ai-insight-icon">💡</div>
+            <div class="ai-insight-text">Рекомендация</div>
+            <div class="ai-insight-sub">Назначить владельца IT-021, дедлайн согласования ≤ 02.05</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- METRICS -->
+      <div class="section-header">
+        <div class="section-title">Метрики</div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card" onclick="showView(&#39;tasks&#39;)">
+          <div class="metric-number">47</div>
+          <div class="metric-label">Всего задач</div>
+          <div class="metric-delta up">↑ +6 за неделю</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:78%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">68%</div>
+          <div class="metric-label">Выполнено в срок</div>
+          <div class="metric-delta down">↓ −5% к плану</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:68%;background:var(--yellow)"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">8.4</div>
+          <div class="metric-label">Средний цикл, дни</div>
+          <div class="metric-delta neutral">→ без изменений</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:55%;background:var(--text-tertiary)"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">124h</div>
+          <div class="metric-label">Экономия времени</div>
+          <div class="metric-delta up">↑ +18h к прошлой</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:82%;background:var(--green)"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-number">3.2×</div>
+          <div class="metric-label">ROI внедрений</div>
+          <div class="metric-delta up">↑ +0.4 за квартал</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:70%;background:var(--purple)"></div></div>
+        </div>
+        <div class="metric-card" onclick="showView(&#39;tasks&#39;)">
+          <div class="metric-number" style="color:var(--red)">8</div>
+          <div class="metric-label">В зоне риска</div>
+          <div class="metric-delta down">↑ +3 за неделю</div>
+          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:25%;background:var(--red)"></div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── ANALYTICS ── -->
+    <div class="view" id="view-analytics">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Аналитика</div>
+          <div class="section-sub">Графики и показатели эффективности · II кв. 2026</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Статусы задач</div>
+          <div class="chart-subtitle">Распределение по статусам</div>
+          <div class="chart-container" style="height:220px;">
+            <canvas id="chartStatus" width="220" height="220" style="display: block; box-sizing: border-box; height: 220px; width: 220px;"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">План / Факт</div>
+          <div class="chart-subtitle">Задачи выполнены по неделям</div>
+          <div class="chart-container" style="height:220px;">
+            <canvas id="chartPlanFact" width="440" height="220" style="display: block; box-sizing: border-box; height: 220px; width: 440px;"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">Нагрузка по системам</div>
+          <div class="chart-subtitle">Количество задач на систему</div>
+          <div class="chart-container" style="height:220px;">
+            <canvas id="chartSystems" width="440" height="220" style="display: block; box-sizing: border-box; height: 220px; width: 440px;"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">Эффект внедрений</div>
+          <div class="chart-subtitle">Экономия часов по направлениям</div>
+          <div class="chart-container" style="height:220px;">
+            <canvas id="chartEffect" width="440" height="220" style="display: block; box-sizing: border-box; height: 220px; width: 440px;"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card wide">
+          <div class="chart-title">Воронка задач</div>
+          <div class="chart-subtitle">Встреча → ТЗ → Задача → Тест → Прод → Измеренный эффект</div>
+          <div style="display:flex;align-items:flex-end;gap:0;padding:10px 0;height:200px;">
+            <div class="funnel-step">
+              <div class="funnel-num">62</div>
+              <div style="width:90%;height:160px;background:#1a56db;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">Встречи</div>
+            </div>
+            <div class="funnel-arrow">›</div>
+            <div class="funnel-step">
+              <div class="funnel-num">47</div>
+              <div style="width:90%;height:122px;background:#3b82f6;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">ТЗ</div>
+            </div>
+            <div class="funnel-arrow">›</div>
+            <div class="funnel-step">
+              <div class="funnel-num">47</div>
+              <div style="width:90%;height:122px;background:#60a5fa;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">Задачи</div>
+            </div>
+            <div class="funnel-arrow">›</div>
+            <div class="funnel-step">
+              <div class="funnel-num">29</div>
+              <div style="width:90%;height:75px;background:#93c5fd;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">Тест</div>
+            </div>
+            <div class="funnel-arrow">›</div>
+            <div class="funnel-step">
+              <div class="funnel-num">18</div>
+              <div style="width:90%;height:46px;background:#15803d;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">Прод</div>
+            </div>
+            <div class="funnel-arrow">›</div>
+            <div class="funnel-step">
+              <div class="funnel-num">11</div>
+              <div style="width:90%;height:28px;background:#16a34a;border-radius:8px 8px 0 0;"></div>
+              <div class="funnel-label">Эффект</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chart-card wide">
+          <div class="chart-title">Heatmap нагрузки</div>
+          <div class="chart-subtitle">Ответственный × Неделя — количество задач</div>
+          <div id="heatmapContainer" style="margin-top:12px;"><div style="display:flex;gap:3px;margin-bottom:3px;">
+    <div style="width:80px;"></div>
+    <div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н19</div><div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н20</div><div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н21</div><div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н22</div><div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н23</div><div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">Н24</div>
+  </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Максим</div>
+      <div class="heatmap-cell hm-2" title="Максим, Н19: 2 задач">2</div><div class="heatmap-cell hm-5" title="Максим, Н20: 6 задач">6</div><div class="heatmap-cell hm-5" title="Максим, Н21: 5 задач">5</div><div class="heatmap-cell hm-4" title="Максим, Н22: 4 задач">4</div><div class="heatmap-cell hm-3" title="Максим, Н23: 3 задач">3</div><div class="heatmap-cell hm-2" title="Максим, Н24: 2 задач">2</div>
+    </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Дмитрий</div>
+      <div class="heatmap-cell hm-1" title="Дмитрий, Н19: 1 задач">1</div><div class="heatmap-cell hm-3" title="Дмитрий, Н20: 3 задач">3</div><div class="heatmap-cell hm-4" title="Дмитрий, Н21: 4 задач">4</div><div class="heatmap-cell hm-3" title="Дмитрий, Н22: 3 задач">3</div><div class="heatmap-cell hm-4" title="Дмитрий, Н23: 4 задач">4</div><div class="heatmap-cell hm-3" title="Дмитрий, Н24: 3 задач">3</div>
+    </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Анна</div>
+      <div class="heatmap-cell hm-1" title="Анна, Н19: 1 задач">1</div><div class="heatmap-cell hm-2" title="Анна, Н20: 2 задач">2</div><div class="heatmap-cell hm-3" title="Анна, Н21: 3 задач">3</div><div class="heatmap-cell hm-2" title="Анна, Н22: 2 задач">2</div><div class="heatmap-cell hm-2" title="Анна, Н23: 2 задач">2</div><div class="heatmap-cell hm-2" title="Анна, Н24: 2 задач">2</div>
+    </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Екатерина</div>
+      <div class="heatmap-cell hm-0" title="Екатерина, Н19: 0 задач"></div><div class="heatmap-cell hm-2" title="Екатерина, Н20: 2 задач">2</div><div class="heatmap-cell hm-3" title="Екатерина, Н21: 3 задач">3</div><div class="heatmap-cell hm-3" title="Екатерина, Н22: 3 задач">3</div><div class="heatmap-cell hm-3" title="Екатерина, Н23: 3 задач">3</div><div class="heatmap-cell hm-2" title="Екатерина, Н24: 2 задач">2</div>
+    </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Иван</div>
+      <div class="heatmap-cell hm-1" title="Иван, Н19: 1 задач">1</div><div class="heatmap-cell hm-2" title="Иван, Н20: 2 задач">2</div><div class="heatmap-cell hm-2" title="Иван, Н21: 2 задач">2</div><div class="heatmap-cell hm-3" title="Иван, Н22: 3 задач">3</div><div class="heatmap-cell hm-2" title="Иван, Н23: 2 задач">2</div><div class="heatmap-cell hm-2" title="Иван, Н24: 2 задач">2</div>
+    </div><div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">Ольга</div>
+      <div class="heatmap-cell hm-0" title="Ольга, Н19: 0 задач"></div><div class="heatmap-cell hm-1" title="Ольга, Н20: 1 задач">1</div><div class="heatmap-cell hm-1" title="Ольга, Н21: 1 задач">1</div><div class="heatmap-cell hm-1" title="Ольга, Н22: 1 задач">1</div><div class="heatmap-cell hm-1" title="Ольга, Н23: 1 задач">1</div><div class="heatmap-cell hm-1" title="Ольга, Н24: 1 задач">1</div>
+    </div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TASKS ── -->
+    <div class="view" id="view-tasks">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Задачи</div>
+          <div class="section-sub">Полный реестр IT-задач II кв. 2026</div>
+        </div>
+      </div>
+
+      <div class="table-controls">
+        <div class="search-box">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" placeholder="Поиск по задачам..." id="taskSearch" oninput="filterTasks()">
+        </div>
+        <select class="filter-select" id="filterStatus" onchange="filterTasks()">
+          <option value="">Все статусы</option>
+          <option value="Выполнено">✅ Выполнено</option>
+          <option value="В процессе">🔵 В процессе</option>
+          <option value="Просрочено">🔴 Просрочено</option>
+          <option value="Не начато">⏳ Не начато</option>
+          <option value="На паузе">⏸ На паузе</option>
+          <option value="Проблемы">⚠️ Проблемы</option>
+          <option value="На доработке">🔧 На доработке</option>
+          <option value="Неактуально">⛔ Неактуально</option>
+        </select>
+        <select class="filter-select" id="filterAssignee" onchange="filterTasks()">
+          <option value="">Все ответственные</option>
+          <option value="Максим">Максим</option>
+          <option value="Анна">Анна</option>
+          <option value="Дмитрий">Дмитрий</option>
+          <option value="Екатерина">Екатерина</option>
+          <option value="Иван">Иван</option>
+          <option value="Ольга">Ольга</option>
+        </select>
+        <select class="filter-select" id="filterSystem" onchange="filterTasks()">
+          <option value="">Все системы</option>
+          <option value="Bitrix24">Bitrix24</option>
+          <option value="1C">1C</option>
+          <option value="ATS">ATS</option>
+          <option value="Телефония">Телефония</option>
+          <option value="Бот">Бот</option>
+          <option value="AI">AI</option>
+          <option value="Автоматизация">Автоматизация</option>
+          <option value="Аналитика">Аналитика</option>
+        </select>
+        <select class="filter-select" id="sortBy" onchange="filterTasks()">
+          <option value="">Сортировка</option>
+          <option value="deadline">По сроку</option>
+          <option value="risk">По риску</option>
+          <option value="priority">По приоритету</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Задача</th>
+                <th>Система</th>
+                <th>Ответственный</th>
+                <th>Срок</th>
+                <th>Статус</th>
+                <th>Риск</th>
+                <th>Метрика</th>
+                <th>ТЗ</th>
+                <th>Эффект</th>
+              </tr>
+            </thead>
+            <tbody id="tasksBody"><tr>
+      <td class="td-id">IT-014</td>
+      <td class="td-task">GPT-4.1 тест звонков<small>AI</small></td>
+      <td><span class="tag system">AI</span></td>
+      <td>Максим</td>
+      <td class="due-date overdue">04.05.2026</td>
+      <td><span class="status-pill status-overdue">🔴 Просрочено</span></td>
+      <td><span class="risk-dot risk-high">● Высокий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Конверсия звонков %</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−30% нагрузки операторов</td>
+    </tr><tr>
+      <td class="td-id">IT-021</td>
+      <td class="td-task">Согласовать обязательные поля Яндекс / Bitrix<small>Bitrix24</small></td>
+      <td><span class="tag system">Bitrix24</span></td>
+      <td>Дмитрий</td>
+      <td class="due-date overdue">30.04.2026</td>
+      <td><span class="status-pill status-overdue">🔴 Просрочено</span></td>
+      <td><span class="risk-dot risk-high">● Высокий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% потерь лидов при передаче</td>
+      <td><span class="status-pill status-blocked">❌ Нет</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">0% потерь лидов</td>
+    </tr><tr>
+      <td class="td-id">IT-027</td>
+      <td class="td-task">Исправить города и должности<small>ATS</small></td>
+      <td><span class="tag system">ATS</span></td>
+      <td>Анна</td>
+      <td class="due-date">10.05.2026</td>
+      <td><span class="status-pill status-inprogress">🔵 В процессе</span></td>
+      <td><span class="risk-dot risk-med">● Средний</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% корректных записей</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">+15% точность фильтрации</td>
+    </tr><tr>
+      <td class="td-id">IT-033</td>
+      <td class="td-task">Рабочее время бота и часовые пояса<small>Бот</small></td>
+      <td><span class="tag system">Бот</span></td>
+      <td>Максим</td>
+      <td class="due-date overdue">28.04.2026</td>
+      <td><span class="status-pill status-overdue">🔴 Просрочено</span></td>
+      <td><span class="risk-dot risk-high">● Высокий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Доля звонков в рабочее время</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−20% жалоб на поздние звонки</td>
+    </tr><tr>
+      <td class="td-id">IT-041</td>
+      <td class="td-task">Статистика службы массового подбора<small>Аналитика</small></td>
+      <td><span class="tag system">Аналитика</span></td>
+      <td>Екатерина</td>
+      <td class="due-date">15.05.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-high">● Высокий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Time-to-hire, дни</td>
+      <td><span class="status-pill status-blocked">❌ Нет</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">Видимость процесса подбора</td>
+    </tr><tr>
+      <td class="td-id">IT-051</td>
+      <td class="td-task">Спам-фильтр входящих лидов<small>Bitrix24</small></td>
+      <td><span class="tag system">Bitrix24</span></td>
+      <td>Иван</td>
+      <td class="due-date">20.05.2026</td>
+      <td><span class="status-pill status-inprogress">🔵 В процессе</span></td>
+      <td><span class="risk-dot risk-med">● Средний</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% спама в CRM</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−40% мусорных лидов</td>
+    </tr><tr>
+      <td class="td-id">IT-055</td>
+      <td class="td-task">Автоматизация отчётов менеджеров<small>Bitrix24</small></td>
+      <td><span class="tag system">Bitrix24</span></td>
+      <td>Ольга</td>
+      <td class="due-date">25.05.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-low">● Низкий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Часов ручной работы в неделю</td>
+      <td><span class="status-pill status-blocked">❌ Нет</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−4 часа/неделю</td>
+    </tr><tr>
+      <td class="td-id">IT-058</td>
+      <td class="td-task">Интеграция мессенджеров в CRM<small>Bitrix24</small></td>
+      <td><span class="tag system">Bitrix24</span></td>
+      <td>Дмитрий</td>
+      <td class="due-date">01.06.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-med">● Средний</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% обращений через мессенджеры</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">+25% скорость ответа</td>
+    </tr><tr>
+      <td class="td-id">IT-062</td>
+      <td class="td-task">Транскрибация и анализ звонков<small>AI</small></td>
+      <td><span class="tag system">AI</span></td>
+      <td>Максим</td>
+      <td class="due-date">10.05.2026</td>
+      <td><span class="status-pill status-inprogress">🔵 В процессе</span></td>
+      <td><span class="risk-dot risk-med">● Средний</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% обработанных звонков</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">Контроль качества звонков</td>
+    </tr><tr>
+      <td class="td-id">IT-068</td>
+      <td class="td-task">Оценка ботов (NPS)<small>Телефония</small></td>
+      <td><span class="tag system">Телефония</span></td>
+      <td>Анна</td>
+      <td class="due-date">30.05.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-low">● Низкий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">NPS голосового бота</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">Данные для улучшения бота</td>
+    </tr><tr>
+      <td class="td-id">IT-071</td>
+      <td class="td-task">Корпоративные почты и алиасы<small>Автоматизация</small></td>
+      <td><span class="tag system">Автоматизация</span></td>
+      <td>Иван</td>
+      <td class="due-date">15.05.2026</td>
+      <td><span class="status-pill status-done">✅ Выполнено</span></td>
+      <td><span class="risk-dot risk-low">● Низкий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% стандартизированных почт</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">Единый стандарт коммуникации</td>
+    </tr><tr>
+      <td class="td-id">IT-075</td>
+      <td class="td-task">Управление задачами: шаблоны<small>Bitrix24</small></td>
+      <td><span class="tag system">Bitrix24</span></td>
+      <td>Екатерина</td>
+      <td class="due-date">20.05.2026</td>
+      <td><span class="status-pill status-paused">⏸ На паузе</span></td>
+      <td><span class="risk-dot risk-low">● Низкий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Время постановки задачи</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−60% времени на создание задач</td>
+    </tr><tr>
+      <td class="td-id">IT-079</td>
+      <td class="td-task">Документооборот: ЭЦП интеграция<small>Документооборот</small></td>
+      <td><span class="tag system">Документооборот</span></td>
+      <td>Дмитрий</td>
+      <td class="due-date">10.06.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-high">● Высокий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">% договоров с ЭЦП</td>
+      <td><span class="status-pill status-blocked">❌ Нет</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−3 дня на подписание договора</td>
+    </tr><tr>
+      <td class="td-id">IT-083</td>
+      <td class="td-task">BI-дашборд для директора<small>Аналитика</small></td>
+      <td><span class="tag system">Аналитика</span></td>
+      <td>Екатерина</td>
+      <td class="due-date">01.06.2026</td>
+      <td><span class="status-pill status-inprogress">🔵 В процессе</span></td>
+      <td><span class="risk-dot risk-med">● Средний</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Время подготовки отчёта, ч</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−8 часов/неделю на отчёты</td>
+    </tr><tr>
+      <td class="td-id">IT-087</td>
+      <td class="td-task">Хранилище резюме (S3)<small>Хранилища</small></td>
+      <td><span class="tag system">Хранилища</span></td>
+      <td>Иван</td>
+      <td class="due-date">15.06.2026</td>
+      <td><span class="status-pill status-notstarted">⏳ Не начато</span></td>
+      <td><span class="risk-dot risk-low">● Низкий</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">Скорость поиска резюме, сек</td>
+      <td><span class="status-pill status-done">✅ Есть</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">−70% времени поиска резюме</td>
+    </tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── KANBAN ── -->
+    <div class="view" id="view-kanban">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Kanban</div>
+          <div class="section-sub">Управление задачами по статусам</div>
+        </div>
+      </div>
+      <div class="kanban-board" id="kanbanBoard"><div class="kanban-col">
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:#94a3b8"></div>
+          Не начато
+        </div>
+        <div class="kanban-count">6</div>
+      </div>
+      <div class="kanban-cards" id="col-notstarted">
+        <div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-041&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Статистика службы массового подбора</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">Аналитика</span>
+      <span class="tag risk">⚠ Риск</span>
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Е</div>
+        Екатерина
+      </div>
+      <div class="due-date ">15.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-055&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Автоматизация отчётов менеджеров</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-low">Низкий</span>
+      <span class="tag system">Bitrix24</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">О</div>
+        Ольга
+      </div>
+      <div class="due-date ">25.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-058&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Интеграция мессенджеров в CRM</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-med">Средний</span>
+      <span class="tag system">Bitrix24</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Д</div>
+        Дмитрий
+      </div>
+      <div class="due-date ">01.06.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-068&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Оценка ботов (NPS)</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-low">Низкий</span>
+      <span class="tag system">Телефония</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">А</div>
+        Анна
+      </div>
+      <div class="due-date ">30.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-079&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Документооборот: ЭЦП интеграция</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">Документооборот</span>
+      <span class="tag risk">⚠ Риск</span>
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Д</div>
+        Дмитрий
+      </div>
+      <div class="due-date ">10.06.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-087&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Хранилище резюме (S3)</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-low">Низкий</span>
+      <span class="tag system">Хранилища</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">И</div>
+        Иван
+      </div>
+      <div class="due-date ">15.06.2026</div>
+    </div>
+  </div>
+      </div>
+    </div><div class="kanban-col">
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:#2563eb"></div>
+          В работе
+        </div>
+        <div class="kanban-count">4</div>
+      </div>
+      <div class="kanban-cards" id="col-inprogress">
+        <div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-027&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Исправить города и должности</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-med">Средний</span>
+      <span class="tag system">ATS</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">А</div>
+        Анна
+      </div>
+      <div class="due-date ">10.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-051&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Спам-фильтр входящих лидов</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-med">Средний</span>
+      <span class="tag system">Bitrix24</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">И</div>
+        Иван
+      </div>
+      <div class="due-date ">20.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-062&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Транскрибация и анализ звонков</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">AI</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">М</div>
+        Максим
+      </div>
+      <div class="due-date ">10.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-083&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">BI-дашборд для директора</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">Аналитика</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Е</div>
+        Екатерина
+      </div>
+      <div class="due-date ">01.06.2026</div>
+    </div>
+  </div>
+      </div>
+    </div><div class="kanban-col">
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:#7c3aed"></div>
+          На проверке
+        </div>
+        <div class="kanban-count">0</div>
+      </div>
+      <div class="kanban-cards" id="col-review">
+        
+      </div>
+    </div><div class="kanban-col">
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:#dc2626"></div>
+          Риск / Блокер
+        </div>
+        <div class="kanban-count">3</div>
+      </div>
+      <div class="kanban-cards" id="col-risk">
+        <div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-014&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">GPT-4.1 тест звонков</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">AI</span>
+      <span class="tag risk">⚠ Риск</span>
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">М</div>
+        Максим
+      </div>
+      <div class="due-date overdue">04.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-021&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Согласовать обязательные поля Яндекс / Bitrix</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">Bitrix24</span>
+      <span class="tag risk">⚠ Риск</span>
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Д</div>
+        Дмитрий
+      </div>
+      <div class="due-date overdue">30.04.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-033&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Рабочее время бота и часовые пояса</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-high">Высокий</span>
+      <span class="tag system">Бот</span>
+      <span class="tag risk">⚠ Риск</span>
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">М</div>
+        Максим
+      </div>
+      <div class="due-date overdue">28.04.2026</div>
+    </div>
+  </div>
+      </div>
+    </div><div class="kanban-col">
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:#16a34a"></div>
+          Выполнено
+        </div>
+        <div class="kanban-count">2</div>
+      </div>
+      <div class="kanban-cards" id="col-done">
+        <div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-071&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Корпоративные почты и алиасы</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-low">Низкий</span>
+      <span class="tag system">Автоматизация</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">И</div>
+        Иван
+      </div>
+      <div class="due-date ">15.05.2026</div>
+    </div>
+  </div><div class="kanban-card" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-075&#39;))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">Управление задачами: шаблоны</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-med">Средний</span>
+      <span class="tag system">Bitrix24</span>
+      
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">Е</div>
+        Екатерина
+      </div>
+      <div class="due-date ">20.05.2026</div>
+    </div>
+  </div>
+      </div>
+    </div></div>
+    </div>
+
+    <!-- ── GANTT ── -->
+    <div class="view" id="view-gantt">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Диаграмма Ганта</div>
+          <div class="section-sub">Roadmap внедрений · II–III кв. 2026</div>
+        </div>
+      </div>
+
+      <div class="gantt-container" id="ganttContainer">
+        <div class="gantt-header-row">
+          <div class="gantt-task-col">Задача</div>
+          <div class="gantt-info-col">Ответств.</div>
+          <div class="gantt-timeline" id="ganttWeekHeaders"><div class="gantt-week">Н20</div><div class="gantt-week">Н21</div><div class="gantt-week">Н22</div><div class="gantt-week">Н23</div><div class="gantt-week">Н24</div><div class="gantt-week">Н25</div><div class="gantt-week">Н26</div><div class="gantt-week">Н27</div><div class="gantt-week">Н28</div><div class="gantt-week">Н29</div><div class="gantt-week">Н30</div><div class="gantt-week">Н31</div></div>
+        </div>
+        <div id="ganttRows"><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-021</div>
+        <div class="gantt-task-title">Интеграция Яндекс/Bitrix</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Д.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar overdue" style="left:0%;width:25%" title="IT-021: Интеграция Яндекс/Bitrix (Н20–Н22)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-021&#39;))">
+          IT-021
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-014</div>
+        <div class="gantt-task-title">GPT-4.1 тест звонков</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">М.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar overdue" style="left:0%;width:16.666666666666664%" title="IT-014: GPT-4.1 тест звонков (Н20–Н21)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-014&#39;))">
+          IT-014
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-033</div>
+        <div class="gantt-task-title">Рабочее время бота</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">М.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar overdue" style="left:0%;width:8.333333333333332%" title="IT-033: Рабочее время бота (Н20–Н20)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-033&#39;))">
+          
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-027</div>
+        <div class="gantt-task-title">Исправить города/должности</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">А.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar inprogress" style="left:8.333333333333332%;width:25%" title="IT-027: Исправить города/должности (Н21–Н23)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-027&#39;))">
+          IT-027
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-062</div>
+        <div class="gantt-task-title">Транскрибация звонков</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">М.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar inprogress" style="left:8.333333333333332%;width:16.666666666666664%" title="IT-062: Транскрибация звонков (Н21–Н22)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-062&#39;))">
+          IT-062
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-051</div>
+        <div class="gantt-task-title">Спам-фильтр лидов</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">И.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar inprogress" style="left:16.666666666666664%;width:25%" title="IT-051: Спам-фильтр лидов (Н22–Н24)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-051&#39;))">
+          IT-051
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-041</div>
+        <div class="gantt-task-title">Статистика подбора</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Е.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar planned" style="left:16.666666666666664%;width:33.33333333333333%" title="IT-041: Статистика подбора (Н22–Н25)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-041&#39;))">
+          IT-041
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-083</div>
+        <div class="gantt-task-title">BI-дашборд директора</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Е.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar inprogress" style="left:25%;width:33.33333333333333%" title="IT-083: BI-дашборд директора (Н23–Н26)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-083&#39;))">
+          IT-083
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-058</div>
+        <div class="gantt-task-title">Мессенджеры в CRM</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Д.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar planned" style="left:33.33333333333333%;width:33.33333333333333%" title="IT-058: Мессенджеры в CRM (Н24–Н27)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-058&#39;))">
+          IT-058
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-079</div>
+        <div class="gantt-task-title">ЭЦП интеграция</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Д.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar planned" style="left:41.66666666666667%;width:41.66666666666667%" title="IT-079: ЭЦП интеграция (Н25–Н29)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-079&#39;))">
+          IT-079
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-071</div>
+        <div class="gantt-task-title">Корпоративные почты</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">И.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar done" style="left:0%;width:16.666666666666664%" title="IT-071: Корпоративные почты (Н20–Н21)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-071&#39;))">
+          IT-071
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-075</div>
+        <div class="gantt-task-title">Шаблоны задач</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">Е.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar paused" style="left:16.666666666666664%;width:25%" title="IT-075: Шаблоны задач (Н22–Н24)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-075&#39;))">
+          IT-075
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-068</div>
+        <div class="gantt-task-title">Оценка ботов (NPS)</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">А.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar planned" style="left:41.66666666666667%;width:33.33333333333333%" title="IT-068: Оценка ботов (NPS) (Н25–Н28)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-068&#39;))">
+          IT-068
+        </div>
+      </div>
+    </div><div class="gantt-row">
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">IT-087</div>
+        <div class="gantt-task-title">Хранилище резюме S3</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">И.</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
+        </div>
+        <div class="gantt-today-line" style="left:8.333333333333332%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar planned" style="left:50%;width:41.66666666666667%" title="IT-087: Хранилище резюме S3 (Н26–Н30)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-087&#39;))">
+          IT-087
+        </div>
+      </div>
+    </div></div>
+      </div>
+
+      <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:#16a34a;border-radius:3px;"></div>Выполнено</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:var(--accent);border-radius:3px;"></div>В работе</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:var(--red);border-radius:3px;"></div>Просрочено</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:#94a3b8;border-radius:3px;"></div>Запланировано</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:var(--yellow);border-radius:3px;"></div>На паузе</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--red);font-weight:600;">— Сегодня</div>
+      </div>
+    </div>
+
+    <!-- ── ROADMAP ── -->
+    <div class="view" id="view-roadmap">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Roadmap</div>
+          <div class="section-sub">Стратегические внедрения 2026</div>
+        </div>
+      </div>
+      <div class="roadmap-grid" id="roadmapGrid">
+    <div class="roadmap-item risk">
+      <div class="roadmap-quarter">Q2</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Интеграция Яндекс → Bitrix24</div>
+        <div class="roadmap-meta">
+          <span>🏗 Bitrix24</span>
+          <span>👤 Дмитрий</span>
+          <span>📅 01.06.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">15%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:15%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q2">
+      <div class="roadmap-quarter">Q2</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Голосовой бот GPT-4.1</div>
+        <div class="roadmap-meta">
+          <span>🏗 AI</span>
+          <span>👤 Максим</span>
+          <span>📅 15.05.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">40%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:40%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q2">
+      <div class="roadmap-quarter">Q2</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Транскрибация звонков</div>
+        <div class="roadmap-meta">
+          <span>🏗 AI</span>
+          <span>👤 Максим</span>
+          <span>📅 10.05.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">55%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:55%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item risk">
+      <div class="roadmap-quarter">Q2</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Статистика массового подбора</div>
+        <div class="roadmap-meta">
+          <span>🏗 Аналитика</span>
+          <span>👤 Екатерина</span>
+          <span>📅 15.05.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">5%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:5%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q2">
+      <div class="roadmap-quarter">Q2</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">BI-дашборд директора</div>
+        <div class="roadmap-meta">
+          <span>🏗 Аналитика</span>
+          <span>👤 Екатерина</span>
+          <span>📅 01.06.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">35%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:35%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q3">
+      <div class="roadmap-quarter">Q3</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">ЭЦП интеграция (Диадок)</div>
+        <div class="roadmap-meta">
+          <span>🏗 Документооборот</span>
+          <span>👤 Дмитрий</span>
+          <span>📅 10.06.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">0%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q3">
+      <div class="roadmap-quarter">Q3</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Мессенджеры в CRM</div>
+        <div class="roadmap-meta">
+          <span>🏗 Bitrix24</span>
+          <span>👤 Дмитрий</span>
+          <span>📅 01.06.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">0%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  
+    <div class="roadmap-item q3">
+      <div class="roadmap-quarter">Q3</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">Хранилище резюме S3</div>
+        <div class="roadmap-meta">
+          <span>🏗 Хранилища</span>
+          <span>👤 Иван</span>
+          <span>📅 15.06.2026</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">0%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+    </div>
+
+    <!-- ── TZ ── -->
+    <div class="view" id="view-tz">
+      <div class="section-header">
+        <div>
+          <div class="section-title">ТЗ / Документация</div>
+          <div class="section-sub">Техзадания по задачам · 3 требуют внимания</div>
+        </div>
+      </div>
+      <div class="tz-grid" id="tzGrid">
+    <div class="tz-card no-tz" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-021&#39;))">
+      <div class="tz-status" style="color:var(--red)">
+        ❌ ТЗ отсутствует
+      </div>
+      <div class="tz-card-id">IT-021</div>
+      <div class="tz-card-title">ТЗ на интеграцию Яндекс/Bitrix</div>
+      <div class="tz-card-meta">
+        <span>🏗 Bitrix24</span>
+        <span>👤 Дмитрий</span>
+        <span>Критично — блокирует 4 задачи</span>
+      </div>
+    </div>
+  
+    <div class="tz-card no-tz" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-041&#39;))">
+      <div class="tz-status" style="color:var(--red)">
+        ❌ ТЗ отсутствует
+      </div>
+      <div class="tz-card-id">IT-041</div>
+      <div class="tz-card-title">ТЗ на дашборд массового подбора</div>
+      <div class="tz-card-meta">
+        <span>🏗 Аналитика</span>
+        <span>👤 Екатерина</span>
+        <span>Нет понимания метрик</span>
+      </div>
+    </div>
+  
+    <div class="tz-card no-tz" onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-079&#39;))">
+      <div class="tz-status" style="color:var(--red)">
+        ❌ ТЗ отсутствует
+      </div>
+      <div class="tz-card-id">IT-079</div>
+      <div class="tz-card-title">ТЗ на ЭЦП интеграцию</div>
+      <div class="tz-card-meta">
+        <span>🏗 Документооборот</span>
+        <span>👤 Дмитрий</span>
+        <span>Задача не может стартовать</span>
+      </div>
+    </div>
+  
+    <div class="tz-card " onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-014&#39;))">
+      <div class="tz-status" style="color:var(--green)">
+        ✅ ТЗ согласовано
+      </div>
+      <div class="tz-card-id">IT-014</div>
+      <div class="tz-card-title">ТЗ на голосовой бот GPT-4.1</div>
+      <div class="tz-card-meta">
+        <span>🏗 AI</span>
+        <span>👤 Максим</span>
+        <span>Согласовано 10.04</span>
+      </div>
+    </div>
+  
+    <div class="tz-card " onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-027&#39;))">
+      <div class="tz-status" style="color:var(--green)">
+        ✅ ТЗ согласовано
+      </div>
+      <div class="tz-card-id">IT-027</div>
+      <div class="tz-card-title">ТЗ на нормализацию справочников</div>
+      <div class="tz-card-meta">
+        <span>🏗 ATS</span>
+        <span>👤 Анна</span>
+        <span>Согласовано 18.04</span>
+      </div>
+    </div>
+  
+    <div class="tz-card " onclick="openPanel(TASKS.find(x=&gt;x.id===&#39;IT-062&#39;))">
+      <div class="tz-status" style="color:var(--green)">
+        ✅ ТЗ согласовано
+      </div>
+      <div class="tz-card-id">IT-062</div>
+      <div class="tz-card-title">ТЗ на транскрибацию звонков</div>
+      <div class="tz-card-meta">
+        <span>🏗 AI</span>
+        <span>👤 Максим</span>
+        <span>Согласовано 15.04</span>
+      </div>
+    </div>
+  </div>
+    </div>
+
+    <!-- ── WEEKLY REVIEW ── -->
+    <div class="view" id="view-weekly">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Weekly Review</div>
+          <div class="section-sub">Неделя 20 · 21–27 апреля 2026</div>
+        </div>
+      </div>
+
+      <div class="weekly-grid">
+        <div class="weekly-card">
+          <div class="wc-header"><span class="wc-emoji">📋</span> План недели</div>
+          <div id="weeklyPlan">
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Завершить интеграцию Яндекс / Bitrix (IT-021)</div>
+      <span class="status-pill status-overdue" style="font-size:10px;">Просрочено</span>
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Запустить тест GPT-4.1 звонков (IT-014)</div>
+      <span class="status-pill status-overdue" style="font-size:10px;">Просрочено</span>
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">✅</span>
+      <div class="weekly-item-text">Нормализация справочников ATS (IT-027)</div>
+      <span class="status-pill status-inprogress" style="font-size:10px;">В процессе</span>
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Настройка часовых поясов бота (IT-033)</div>
+      <span class="status-pill status-overdue" style="font-size:10px;">Просрочено</span>
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">✅</span>
+      <div class="weekly-item-text">Корпоративные почты — завершить (IT-071)</div>
+      <span class="status-pill status-done" style="font-size:10px;">Выполнено</span>
+    </div>
+  </div>
+        </div>
+        <div class="weekly-card">
+          <div class="wc-header"><span class="wc-emoji">✅</span> Факт недели</div>
+          <div id="weeklyFact">
+    <div class="weekly-item">
+      <span style="font-size:18px;">✅</span>
+      <div class="weekly-item-text">IT-071: Корпоративные почты — выполнено ✅</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-027: Нормализация городов — 60% выполнено</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-062: Транскрибация — в процессе</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-083: BI-дашборд — согласован макет</div>
+      
+    </div>
+  </div>
+        </div>
+        <div class="weekly-card">
+          <div class="wc-header"><span class="wc-emoji">⚠️</span> Просрочки и причины</div>
+          <div id="weeklyOverdue">
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-021: Нет ответа от Яндекса по полям — ожидание 2 недели</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-014: Не согласован голос бота с маркетингом</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">IT-033: API телефонии не предоставил sandbox</div>
+      
+    </div>
+  </div>
+        </div>
+        <div class="weekly-card">
+          <div class="wc-header"><span class="wc-emoji">📌</span> Решения руководителя</div>
+          <div id="weeklyDecisions">
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Эскалировать IT-021 на уровень директора</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Перераспределить 2 задачи Максима на Дмитрия</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">✅</span>
+      <div class="weekly-item-text">Установить дедлайн согласования ≤ 02.05.2026</div>
+      
+    </div>
+  
+    <div class="weekly-item">
+      <span style="font-size:18px;">⬜</span>
+      <div class="weekly-item-text">Запросить ТЗ по IT-041 и IT-079 до 30.04</div>
+      
+    </div>
+  </div>
+        </div>
+        <div class="weekly-card full">
+          <div class="wc-header"><span class="wc-emoji">💬</span> Выводы и рекомендации</div>
+          <div style="font-size:13.5px;line-height:1.7;color:var(--text-secondary);">
+            Неделя 20 показала системную проблему: задачи ставятся без владельца результата и измеримой метрики. 
+            Из 47 активных задач — 5 (10.6%) просрочены, 3 не имеют ТЗ, что ведёт к двойной работе при разном понимании результата. 
+            Главный блокер — IT-021 (интеграция Яндекс/Bitrix): от неё зависят 4 downstream-задачи, включая автоматизацию лидов и статистику службы подбора. 
+            Рекомендуется: выделить 1 час до 02.05 для согласования обязательных полей с командой Яндекса. 
+            Максим перегружен — перераспределить 2 задачи на Дмитрия или Ивана.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- SIDE PANEL -->
+<div class="overlay-blocker" id="overlayBlocker" onclick="closePanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="panel-header">
+    <button class="panel-close" onclick="closePanel()">✕</button>
+    <div class="panel-id" id="panelId"></div>
+    <div class="panel-title" id="panelTitle"></div>
+    <div class="panel-row" style="margin-top:10px;" id="panelTags"></div>
+  </div>
+  <div class="panel-body" id="panelBody"></div>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div class="cmd-overlay" id="cmdOverlay" onclick="e=&gt;e.target===this&amp;&amp;closeCmd()">
+  <div class="cmd-modal">
+    <div class="cmd-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input class="cmd-input" id="cmdInput" placeholder="Поиск команд и задач..." oninput="filterCmd()" onkeydown="cmdKeyNav(event)">
+    </div>
+    <div class="cmd-results" id="cmdResults"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════
+
+let TASKS = [
+  { id:'IT-014', title:'GPT-4.1 тест звонков', desc:'Тестирование голосового бота на базе GPT-4.1 для автоматизации исходящих звонков колл-центра. Цель — снизить нагрузку на операторов на 30%.', system:'AI', type:'Фича', priority:'high', assignee:'Максим', deadline:'04.05.2026', status:'Просрочено', risk:'high', metric:'Конверсия звонков %', tz:'✅ Есть', effect:'−30% нагрузки операторов', blockers:'Нет согласования голоса бота', deps:'IT-021', history:['28.04: Статус изменён на Просрочено','21.04: Начало тестирования','10.04: Поставлена задача'] },
+  { id:'IT-021', title:'Согласовать обязательные поля Яндекс / Bitrix', desc:'Согласование маппинга полей между Яндекс.Лидами и Bitrix24 CRM. Критично для автоматической передачи лидов без потерь.', system:'Bitrix24', type:'Фича', priority:'high', assignee:'Дмитрий', deadline:'30.04.2026', status:'Просрочено', risk:'high', metric:'% потерь лидов при передаче', tz:'❌ Нет', effect:'0% потерь лидов', blockers:'Нет ответа от Яндекса', deps:'—', history:['28.04: Эскалировано руководителю','25.04: Повторный запрос Яндексу','15.04: Первичный анализ полей'] },
+  { id:'IT-027', title:'Исправить города и должности', desc:'Нормализация справочников городов и должностей в ATS и Bitrix24. Текущие данные содержат дубли и опечатки, мешающие фильтрации кандидатов.', system:'ATS', type:'Баг', priority:'med', assignee:'Анна', deadline:'10.05.2026', status:'В процессе', risk:'med', metric:'% корректных записей', tz:'✅ Есть', effect:'+15% точность фильтрации', blockers:'Нет', deps:'IT-021', history:['27.04: В работе','20.04: Оценка объёма — 450 записей'] },
+  { id:'IT-033', title:'Рабочее время бота и часовые пояса', desc:'Настройка логики бота: работа только в рабочие часы с учётом часового пояса клиента. Поддержка UTC+3 — UTC+10.', system:'Бот', type:'Фича', priority:'high', assignee:'Максим', deadline:'28.04.2026', status:'Просрочено', risk:'high', metric:'Доля звонков в рабочее время', tz:'✅ Есть', effect:'−20% жалоб на поздние звонки', blockers:'Зависит от API телефонии', deps:'IT-014', history:['28.04: Просрочено — ждём API','22.04: Разработка логики'] },
+  { id:'IT-041', title:'Статистика службы массового подбора', desc:'Дашборд KPI службы массового подбора: конверсия этапов воронки, скорость закрытия вакансий, источники лидов.', system:'Аналитика', type:'Фича', priority:'high', assignee:'Екатерина', deadline:'15.05.2026', status:'Не начато', risk:'high', metric:'Time-to-hire, дни', tz:'❌ Нет', effect:'Видимость процесса подбора', blockers:'Нет данных из ATS', deps:'IT-027', history:['28.04: Поставлена задача','25.04: Встреча с HR'] },
+  { id:'IT-051', title:'Спам-фильтр входящих лидов', desc:'Автоматическая фильтрация мусорных лидов (дубли, неверные номера, тестовые заявки) до попадания в CRM.', system:'Bitrix24', type:'Фича', priority:'med', assignee:'Иван', deadline:'20.05.2026', status:'В процессе', risk:'med', metric:'% спама в CRM', tz:'✅ Есть', effect:'−40% мусорных лидов', blockers:'Нет', deps:'IT-021', history:['26.04: В работе','18.04: Анализ источников спама'] },
+  { id:'IT-055', title:'Автоматизация отчётов менеджеров', desc:'Автоматическая генерация еженедельных отчётов по активности менеджеров в Bitrix24 и отправка на email руководителю.', system:'Bitrix24', type:'Фича', priority:'low', assignee:'Ольга', deadline:'25.05.2026', status:'Не начато', risk:'low', metric:'Часов ручной работы в неделю', tz:'❌ Нет', effect:'−4 часа/неделю', blockers:'Нет', deps:'—', history:['28.04: Поставлена задача'] },
+  { id:'IT-058', title:'Интеграция мессенджеров в CRM', desc:'Подключение Telegram, WhatsApp и VK к Bitrix24 для единого окна коммуникации с кандидатами.', system:'Bitrix24', type:'Фича', priority:'med', assignee:'Дмитрий', deadline:'01.06.2026', status:'Не начато', risk:'med', metric:'% обращений через мессенджеры', tz:'✅ Есть', effect:'+25% скорость ответа', blockers:'Нет', deps:'IT-021', history:['27.04: Поставлена задача'] },
+  { id:'IT-062', title:'Транскрибация и анализ звонков', desc:'Автоматическая транскрибация звонков и выделение ключевых фраз, возражений, обещаний. Интеграция с Bitrix24.', system:'AI', type:'Фича', priority:'high', assignee:'Максим', deadline:'10.05.2026', status:'В процессе', risk:'med', metric:'% обработанных звонков', tz:'✅ Есть', effect:'Контроль качества звонков', blockers:'Нет', deps:'IT-014', history:['27.04: В работе','15.04: Поставлена задача'] },
+  { id:'IT-068', title:'Оценка ботов (NPS)', desc:'Система оценки качества работы голосового бота после каждого звонка. SMS/push с просьбой оценить.', system:'Телефония', type:'Фича', priority:'low', assignee:'Анна', deadline:'30.05.2026', status:'Не начато', risk:'low', metric:'NPS голосового бота', tz:'✅ Есть', effect:'Данные для улучшения бота', blockers:'Нет', deps:'IT-014', history:['28.04: Поставлена задача'] },
+  { id:'IT-071', title:'Корпоративные почты и алиасы', desc:'Унификация корпоративных почтовых адресов, настройка алиасов, автоответчиков и подписей по стандарту.', system:'Автоматизация', type:'Баг', priority:'low', assignee:'Иван', deadline:'15.05.2026', status:'Выполнено', risk:'low', metric:'% стандартизированных почт', tz:'✅ Есть', effect:'Единый стандарт коммуникации', blockers:'Нет', deps:'—', history:['26.04: Выполнено','20.04: В работе','12.04: Поставлена задача'] },
+  { id:'IT-075', title:'Управление задачами: шаблоны', desc:'Создание стандартных шаблонов задач в Bitrix24 для типовых процессов: найм, онбординг, расторжение.', system:'Bitrix24', type:'Фича', priority:'med', assignee:'Екатерина', deadline:'20.05.2026', status:'На паузе', risk:'low', metric:'Время постановки задачи', tz:'✅ Есть', effect:'−60% времени на создание задач', blockers:'Ожидаем согласование HR', deps:'—', history:['25.04: На паузе — HR согласование','17.04: В работе'] },
+  { id:'IT-079', title:'Документооборот: ЭЦП интеграция', desc:'Интеграция системы электронной подписи (Диадок / КЭП) с Bitrix24 для подписания договоров онлайн.', system:'Документооборот', type:'Фича', priority:'high', assignee:'Дмитрий', deadline:'10.06.2026', status:'Не начато', risk:'high', metric:'% договоров с ЭЦП', tz:'❌ Нет', effect:'−3 дня на подписание договора', blockers:'Нет ТЗ', deps:'—', history:['28.04: Поставлена задача'] },
+  { id:'IT-083', title:'BI-дашборд для директора', desc:'Автоматический управленческий дашборд в Tableau/Power BI: ключевые метрики найма, планы, факты, динамика.', system:'Аналитика', type:'Фича', priority:'high', assignee:'Екатерина', deadline:'01.06.2026', status:'В процессе', risk:'med', metric:'Время подготовки отчёта, ч', tz:'✅ Есть', effect:'−8 часов/неделю на отчёты', blockers:'Нет', deps:'IT-041', history:['27.04: В работе','18.04: Согласование макета'] },
+  { id:'IT-087', title:'Хранилище резюме (S3)', desc:'Перенос резюме кандидатов в облачное хранилище S3 с индексацией и полнотекстовым поиском.', system:'Хранилища', type:'Фича', priority:'low', assignee:'Иван', deadline:'15.06.2026', status:'Не начато', risk:'low', metric:'Скорость поиска резюме, сек', tz:'✅ Есть', effect:'−70% времени поиска резюме', blockers:'Нет', deps:'—', history:['28.04: Поставлена задача'] },
+];
+
+let WEEKLY_PLAN = [
+  { text:'Завершить интеграцию Яндекс / Bitrix (IT-021)', done:false, status:'Просрочено' },
+  { text:'Запустить тест GPT-4.1 звонков (IT-014)', done:false, status:'Просрочено' },
+  { text:'Нормализация справочников ATS (IT-027)', done:true, status:'В процессе' },
+  { text:'Настройка часовых поясов бота (IT-033)', done:false, status:'Просрочено' },
+  { text:'Корпоративные почты — завершить (IT-071)', done:true, status:'Выполнено' },
+];
+
+let WEEKLY_FACT = [
+  { text:'IT-071: Корпоративные почты — выполнено ✅', done:true },
+  { text:'IT-027: Нормализация городов — 60% выполнено', done:false },
+  { text:'IT-062: Транскрибация — в процессе', done:false },
+  { text:'IT-083: BI-дашборд — согласован макет', done:false },
+];
+
+let WEEKLY_OVERDUE = [
+  { text:'IT-021: Нет ответа от Яндекса по полям — ожидание 2 недели', done:false },
+  { text:'IT-014: Не согласован голос бота с маркетингом', done:false },
+  { text:'IT-033: API телефонии не предоставил sandbox', done:false },
+];
+
+let WEEKLY_DECISIONS = [
+  { text:'Эскалировать IT-021 на уровень директора', done:false },
+  { text:'Перераспределить 2 задачи Максима на Дмитрия', done:false },
+  { text:'Установить дедлайн согласования ≤ 02.05.2026', done:true },
+  { text:'Запросить ТЗ по IT-041 и IT-079 до 30.04', done:false },
+];
+
+let ROADMAP_ITEMS = [
+  { quarter:'Q2', title:'Интеграция Яндекс → Bitrix24', system:'Bitrix24', owner:'Дмитрий', deadline:'01.06.2026', progress:15, status:'risk' },
+  { quarter:'Q2', title:'Голосовой бот GPT-4.1', system:'AI', owner:'Максим', deadline:'15.05.2026', progress:40, status:'q2' },
+  { quarter:'Q2', title:'Транскрибация звонков', system:'AI', owner:'Максим', deadline:'10.05.2026', progress:55, status:'q2' },
+  { quarter:'Q2', title:'Статистика массового подбора', system:'Аналитика', owner:'Екатерина', deadline:'15.05.2026', progress:5, status:'risk' },
+  { quarter:'Q2', title:'BI-дашборд директора', system:'Аналитика', owner:'Екатерина', deadline:'01.06.2026', progress:35, status:'q2' },
+  { quarter:'Q3', title:'ЭЦП интеграция (Диадок)', system:'Документооборот', owner:'Дмитрий', deadline:'10.06.2026', progress:0, status:'q3' },
+  { quarter:'Q3', title:'Мессенджеры в CRM', system:'Bitrix24', owner:'Дмитрий', deadline:'01.06.2026', progress:0, status:'q3' },
+  { quarter:'Q3', title:'Хранилище резюме S3', system:'Хранилища', owner:'Иван', deadline:'15.06.2026', progress:0, status:'q3' },
+];
+
+let TZ_ITEMS = [
+  { id:'IT-021', title:'ТЗ на интеграцию Яндекс/Bitrix', status:'no', system:'Bitrix24', owner:'Дмитрий', critical:'Критично — блокирует 4 задачи' },
+  { id:'IT-041', title:'ТЗ на дашборд массового подбора', status:'no', system:'Аналитика', owner:'Екатерина', critical:'Нет понимания метрик' },
+  { id:'IT-079', title:'ТЗ на ЭЦП интеграцию', status:'no', system:'Документооборот', owner:'Дмитрий', critical:'Задача не может стартовать' },
+  { id:'IT-014', title:'ТЗ на голосовой бот GPT-4.1', status:'ok', system:'AI', owner:'Максим', critical:'Согласовано 10.04' },
+  { id:'IT-027', title:'ТЗ на нормализацию справочников', status:'ok', system:'ATS', owner:'Анна', critical:'Согласовано 18.04' },
+  { id:'IT-062', title:'ТЗ на транскрибацию звонков', status:'ok', system:'AI', owner:'Максим', critical:'Согласовано 15.04' },
+];
+
+let GANTT_TASKS = [
+  { id:'IT-021', title:'Интеграция Яндекс/Bitrix', assignee:'Дмитрий', start:0, end:3, status:'overdue' },
+  { id:'IT-014', title:'GPT-4.1 тест звонков', assignee:'Максим', start:0, end:2, status:'overdue' },
+  { id:'IT-033', title:'Рабочее время бота', assignee:'Максим', start:0, end:1, status:'overdue' },
+  { id:'IT-027', title:'Исправить города/должности', assignee:'Анна', start:1, end:4, status:'inprogress' },
+  { id:'IT-062', title:'Транскрибация звонков', assignee:'Максим', start:1, end:3, status:'inprogress' },
+  { id:'IT-051', title:'Спам-фильтр лидов', assignee:'Иван', start:2, end:5, status:'inprogress' },
+  { id:'IT-041', title:'Статистика подбора', assignee:'Екатерина', start:2, end:6, status:'planned' },
+  { id:'IT-083', title:'BI-дашборд директора', assignee:'Екатерина', start:3, end:7, status:'inprogress' },
+  { id:'IT-058', title:'Мессенджеры в CRM', assignee:'Дмитрий', start:4, end:8, status:'planned' },
+  { id:'IT-079', title:'ЭЦП интеграция', assignee:'Дмитрий', start:5, end:10, status:'planned' },
+  { id:'IT-071', title:'Корпоративные почты', assignee:'Иван', start:0, end:2, status:'done' },
+  { id:'IT-075', title:'Шаблоны задач', assignee:'Екатерина', start:2, end:5, status:'paused' },
+  { id:'IT-068', title:'Оценка ботов (NPS)', assignee:'Анна', start:5, end:9, status:'planned' },
+  { id:'IT-087', title:'Хранилище резюме S3', assignee:'Иван', start:6, end:11, status:'planned' },
+];
+
+const GANTT_WEEKS = ['Н20','Н21','Н22','Н23','Н24','Н25','Н26','Н27','Н28','Н29','Н30','Н31'];
+const GANTT_TODAY = 1; // Current position in weeks
+
+const KANBAN_COLUMNS = [
+  { id:'notstarted', label:'Не начато', color:'#94a3b8', statuses:['Не начато'] },
+  { id:'inprogress', label:'В работе', color:'#2563eb', statuses:['В процессе'] },
+  { id:'review', label:'На проверке', color:'#7c3aed', statuses:['На доработке'] },
+  { id:'risk', label:'Риск / Блокер', color:'#dc2626', statuses:['Просрочено','Проблемы','Неактуально'] },
+  { id:'done', label:'Выполнено', color:'#16a34a', statuses:['Выполнено','На паузе'] },
+];
+
+// ═══════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════
+
+let currentView = 'dashboard';
+let focusMode = false;
+let chartsInitialized = false;
+
+const VIEW_TITLES = {
+  dashboard: ['Dashboard', '— Неделя 20, II кв. 2026'],
+  analytics: ['Аналитика', '— Графики и метрики'],
+  tasks: ['Задачи', '— 47 активных'],
+  kanban: ['Kanban', '— Управление задачами'],
+  gantt: ['Gantt', '— Диаграмма Ганта'],
+  roadmap: ['Roadmap', '— Стратегические внедрения'],
+  tz: ['ТЗ', '— 3 требуют внимания'],
+  weekly: ['Weekly Review', '— Неделя 20'],
+};
+
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  document.getElementById('view-' + id)?.classList.add('active');
+  document.querySelector(`.nav-item[onclick="showView('${id}')"]`)?.classList.add('active');
+
+  const [title, sub] = VIEW_TITLES[id] || [id, ''];
+  document.getElementById('topbarTitle').textContent = title;
+  document.getElementById('topbarSub').textContent = sub;
+
+  currentView = id;
+
+  if (id === 'analytics' && !chartsInitialized) {
+    setTimeout(initCharts, 100);
+    chartsInitialized = true;
+  }
+  if (id === 'gantt') renderGantt();
+  if (id === 'kanban') renderKanban();
+  if (id === 'tasks') renderTasks();
+  if (id === 'roadmap') renderRoadmap();
+  if (id === 'tz') renderTZ();
+  if (id === 'weekly') renderWeekly();
+
+  closeCmd();
+}
+
+// ═══════════════════════════════════════════════
+// FOCUS MODE
+// ═══════════════════════════════════════════════
+
+function toggleFocus() {
+  focusMode = !focusMode;
+  const btn = document.getElementById('focusBtn');
+  const banner = document.getElementById('focusBanner');
+  btn.classList.toggle('active', focusMode);
+  btn.textContent = focusMode ? '🎯 Выход из фокуса' : '🎯 Только важное';
+  banner.classList.toggle('show', focusMode);
+  if (currentView === 'tasks') filterTasks();
+}
+
+// ═══════════════════════════════════════════════
+// TASKS TABLE
+// ═══════════════════════════════════════════════
+
+function getStatusClass(s) {
+  const m = { 'Выполнено':'status-done','В процессе':'status-inprogress','Просрочено':'status-overdue','Не начато':'status-notstarted','На паузе':'status-paused','Проблемы':'status-blocked','На доработке':'status-rework','Неактуально':'status-paused','До тестирования':'status-testing' };
+  return m[s] || 'status-notstarted';
+}
+
+function getStatusEmoji(s) {
+  const m = { 'Выполнено':'✅','В процессе':'🔵','Просрочено':'🔴','Не начато':'⏳','На паузе':'⏸','Проблемы':'⚠️','На доработке':'🔧','Неактуально':'⛔' };
+  return m[s] || '•';
+}
+
+function renderTasks() {
+  const body = document.getElementById('tasksBody');
+  if (!body) return;
+  body.innerHTML = '';
+  let data = [...TASKS];
+  const search = document.getElementById('taskSearch')?.value.toLowerCase() || '';
+  const status = document.getElementById('filterStatus')?.value || '';
+  const assignee = document.getElementById('filterAssignee')?.value || '';
+  const system = document.getElementById('filterSystem')?.value || '';
+  const sort = document.getElementById('sortBy')?.value || '';
+
+  if (search) data = data.filter(t => t.title.toLowerCase().includes(search) || t.id.toLowerCase().includes(search));
+  if (status) data = data.filter(t => t.status === status);
+  if (assignee) data = data.filter(t => t.assignee === assignee);
+  if (system) data = data.filter(t => t.system.includes(system));
+
+  if (sort === 'deadline') data.sort((a,b) => new Date(a.deadline.split('.').reverse().join('-')) - new Date(b.deadline.split('.').reverse().join('-')));
+  if (sort === 'risk') data.sort((a,b) => ['high','med','low'].indexOf(a.risk) - ['high','med','low'].indexOf(b.risk));
+  if (sort === 'priority') data.sort((a,b) => ['high','med','low'].indexOf(a.priority) - ['high','med','low'].indexOf(b.priority));
+
+  data.forEach(t => {
+    const isOverdue = t.status === 'Просрочено';
+    const isHigh = t.priority === 'high';
+    const noTZ = t.tz === '❌ Нет';
+    const showInFocus = isOverdue || isHigh || noTZ;
+    const hide = focusMode && !showInFocus;
+
+    const tr = document.createElement('tr');
+    if (hide) tr.classList.add('focused-hidden');
+    tr.innerHTML = `
+      <td class="td-id">${t.id}</td>
+      <td class="td-task">${t.title}<small>${t.system}</small></td>
+      <td><span class="tag system">${t.system}</span></td>
+      <td>${t.assignee}</td>
+      <td class="${isOverdue?'due-date overdue':'due-date'}">${t.deadline}</td>
+      <td><span class="status-pill ${getStatusClass(t.status)}">${getStatusEmoji(t.status)} ${t.status}</span></td>
+      <td><span class="risk-dot risk-${t.risk}">● ${t.risk==='high'?'Высокий':t.risk==='med'?'Средний':'Низкий'}</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">${t.metric}</td>
+      <td><span class="${t.tz==='✅ Есть'?'status-pill status-done':'status-pill status-blocked'}">${t.tz}</span></td>
+      <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">${t.effect}</td>
+    `;
+    tr.onclick = () => openPanel(t);
+    body.appendChild(tr);
+  });
+}
+
+function filterTasks() { renderTasks(); }
+
+// ═══════════════════════════════════════════════
+// KANBAN
+// ═══════════════════════════════════════════════
+
+function renderKanban() {
+  const board = document.getElementById('kanbanBoard');
+  if (!board) return;
+  board.innerHTML = '';
+
+  KANBAN_COLUMNS.forEach(col => {
+    const tasks = TASKS.filter(t => col.statuses.includes(t.status));
+    const div = document.createElement('div');
+    div.className = 'kanban-col';
+    div.innerHTML = `
+      <div class="kanban-col-header">
+        <div class="kanban-col-title">
+          <div class="kanban-col-dot" style="background:${col.color}"></div>
+          ${col.label}
+        </div>
+        <div class="kanban-count">${tasks.length}</div>
+      </div>
+      <div class="kanban-cards" id="col-${col.id}">
+        ${tasks.map(t => kanbanCard(t)).join('')}
+      </div>
+    `;
+    board.appendChild(div);
+  });
+}
+
+function kanbanCard(t) {
+  const isOverdue = t.status === 'Просрочено';
+  return `<div class="kanban-card" onclick="openPanel(TASKS.find(x=>x.id==='${t.id}'))">
+    <div class="card-actions">
+      <div class="card-action-btn" title="Открыть">↗</div>
+      <div class="card-action-btn" title="Изменить статус">✎</div>
+    </div>
+    <div class="kanban-card-title">${t.title}</div>
+    <div class="kanban-card-meta">
+      <span class="tag prio-${t.priority}">${t.priority==='high'?'Высокий':t.priority==='med'?'Средний':'Низкий'}</span>
+      <span class="tag system">${t.system}</span>
+      ${t.risk==='high'?'<span class="tag risk">⚠ Риск</span>':''}
+    </div>
+    <div class="kanban-card-footer">
+      <div class="assignee-chip">
+        <div class="assignee-avatar">${t.assignee.charAt(0)}</div>
+        ${t.assignee}
+      </div>
+      <div class="due-date ${isOverdue?'overdue':''}">${t.deadline}</div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// GANTT
+// ═══════════════════════════════════════════════
+
+function renderGantt() {
+  const weeksEl = document.getElementById('ganttWeekHeaders');
+  const rowsEl = document.getElementById('ganttRows');
+  if (!weeksEl || !rowsEl) return;
+
+  weeksEl.innerHTML = GANTT_WEEKS.map(w => `<div class="gantt-week">${w}</div>`).join('');
+  rowsEl.innerHTML = '';
+
+  const totalWeeks = GANTT_WEEKS.length;
+
+  GANTT_TASKS.forEach(task => {
+    const row = document.createElement('div');
+    row.className = 'gantt-row';
+
+    const startPct = (task.start / totalWeeks) * 100;
+    const widthPct = ((task.end - task.start) / totalWeeks) * 100;
+
+    const todayPct = (GANTT_TODAY / totalWeeks) * 100;
+
+    row.innerHTML = `
+      <div class="gantt-task-name">
+        <div class="gantt-task-id">${task.id}</div>
+        <div class="gantt-task-title">${task.title}</div>
+      </div>
+      <div class="gantt-info-cell">
+        <div class="gantt-assignee">${task.assignee.charAt(0)+'.'}</div>
+      </div>
+      <div class="gantt-bars">
+        <div class="gantt-grid-lines">
+          ${GANTT_WEEKS.map(() => '<div class="gantt-grid-line"></div>').join('')}
+        </div>
+        <div class="gantt-today-line" style="left:${todayPct}%">
+          <div class="gantt-today-label">сег.</div>
+        </div>
+        <div class="gantt-bar ${task.status}"
+          style="left:${startPct}%;width:${widthPct}%"
+          title="${task.id}: ${task.title} (${GANTT_WEEKS[task.start]}–${GANTT_WEEKS[task.end-1]})"
+          onclick="openPanel(TASKS.find(t=>t.id==='${task.id}'))">
+          ${widthPct > 12 ? task.id : ''}
+        </div>
+      </div>
+    `;
+    rowsEl.appendChild(row);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// ROADMAP
+// ═══════════════════════════════════════════════
+
+function renderRoadmap() {
+  const grid = document.getElementById('roadmapGrid');
+  if (!grid) return;
+  grid.innerHTML = ROADMAP_ITEMS.map(r => `
+    <div class="roadmap-item ${r.status}">
+      <div class="roadmap-quarter">${r.quarter}</div>
+      <div class="roadmap-body">
+        <div class="roadmap-title">${r.title}</div>
+        <div class="roadmap-meta">
+          <span>🏗 ${r.system}</span>
+          <span>👤 ${r.owner}</span>
+          <span>📅 ${r.deadline}</span>
+        </div>
+      </div>
+      <div class="roadmap-progress-wrap">
+        <div class="roadmap-pct">${r.progress}%</div>
+        <div class="roadmap-progress-bar">
+          <div class="roadmap-progress-fill" style="width:${r.progress}%"></div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════
+// TZ
+// ═══════════════════════════════════════════════
+
+function renderTZ() {
+  const grid = document.getElementById('tzGrid');
+  if (!grid) return;
+  grid.innerHTML = TZ_ITEMS.map(t => `
+    <div class="tz-card ${t.status==='no'?'no-tz':''}" onclick="openPanel(TASKS.find(x=>x.id==='${t.id}'))">
+      <div class="tz-status" style="color:${t.status==='no'?'var(--red)':'var(--green)'}">
+        ${t.status==='no'?'❌ ТЗ отсутствует':'✅ ТЗ согласовано'}
+      </div>
+      <div class="tz-card-id">${t.id}</div>
+      <div class="tz-card-title">${t.title}</div>
+      <div class="tz-card-meta">
+        <span>🏗 ${t.system}</span>
+        <span>👤 ${t.owner}</span>
+        <span>${t.critical}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════
+// WEEKLY REVIEW
+// ═══════════════════════════════════════════════
+
+function renderWeekly() {
+  renderWeeklyList('weeklyPlan', WEEKLY_PLAN);
+  renderWeeklyList('weeklyFact', WEEKLY_FACT);
+  renderWeeklyList('weeklyOverdue', WEEKLY_OVERDUE);
+  renderWeeklyList('weeklyDecisions', WEEKLY_DECISIONS);
+}
+
+function renderWeeklyList(id, items) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = items.map(i => `
+    <div class="weekly-item">
+      <span style="font-size:18px;">${i.done ? '✅' : '⬜'}</span>
+      <div class="weekly-item-text">${i.text}</div>
+      ${i.status ? `<span class="status-pill ${getStatusClass(i.status)}" style="font-size:10px;">${i.status}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════
+// SIDE PANEL
+// ═══════════════════════════════════════════════
+
+function openPanel(task) {
+  if (!task) return;
+  document.getElementById('panelId').textContent = task.id;
+  document.getElementById('panelTitle').textContent = task.title;
+
+  const tagsEl = document.getElementById('panelTags');
+  tagsEl.innerHTML = `
+    <span class="status-pill ${getStatusClass(task.status)}">${getStatusEmoji(task.status)} ${task.status}</span>
+    <span class="tag prio-${task.priority}">${task.priority==='high'?'Высокий':task.priority==='med'?'Средний':'Низкий'} приоритет</span>
+    <span class="tag system">${task.system}</span>
+  `;
+
+  const body = document.getElementById('panelBody');
+  body.innerHTML = `
+    <div class="panel-field">
+      <div class="panel-field-label">Описание</div>
+      <div class="panel-field-value" style="line-height:1.6;color:var(--text-secondary);">${task.desc}</div>
+    </div>
+    <hr class="panel-divider">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="panel-field">
+        <div class="panel-field-label">Ответственный</div>
+        <div class="panel-field-value">👤 ${task.assignee}</div>
+      </div>
+      <div class="panel-field">
+        <div class="panel-field-label">Срок</div>
+        <div class="panel-field-value" style="color:${task.status==='Просрочено'?'var(--red)':'inherit'}">📅 ${task.deadline}</div>
+      </div>
+      <div class="panel-field">
+        <div class="panel-field-label">Риск</div>
+        <div class="panel-field-value risk-${task.risk}">● ${task.risk==='high'?'Высокий':task.risk==='med'?'Средний':'Низкий'}</div>
+      </div>
+      <div class="panel-field">
+        <div class="panel-field-label">Тип</div>
+        <div class="panel-field-value">${task.type}</div>
+      </div>
+    </div>
+    <hr class="panel-divider">
+    <div class="panel-field">
+      <div class="panel-field-label">Блокеры</div>
+      <div class="panel-field-value" style="color:${task.blockers!=='Нет'?'var(--red)':'var(--green)'}">${task.blockers}</div>
+    </div>
+    <div class="panel-field">
+      <div class="panel-field-label">Зависимости</div>
+      <div class="panel-field-value">${task.deps}</div>
+    </div>
+    <div class="panel-field">
+      <div class="panel-field-label">ТЗ / Документация</div>
+      <div class="panel-field-value"><span class="status-pill ${task.tz==='✅ Есть'?'status-done':'status-blocked'}">${task.tz}</span></div>
+    </div>
+    <div class="panel-field">
+      <div class="panel-field-label">Метрика результата</div>
+      <div class="panel-field-value">${task.metric}</div>
+    </div>
+    <div class="panel-field">
+      <div class="panel-field-label">Ожидаемый эффект</div>
+      <div class="panel-field-value" style="color:var(--green)">${task.effect}</div>
+    </div>
+    <hr class="panel-divider">
+    <div class="panel-field-label" style="margin-bottom:10px;">История изменений</div>
+    ${task.history.map(h => `
+      <div class="history-item">
+        <div class="history-dot"></div>
+        <div>
+          <div class="history-text">${h.replace(/^\d{2}\.\d{2}: /, '')}</div>
+          <div class="history-time">${h.match(/^\d{2}\.\d{2}/)?.[0]||''} апреля 2026</div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  document.getElementById('sidePanel').classList.add('open');
+  document.getElementById('overlayBlocker').classList.add('show');
+}
+
+function closePanel() {
+  document.getElementById('sidePanel').classList.remove('open');
+  document.getElementById('overlayBlocker').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════
+// COMMAND PALETTE
+// ═══════════════════════════════════════════════
+
+const CMD_COMMANDS = [
+  { icon:'📊', label:'Dashboard', action:()=>showView('dashboard') },
+  { icon:'✦', label:'Задачи', action:()=>showView('tasks') },
+  { icon:'⊞', label:'Kanban', action:()=>showView('kanban') },
+  { icon:'⋯', label:'Gantt', action:()=>showView('gantt') },
+  { icon:'↗', label:'Roadmap', action:()=>showView('roadmap') },
+  { icon:'📊', label:'Аналитика', action:()=>showView('analytics') },
+  { icon:'📄', label:'ТЗ', action:()=>showView('tz') },
+  { icon:'📋', label:'Weekly Review', action:()=>showView('weekly') },
+  { icon:'🔴', label:'Показать просроченные', action:()=>{ showView('tasks'); setTimeout(()=>{ document.getElementById('filterStatus').value='Просрочено'; filterTasks(); },100); } },
+  { icon:'🎯', label:'Режим фокуса', action:toggleFocus },
+  { icon:'➕', label:'Создать задачу', action:()=>alert('Создание задачи — Demo mode') },
+];
+
+let cmdSelectedIndex = -1;
+
+function openCmd() {
+  document.getElementById('cmdOverlay').classList.add('open');
+  document.getElementById('cmdInput').value = '';
+  renderCmdResults('');
+  setTimeout(()=>document.getElementById('cmdInput').focus(), 50);
+}
+
+function closeCmd() {
+  document.getElementById('cmdOverlay').classList.remove('open');
+  cmdSelectedIndex = -1;
+}
+
+function renderCmdResults(q) {
+  const results = document.getElementById('cmdResults');
+  const ql = q.toLowerCase();
+
+  let html = '';
+
+  const cmds = CMD_COMMANDS.filter(c => !q || c.label.toLowerCase().includes(ql));
+  if (cmds.length) {
+    html += '<div class="cmd-section">Команды</div>';
+    html += cmds.map((c, i) => `<div class="cmd-item" onclick="(${c.action.toString()})(); closeCmd()"><span class="cmd-item-icon">${c.icon}</span>${c.label}</div>`).join('');
+  }
+
+  const tasks = TASKS.filter(t => !q || t.title.toLowerCase().includes(ql) || t.id.toLowerCase().includes(ql)).slice(0,5);
+  if (tasks.length) {
+    html += '<div class="cmd-section">Задачи</div>';
+    html += tasks.map(t => `<div class="cmd-item" onclick="openPanel(TASKS.find(x=>x.id==='${t.id}')); closeCmd()"><span class="cmd-item-icon">✦</span>${t.id}: ${t.title}<span class="cmd-item-key">${t.status}</span></div>`).join('');
+  }
+
+  results.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:13px;">Ничего не найдено</div>';
+}
+
+function filterCmd() {
+  renderCmdResults(document.getElementById('cmdInput').value);
+}
+
+function cmdKeyNav(e) {
+  const items = document.querySelectorAll('.cmd-item');
+  if (e.key === 'ArrowDown') { cmdSelectedIndex = Math.min(cmdSelectedIndex+1, items.length-1); }
+  if (e.key === 'ArrowUp') { cmdSelectedIndex = Math.max(cmdSelectedIndex-1, 0); }
+  if (e.key === 'Escape') { closeCmd(); return; }
+  items.forEach((it,i) => it.classList.toggle('selected', i===cmdSelectedIndex));
+  if (e.key === 'Enter' && cmdSelectedIndex >= 0) items[cmdSelectedIndex]?.click();
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCmd(); }
+  if (e.key === 'Escape') { closeCmd(); closePanel(); }
+});
+
+document.getElementById('cmdOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCmd();
+});
+
+// ═══════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════
+
+function initCharts() {
+  const defaults = {
+    font: { family: "'Onest', sans-serif" },
+    color: '#6b6b6b',
+  };
+  Chart.defaults.font.family = defaults.font.family;
+  Chart.defaults.color = defaults.color;
+
+  // Status doughnut
+  new Chart(document.getElementById('chartStatus'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Выполнено', 'В процессе', 'Просрочено', 'Не начато', 'На паузе', 'На доработке'],
+      datasets: [{ data: [3, 4, 5, 5, 1, 1], backgroundColor: ['#16a34a','#2563eb','#dc2626','#94a3b8','#d97706','#7c3aed'], borderWidth: 0, hoverOffset: 8 }]
+    },
+    options: { responsive:true, maintainAspectRatio:true, plugins: { legend: { position:'bottom', labels: { padding:12, boxWidth:10, font:{size:11} } } }, cutout:'70%' }
+  });
+
+  // Plan/Fact line
+  new Chart(document.getElementById('chartPlanFact'), {
+    type: 'line',
+    data: {
+      labels: ['Н17','Н18','Н19','Н20','Н21','Н22'],
+      datasets: [
+        { label:'План', data:[6,7,7,8,8,9], borderColor:'#94a3b8', borderDash:[5,5], tension:0.4, fill:false, pointRadius:4 },
+        { label:'Факт', data:[5,6,5,5,null,null], borderColor:'#2563eb', tension:0.4, fill:true, backgroundColor:'rgba(37,99,235,0.08)', pointRadius:5, pointBackgroundColor:'#2563eb' }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:true, plugins:{legend:{position:'bottom',labels:{font:{size:11}}}}, scales:{y:{beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'}},x:{grid:{display:false}}} }
+  });
+
+  // Systems bar
+  new Chart(document.getElementById('chartSystems'), {
+    type: 'bar',
+    data: {
+      labels: ['Bitrix24','ATS','Аналитика','AI','Телефония','Бот','Авто.','Доки'],
+      datasets: [{ label:'Задачи', data:[6,3,3,3,2,2,2,2], backgroundColor:'rgba(37,99,235,0.75)', borderRadius:6, borderSkipped:false }]
+    },
+    options: { responsive:true, maintainAspectRatio:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'}},x:{grid:{display:false}}} }
+  });
+
+  // Effect bar
+  new Chart(document.getElementById('chartEffect'), {
+    type: 'bar',
+    data: {
+      labels: ['Авто-отчёты','Спам-фильтр','Бот-звонки','BI-дашборд','ЭЦП','Транскр.'],
+      datasets: [{ label:'Экономия, ч/мес', data:[16,24,40,32,12,20], backgroundColor:['#16a34a','#22c55e','#4ade80','#86efac','#bbf7d0','#dcfce7'], borderRadius:6, borderSkipped:false }]
+    },
+    options: { responsive:true, maintainAspectRatio:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:{color:'rgba(0,0,0,0.04)'}},x:{grid:{display:false}}} }
+  });
+
+  // Heatmap
+  const assignees = ['Максим','Дмитрий','Анна','Екатерина','Иван','Ольга'];
+  const weeks = ['Н19','Н20','Н21','Н22','Н23','Н24'];
+  const heatData = [
+    [2,6,5,4,3,2],
+    [1,3,4,3,4,3],
+    [1,2,3,2,2,2],
+    [0,2,3,3,3,2],
+    [1,2,2,3,2,2],
+    [0,1,1,1,1,1],
+  ];
+
+  const hm = document.getElementById('heatmapContainer');
+  let html = `<div style="display:flex;gap:3px;margin-bottom:3px;">
+    <div style="width:80px;"></div>
+    ${weeks.map(w=>`<div style="width:32px;font-size:10px;text-align:center;color:var(--text-tertiary);font-weight:600;">${w}</div>`).join('')}
+  </div>`;
+  assignees.forEach((a,i) => {
+    html += `<div style="display:flex;align-items:center;gap:3px;margin-bottom:3px;">
+      <div style="width:80px;font-size:11px;font-weight:500;color:var(--text-secondary);padding-right:8px;text-align:right;">${a}</div>
+      ${weeks.map((_,j) => {
+        const v = heatData[i][j];
+        return `<div class="heatmap-cell hm-${Math.min(v,5)}" title="${a}, ${weeks[j]}: ${v} задач">${v||''}</div>`;
+      }).join('')}
+    </div>`;
+  });
+  hm.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════
+// API CLIENT (FastAPI + SQLite)
+// ═══════════════════════════════════════════════
+const API_BASE = '/tasks/api';
+
+async function apiLoadAll(){
+  try{
+    const r = await fetch(API_BASE+'/state');
+    if(!r.ok) throw new Error('API '+r.status);
+    const data = await r.json();
+    if(Array.isArray(data.tasks) && data.tasks.length) TASKS = data.tasks;
+    if(Array.isArray(data.weekly_plan)) WEEKLY_PLAN = data.weekly_plan;
+    if(Array.isArray(data.weekly_fact)) WEEKLY_FACT = data.weekly_fact;
+    if(Array.isArray(data.weekly_overdue)) WEEKLY_OVERDUE = data.weekly_overdue;
+    if(Array.isArray(data.weekly_decisions)) WEEKLY_DECISIONS = data.weekly_decisions;
+    if(Array.isArray(data.roadmap)) ROADMAP_ITEMS = data.roadmap;
+    if(Array.isArray(data.tz)) TZ_ITEMS = data.tz;
+    if(Array.isArray(data.gantt)) GANTT_TASKS = data.gantt;
+  }catch(e){
+    console.warn('API недоступен:', e.message);
+    showToast('⚠️ Офлайн-режим (изменения не сохраняются)','warn');
+  }
+}
+async function apiSaveTask(task){
+  try{
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(task.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  }catch(e){ showToast('❌ Не сохранено: '+e.message,'err'); return null; }
+}
+async function apiCreateTask(task){
+  try{
+    const r = await fetch(API_BASE+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  }catch(e){ showToast('❌ Не создано: '+e.message,'err'); return null; }
+}
+async function apiDeleteTask(id){
+  try{
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(id),{method:'DELETE'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return true;
+  }catch(e){ showToast('❌ Не удалено: '+e.message,'err'); return false; }
+}
+function showToast(msg,kind){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:'+(kind==='err'?'#dc2626':kind==='warn'?'#d97706':'#16a34a')+';color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,0.2);z-index:9999;';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),3500);
+}
+function rerenderAll(){
+  if(typeof renderTasks==='function') renderTasks();
+  if(typeof renderKanban==='function') renderKanban();
+  if(typeof renderRoadmap==='function') renderRoadmap();
+  if(typeof renderTZ==='function') renderTZ();
+  if(typeof renderWeekly==='function') renderWeekly();
+  if(typeof renderGantt==='function') renderGantt();
+}
+function escAttr(s){return String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function escTxt(s){return String(s==null?'':s).replace(/</g,'&lt;');}
+
+// ═══════════════════════════════════════════════
+// TASK EDITOR MODAL
+// ═══════════════════════════════════════════════
+function openTaskEditor(existing){
+  const t = existing || {id:'',title:'',desc:'',system:'Bitrix24',type:'Фича',priority:'med',assignee:'',deadline:'',status:'Не начато',risk:'med',metric:'',tz:'❌ Нет',effect:'',blockers:'Нет',deps:'—',history:[]};
+  const isNew = !existing;
+  const overlay = document.createElement('div');
+  overlay.id='_taskEditOverlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const opts = (arr,cur) => arr.map(s=>`<option ${s===cur?'selected':''}>${s}</option>`).join('');
+  overlay.innerHTML=`
+    <div style="background:var(--surface);border-radius:16px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:var(--shadow-lg);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="font-size:20px;font-weight:700;">${isNew?'Новая задача':'Редактирование '+escTxt(t.id)}</h2>
+        <button onclick="document.getElementById('_taskEditOverlay').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-secondary);">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        ${isNew?`<label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">ID (например IT-090)</div><input id="te_id" value="${escAttr(t.id)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>`:''}
+        <label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Название</div><input id="te_title" value="${escAttr(t.title)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Описание</div><textarea id="te_desc" rows="3" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;resize:vertical;">${escTxt(t.desc)}</textarea></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Система</div><select id="te_system" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['Bitrix24','ATS','AI','Бот','Аналитика','Телефония','Документооборот','Хранилища','Автоматизация'],t.system)}</select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Тип</div><select id="te_type" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['Фича','Баг','Улучшение','Исследование'],t.type)}</select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Приоритет</div><select id="te_priority" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"><option value="high" ${t.priority==='high'?'selected':''}>Высокий</option><option value="med" ${t.priority==='med'?'selected':''}>Средний</option><option value="low" ${t.priority==='low'?'selected':''}>Низкий</option></select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Риск</div><select id="te_risk" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"><option value="high" ${t.risk==='high'?'selected':''}>Высокий</option><option value="med" ${t.risk==='med'?'selected':''}>Средний</option><option value="low" ${t.risk==='low'?'selected':''}>Низкий</option></select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Ответственный</div><input id="te_assignee" value="${escAttr(t.assignee)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Дедлайн (ДД.ММ.ГГГГ)</div><input id="te_deadline" value="${escAttr(t.deadline)}" placeholder="01.06.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Статус</div><select id="te_status" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['Не начато','В процессе','На доработке','Просрочено','На паузе','Выполнено','Проблемы','Неактуально'],t.status)}</select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">ТЗ</div><select id="te_tz" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['✅ Есть','❌ Нет'],t.tz)}</select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Метрика</div><input id="te_metric" value="${escAttr(t.metric)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Эффект</div><input id="te_effect" value="${escAttr(t.effect)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Блокеры</div><input id="te_blockers" value="${escAttr(t.blockers)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Зависимости</div><input id="te_deps" value="${escAttr(t.deps)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px;justify-content:flex-end;">
+        ${!isNew?`<button onclick="confirmDeleteTask('${escAttr(t.id)}')" style="background:var(--red-bg);color:var(--red);border:none;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;margin-right:auto;">🗑 Удалить</button>`:''}
+        <button onclick="document.getElementById('_taskEditOverlay').remove()" style="background:var(--surface-2);color:var(--text-primary);border:1px solid var(--border);padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;">Отмена</button>
+        <button onclick="saveTaskFromEditor(${isNew?'true':'false'},'${escAttr(t.id)}')" style="background:var(--accent);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;">💾 Сохранить</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+async function saveTaskFromEditor(isNew, oldId){
+  const v = id => document.getElementById(id)?.value || '';
+  const exist = TASKS.find(x=>x.id===oldId);
+  const today = new Date();
+  const dd = String(today.getDate()).padStart(2,'0')+'.'+String(today.getMonth()+1).padStart(2,'0');
+  const task = {
+    id: isNew ? v('te_id').trim() : oldId,
+    title: v('te_title').trim(),
+    desc: v('te_desc').trim(),
+    system: v('te_system'),
+    type: v('te_type'),
+    priority: v('te_priority'),
+    risk: v('te_risk'),
+    assignee: v('te_assignee').trim(),
+    deadline: v('te_deadline').trim(),
+    status: v('te_status'),
+    tz: v('te_tz'),
+    metric: v('te_metric').trim(),
+    effect: v('te_effect').trim(),
+    blockers: v('te_blockers').trim() || 'Нет',
+    deps: v('te_deps').trim() || '—',
+    history: [...((exist&&exist.history)||[]), `${dd}: ${isNew?'Создана':'Обновлена'}`]
+  };
+  if(!task.id || !task.title){ showToast('❌ Заполните ID и название','err'); return; }
+  const result = isNew ? await apiCreateTask(task) : await apiSaveTask(task);
+  if(result){
+    if(isNew) TASKS.push(result);
+    else { const i=TASKS.findIndex(x=>x.id===oldId); if(i>=0) TASKS[i]=result; }
+    document.getElementById('_taskEditOverlay').remove();
+    rerenderAll();
+    showToast(isNew?'✅ Создано':'✅ Сохранено','ok');
+  }
+}
+async function confirmDeleteTask(id){
+  if(!confirm('Удалить задачу '+id+'? Это действие необратимо.')) return;
+  if(await apiDeleteTask(id)){
+    TASKS = TASKS.filter(x=>x.id!==id);
+    document.getElementById('_taskEditOverlay')?.remove();
+    if(typeof closePanel==='function') closePanel();
+    rerenderAll();
+    showToast('🗑 Удалено','ok');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await apiLoadAll();
+  rerenderAll();
+  // FAB "+"
+  const fab = document.createElement('button');
+  fab.innerHTML='+ Новая задача';
+  fab.onclick=()=>openTaskEditor(null);
+  fab.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--accent);color:#fff;border:none;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-lg);z-index:500;font-family:inherit;';
+  document.body.appendChild(fab);
+  // Override CMD palette "Создать задачу"
+  if(typeof CMD_COMMANDS!=='undefined'){
+    const idx = CMD_COMMANDS.findIndex(c=>c.label==='Создать задачу');
+    if(idx>=0) CMD_COMMANDS[idx].action = ()=>openTaskEditor(null);
+  }
+  // Edit button in side panel
+  const panel = document.getElementById('sidePanel');
+  if(panel){
+    const editBtn = document.createElement('button');
+    editBtn.textContent='✎ Редактировать';
+    editBtn.style.cssText='position:absolute;top:18px;right:60px;background:var(--accent-light);color:var(--accent);border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px;z-index:10;';
+    editBtn.onclick=()=>{
+      const id = document.getElementById('panelId')?.textContent;
+      const task = TASKS.find(x=>x.id===id);
+      if(task) openTaskEditor(task);
+    };
+    panel.appendChild(editBtn);
+  }
+});
+</script>
+
+
+</body></html>
