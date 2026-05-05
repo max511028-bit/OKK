@@ -140,9 +140,30 @@ fi
 TASKS_DIR="/var/www/okk/tasks/api"
 
 if [ -f "$TASKS_DIR/main.py" ]; then
-  if [ -f "$TASKS_DIR/requirements.txt" ]; then
-    pip3 install -q -r "$TASKS_DIR/requirements.txt" 2>/dev/null || true
+  echo "=== [tasks-api] Setting up FastAPI backend ==="
+
+  # Ensure pip3 is installed
+  if ! command -v pip3 &> /dev/null; then
+    echo "[tasks-api] pip3 not found, installing..."
+    apt-get update -qq && apt-get install -y -qq python3-pip python3-venv
   fi
+
+  # Use a virtualenv to avoid system package conflicts (PEP 668)
+  VENV="$TASKS_DIR/.venv"
+  if [ ! -d "$VENV" ]; then
+    echo "[tasks-api] Creating virtualenv at $VENV"
+    python3 -m venv "$VENV" || { apt-get install -y -qq python3-venv && python3 -m venv "$VENV"; }
+  fi
+
+  echo "[tasks-api] Installing requirements..."
+  "$VENV/bin/pip" install --upgrade pip --quiet
+  "$VENV/bin/pip" install -r "$TASKS_DIR/requirements.txt" || {
+    echo "[tasks-api] ERROR: pip install failed"
+    "$VENV/bin/pip" install -r "$TASKS_DIR/requirements.txt"
+  }
+
+  echo "[tasks-api] Installed packages:"
+  "$VENV/bin/pip" list 2>/dev/null | grep -iE "fastapi|uvicorn|pydantic" || echo "  (none of fastapi/uvicorn/pydantic found!)"
 
   cat > /etc/systemd/system/tasks-api.service << TASKS_EOF
 [Unit]
@@ -153,7 +174,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$TASKS_DIR
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8601
+ExecStart=$VENV/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8601
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -166,12 +187,25 @@ TASKS_EOF
   systemctl daemon-reload
   systemctl enable tasks-api
   systemctl restart tasks-api
-  echo "Задачник API service started on :8601"
+  sleep 3
+
+  echo "[tasks-api] Service status:"
+  systemctl status tasks-api --no-pager -l | head -20 || true
+  echo "[tasks-api] Recent logs:"
+  journalctl -u tasks-api -n 30 --no-pager || true
+  echo "[tasks-api] Health check:"
+  curl -sf http://127.0.0.1:8601/health && echo " ✓ API is alive" || echo " ✗ API not responding"
 else
   echo "Tasks API main.py not found, skipping"
 fi
 
 # ── 7. Test and reload nginx ───────────────────────────────────────────
 nginx -t && systemctl reload nginx && echo "nginx reloaded OK"
+
+echo "=== nginx tasks/api proxy config ==="
+nginx -T 2>/dev/null | grep -A3 "tasks/api" | head -10 || echo "  (proxy block not found in nginx -T)"
+
+echo "=== Final health check via nginx ==="
+curl -sf http://127.0.0.1/tasks/api/health && echo " ✓ /tasks/api/ proxy works" || echo " ✗ /tasks/api/ proxy failed"
 
 echo "=== Setup complete ==="

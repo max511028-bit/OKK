@@ -3375,9 +3375,11 @@ function initCharts() {
 // ═══════════════════════════════════════════════
 const API_BASE = '/tasks/api';
 
-async function apiLoadAll(){
+window.API_ONLINE = false;
+async function apiLoadAll(retries){
+  retries = retries==null ? 3 : retries;
   try{
-    const r = await fetch(API_BASE+'/state');
+    const r = await fetch(API_BASE+'/state',{cache:'no-store'});
     if(!r.ok) throw new Error('API '+r.status);
     const data = await r.json();
     if(Array.isArray(data.tasks) && data.tasks.length) TASKS = data.tasks;
@@ -3388,8 +3390,15 @@ async function apiLoadAll(){
     if(Array.isArray(data.roadmap)) ROADMAP_ITEMS = data.roadmap;
     if(Array.isArray(data.tz)) TZ_ITEMS = data.tz;
     if(Array.isArray(data.gantt)) GANTT_TASKS = data.gantt;
+    window.API_ONLINE = true;
+    showToast('✅ Подключено к серверу','ok');
   }catch(e){
-    console.warn('API недоступен:', e.message);
+    console.warn('API недоступен:', e.message, 'retries left:', retries);
+    if(retries > 0){
+      await new Promise(r=>setTimeout(r, 2000));
+      return apiLoadAll(retries-1);
+    }
+    window.API_ONLINE = false;
     showToast('⚠️ Офлайн-режим (изменения не сохраняются)','warn');
   }
 }
