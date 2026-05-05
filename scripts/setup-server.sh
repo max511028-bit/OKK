@@ -55,25 +55,34 @@ location /tasks/api/ {
 }
 NGINX_EOF
 
-# ── 2. Include snippet in site config (robust, replaces any prior misplaced include) ──
-python3 - "$SITE_CONF" << 'PYEOF'
+# ── 2. Include snippet in EVERY server block of EVERY site config ─────
+echo "=== Site configs found ==="
+ls -la /etc/nginx/sites-enabled/ 2>/dev/null || true
+ls -la /etc/nginx/conf.d/ 2>/dev/null || true
+
+for cfg in /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+  [ -f "$cfg" ] || continue
+  python3 - "$cfg" << 'PYEOF'
 import re, sys
 path = sys.argv[1]
 with open(path) as f:
     src = f.read()
 
-# 1. Drop ALL existing portal-proxies includes (they may be in the wrong context)
+# 1. Drop ALL existing portal-proxies includes (may be in wrong context)
 src = re.sub(r'^[ \t]*include\s+snippets/portal-proxies\.conf\s*;[ \t]*\n', '', src, flags=re.MULTILINE)
 
-# 2. Find the active server block — the one containing `listen` (skip commented).
-#    Walk braces manually to locate the opening { of that block.
+# 2. Insert include into EVERY server { ... listen ... } block
+out = []
 i, n = 0, len(src)
-target = None
+inserted = 0
 while i < n:
     m = re.search(r'\bserver\b\s*\{', src[i:])
-    if not m: break
-    abs_open = i + m.end() - 1   # position of '{'
-    # Scan the block contents to see if it has an uncommented `listen`
+    if not m:
+        out.append(src[i:])
+        break
+    abs_open = i + m.end() - 1
+    out.append(src[i:abs_open+1])  # text up to and including '{'
+    # find matching close brace
     depth, j = 1, abs_open + 1
     block_start = j
     while j < n and depth > 0:
@@ -82,23 +91,22 @@ while i < n:
         elif c == '}': depth -= 1
         j += 1
     block = src[block_start:j-1]
-    # strip comments line-by-line
     uncommented = '\n'.join(re.sub(r'#.*$', '', line) for line in block.splitlines())
     if re.search(r'\blisten\b', uncommented):
-        target = abs_open
-        break
+        out.append("\n    include snippets/portal-proxies.conf;")
+        inserted += 1
+    out.append(src[abs_open+1:j])  # rest of block including '}'
     i = j
 
-if target is None:
-    print("ERROR: no active server { ... listen ... } block found", file=sys.stderr)
-    sys.exit(1)
-
-# 3. Insert include right after the opening brace of that server block
-new = src[:target+1] + "\n    include snippets/portal-proxies.conf;" + src[target+1:]
+new = ''.join(out)
 with open(path, 'w') as f:
     f.write(new)
-print(f"Include inserted into active server block at offset {target} of {path}")
+print(f"[{path}] inserted into {inserted} server block(s)")
 PYEOF
+done
+
+echo "=== /etc/nginx/sites-enabled/default after modification ==="
+cat /etc/nginx/sites-enabled/default 2>/dev/null | head -100 || true
 
 # ── 3. Install Ollama if not present ──────────────────────────────────
 if ! command -v ollama &> /dev/null; then
@@ -235,10 +243,13 @@ fi
 # ── 7. Test and reload nginx ───────────────────────────────────────────
 nginx -t && systemctl reload nginx && echo "nginx reloaded OK"
 
-echo "=== nginx tasks/api proxy config ==="
-nginx -T 2>/dev/null | grep -A3 "tasks/api" | head -10 || echo "  (proxy block not found in nginx -T)"
+echo "=== All location blocks in active nginx config ==="
+nginx -T 2>/dev/null | grep -nE "^\s*(server|listen|location|include)" | head -60 || true
 
 echo "=== Final health check via nginx ==="
-curl -sf http://127.0.0.1/tasks/api/health && echo " ✓ /tasks/api/ proxy works" || echo " ✗ /tasks/api/ proxy failed"
+echo "--- direct curl with verbose ---"
+curl -v http://127.0.0.1/tasks/api/health 2>&1 | tail -20 || true
+echo "--- via Host header ---"
+curl -sf -H "Host: 195.208.119.67" http://127.0.0.1/tasks/api/health && echo " ✓ /tasks/api/ proxy works" || echo " ✗ /tasks/api/ proxy failed"
 
 echo "=== Setup complete ==="
