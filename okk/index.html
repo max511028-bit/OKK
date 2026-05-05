@@ -2506,8 +2506,11 @@ async function loadOllamaModels() {
   if (!sel) return;
   sel.innerHTML = '<option value="">⏳ Загрузка...</option>';
   if (status) status.textContent = '';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(`${OLLAMA_API}/tags`);
+    const res = await fetch(`${OLLAMA_API}/tags`, { signal: ctrl.signal, cache: 'no-store' });
+    clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     ollamaModels = (data.models || []).map(m => m.name).sort();
@@ -2520,8 +2523,10 @@ async function loadOllamaModels() {
     if (badge) badge.textContent = `Ollama · ${ollamaModels.length} моделей`;
     if (status) status.textContent = `✓ ${ollamaModels.length} моделей загружено`;
   } catch(e) {
-    sel.innerHTML = `<option value="">⚠️ ${e.message} — клик для повтора</option>`;
-    if (status) status.textContent = `Ошибка: ${e.message}`;
+    clearTimeout(timer);
+    const msg = e.name === 'AbortError' ? 'Таймаут (8с) — сервер не отвечает' : (e.message || 'Ошибка');
+    sel.innerHTML = `<option value="">⚠️ ${msg} — клик для повтора</option>`;
+    if (status) status.textContent = `Ошибка: ${msg}`;
     sel.onclick = function(){ if(!ollamaModels.length){ sel.onclick=null; loadOllamaModels(); } };
   }
 }

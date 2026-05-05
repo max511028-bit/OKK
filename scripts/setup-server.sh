@@ -55,17 +55,50 @@ location /tasks/api/ {
 }
 NGINX_EOF
 
-# ── 2. Include snippet in site config if not already ──────────────────
-if ! grep -q "portal-proxies" "$SITE_CONF" 2>/dev/null; then
-  if grep -q "server {" "$SITE_CONF"; then
-    sed -i "/server {/a\\    include snippets/portal-proxies.conf;" "$SITE_CONF"
-    echo "Snippet included in $SITE_CONF"
-  else
-    echo "WARNING: could not find 'server {' in $SITE_CONF"
-  fi
-else
-  echo "Snippet already included in $SITE_CONF"
-fi
+# ── 2. Include snippet in site config (robust, replaces any prior misplaced include) ──
+python3 - "$SITE_CONF" << 'PYEOF'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    src = f.read()
+
+# 1. Drop ALL existing portal-proxies includes (they may be in the wrong context)
+src = re.sub(r'^[ \t]*include\s+snippets/portal-proxies\.conf\s*;[ \t]*\n', '', src, flags=re.MULTILINE)
+
+# 2. Find the active server block — the one containing `listen` (skip commented).
+#    Walk braces manually to locate the opening { of that block.
+i, n = 0, len(src)
+target = None
+while i < n:
+    m = re.search(r'\bserver\b\s*\{', src[i:])
+    if not m: break
+    abs_open = i + m.end() - 1   # position of '{'
+    # Scan the block contents to see if it has an uncommented `listen`
+    depth, j = 1, abs_open + 1
+    block_start = j
+    while j < n and depth > 0:
+        c = src[j]
+        if c == '{': depth += 1
+        elif c == '}': depth -= 1
+        j += 1
+    block = src[block_start:j-1]
+    # strip comments line-by-line
+    uncommented = '\n'.join(re.sub(r'#.*$', '', line) for line in block.splitlines())
+    if re.search(r'\blisten\b', uncommented):
+        target = abs_open
+        break
+    i = j
+
+if target is None:
+    print("ERROR: no active server { ... listen ... } block found", file=sys.stderr)
+    sys.exit(1)
+
+# 3. Insert include right after the opening brace of that server block
+new = src[:target+1] + "\n    include snippets/portal-proxies.conf;" + src[target+1:]
+with open(path, 'w') as f:
+    f.write(new)
+print(f"Include inserted into active server block at offset {target} of {path}")
+PYEOF
 
 # ── 3. Install Ollama if not present ──────────────────────────────────
 if ! command -v ollama &> /dev/null; then
