@@ -12,7 +12,7 @@ if [ -z "$SITE_CONF" ]; then
   SITE_CONF="/etc/nginx/nginx.conf"
 fi
 
-# ── 1. Write Ollama + Recruiter proxy snippet ──────────────────────────
+# ── 1. Write Ollama + Recruiter proxy snippet (legacy, full) ──────────
 cat > /etc/nginx/snippets/portal-proxies.conf << 'NGINX_EOF'
 # Ollama local AI proxy
 location /ollama/ {
@@ -44,8 +44,10 @@ location /recruiter/_stcore/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 }
+NGINX_EOF
 
-# Задачник API (FastAPI on port 8601)
+# ── 1b. Write SEPARATE tiny snippet for Задачник API (safe to include anywhere) ──
+cat > /etc/nginx/snippets/tasks-api-proxy.conf << 'NGINX_EOF'
 location /tasks/api/ {
     proxy_pass http://127.0.0.1:8601/;
     proxy_http_version 1.1;
@@ -68,45 +70,63 @@ path = sys.argv[1]
 with open(path) as f:
     src = f.read()
 
-# 1. Drop ALL existing portal-proxies includes (may be in wrong context)
+# 1. Drop ALL existing portal-proxies / tasks-api-proxy includes (cleanup)
 src = re.sub(r'^[ \t]*include\s+snippets/portal-proxies\.conf\s*;[ \t]*\n', '', src, flags=re.MULTILINE)
+src = re.sub(r'^[ \t]*include\s+snippets/tasks-api-proxy\.conf\s*;[ \t]*\n', '', src, flags=re.MULTILINE)
 
-# 2. Insert include into EVERY server { ... listen ... } block
+# Helper to walk server blocks, returns list of (open_idx, close_idx, block_text)
+def find_server_blocks(s):
+    blocks = []
+    i, n = 0, len(s)
+    while i < n:
+        m = re.search(r'\bserver\b\s*\{', s[i:])
+        if not m: break
+        abs_open = i + m.end() - 1
+        depth, j = 1, abs_open + 1
+        while j < n and depth > 0:
+            c = s[j]
+            if c == '{': depth += 1
+            elif c == '}': depth -= 1
+            j += 1
+        blocks.append((abs_open, j-1, s[abs_open+1:j-1]))
+        i = j
+    return blocks
+
+# 2. For each server block decide what to include:
+#    - tasks-api-proxy.conf: ALWAYS (small, no conflicts) if listen + no existing /tasks/api/
+#    - portal-proxies.conf: only if listen AND no existing /ollama/ (to avoid duplicates)
 out = []
-i, n = 0, len(src)
-inserted = 0
-while i < n:
-    m = re.search(r'\bserver\b\s*\{', src[i:])
-    if not m:
-        out.append(src[i:])
-        break
-    abs_open = i + m.end() - 1
-    out.append(src[i:abs_open+1])  # text up to and including '{'
-    # find matching close brace
-    depth, j = 1, abs_open + 1
-    block_start = j
-    while j < n and depth > 0:
-        c = src[j]
-        if c == '{': depth += 1
-        elif c == '}': depth -= 1
-        j += 1
-    block = src[block_start:j-1]
-    uncommented = '\n'.join(re.sub(r'#.*$', '', line) for line in block.splitlines())
-    if re.search(r'\blisten\b', uncommented):
-        out.append("\n    include snippets/portal-proxies.conf;")
-        inserted += 1
-    out.append(src[abs_open+1:j])  # rest of block including '}'
-    i = j
+cursor = 0
+tasks_inserted = portal_inserted = 0
+for open_idx, close_idx, block in find_server_blocks(src):
+    out.append(src[cursor:open_idx+1])  # text up to and including '{'
+    uncomm = '\n'.join(re.sub(r'#.*$', '', line) for line in block.splitlines())
+    has_listen = bool(re.search(r'\blisten\b', uncomm))
+    has_ollama = bool(re.search(r'location\s+/ollama/', uncomm))
+    has_tasks = bool(re.search(r'location\s+/tasks/api/', uncomm))
+    extras = []
+    if has_listen and not has_tasks:
+        extras.append("    include snippets/tasks-api-proxy.conf;")
+        tasks_inserted += 1
+    if has_listen and not has_ollama:
+        extras.append("    include snippets/portal-proxies.conf;")
+        portal_inserted += 1
+    if extras:
+        out.append("\n" + "\n".join(extras))
+    cursor = open_idx + 1
+out.append(src[cursor:])
 
 new = ''.join(out)
 with open(path, 'w') as f:
     f.write(new)
-print(f"[{path}] inserted into {inserted} server block(s)")
+print(f"[{path}] tasks-api: {tasks_inserted}, portal-proxies: {portal_inserted}")
 PYEOF
 done
 
 echo "=== /etc/nginx/sites-enabled/default after modification ==="
-cat /etc/nginx/sites-enabled/default 2>/dev/null | head -100 || true
+cat /etc/nginx/sites-enabled/default 2>/dev/null | head -80 || true
+echo "=== /etc/nginx/sites-enabled/okk after modification ==="
+cat /etc/nginx/sites-enabled/okk 2>/dev/null | head -80 || true
 
 # ── 3. Install Ollama if not present ──────────────────────────────────
 if ! command -v ollama &> /dev/null; then
@@ -246,10 +266,13 @@ nginx -t && systemctl reload nginx && echo "nginx reloaded OK"
 echo "=== All location blocks in active nginx config ==="
 nginx -T 2>/dev/null | grep -nE "^\s*(server|listen|location|include)" | head -60 || true
 
-echo "=== Final health check via nginx ==="
-echo "--- direct curl with verbose ---"
-curl -v http://127.0.0.1/tasks/api/health 2>&1 | tail -20 || true
-echo "--- via Host header ---"
-curl -sf -H "Host: 195.208.119.67" http://127.0.0.1/tasks/api/health && echo " ✓ /tasks/api/ proxy works" || echo " ✗ /tasks/api/ proxy failed"
+echo "=== Final health check via nginx (real Host header) ==="
+HC=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: 195.208.119.67" http://127.0.0.1/tasks/api/health)
+echo "  /tasks/api/health → HTTP $HC"
+[ "$HC" = "200" ] && echo " ✓ /tasks/api/ works on real host" || echo " ✗ /tasks/api/ fails on real host"
+HO=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: 195.208.119.67" http://127.0.0.1/ollama/api/tags)
+echo "  /ollama/api/tags → HTTP $HO"
+HR=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: 195.208.119.67" http://127.0.0.1/recruiter/)
+echo "  /recruiter/ → HTTP $HR"
 
 echo "=== Setup complete ==="
