@@ -66,8 +66,9 @@ Write-Host "  [OK]  Ollama ready (CORS enabled)" -ForegroundColor Green
 # -- Check if ngrok is already running with a tunnel --
 Write-Host "  ...   Checking ngrok..." -ForegroundColor Yellow
 $tunnelUrl = $null
+$ngrokApi = "http://127.0.0.1:4040/api/tunnels"
 try {
-    $info = Invoke-RestMethod "http://localhost:4040/api/tunnels" -TimeoutSec 3 -ErrorAction Stop
+    $info = Invoke-RestMethod $ngrokApi -TimeoutSec 3 -ErrorAction Stop
     $https = $info.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
     if ($https) {
         $tunnelUrl = $https.public_url
@@ -79,7 +80,7 @@ try {
 if (-not $tunnelUrl) {
     Write-Host "  ...   Starting ngrok tunnel..." -ForegroundColor Yellow
     $ngrokConfig = "$env:LOCALAPPDATA\ngrok\ngrok.yml"
-    Start-Process -FilePath $ngrok -ArgumentList "http 11434 --config `"$ngrokConfig`""
+    Start-Process -FilePath $ngrok -ArgumentList @("http", "11434", "--config", $ngrokConfig)
 }
 
 # -- Wait for tunnel URL if ngrok was just started --
@@ -89,7 +90,7 @@ if (-not $tunnelUrl) {
         Start-Sleep -Seconds 2
         Write-Host "." -NoNewline -ForegroundColor Yellow
         try {
-            $info = Invoke-RestMethod "http://localhost:4040/api/tunnels" -TimeoutSec 2 -ErrorAction Stop
+            $info = Invoke-RestMethod $ngrokApi -TimeoutSec 2 -ErrorAction Stop
             $https = $info.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
             if ($https) { $tunnelUrl = $https.public_url; break }
         } catch {}
