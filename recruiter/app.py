@@ -31,7 +31,7 @@ else:
 
 # ── OLLAMA ────────────────────────────────────────────────────────────────────
 OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://178.63.16.109:11434")  # внешний Ollama IT-команды
-DEFAULT_MODEL = "minimax-m2.7:cloud"
+DEFAULT_MODEL = "qwen3:30b"
 
 def get_ollama_models() -> list[str]:
     """Возвращает список моделей из локального Ollama."""

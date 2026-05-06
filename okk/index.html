@@ -2516,7 +2516,7 @@ async function loadOllamaModels() {
     ollamaModels = (data.models || []).map(m => m.name).sort();
     if (!ollamaModels.length) throw new Error('Нет доступных моделей');
     sel.innerHTML = ollamaModels.map(m => `<option value="${m}">${m}</option>`).join('');
-    const preferred = ['minimax-m2.7:cloud','qwen3-coder-next:cloud','qwen3:30b','llama3.2:3b'];
+    const preferred = ['qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
     const def = preferred.find(p => ollamaModels.includes(p)) || ollamaModels[0];
     sel.value = def;
     const badge = document.getElementById('ai-model-badge');

@@ -255,7 +255,7 @@ function _loadModels(){{
     _models=(data.models||[]).map(m=>m.name).sort();
     if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${{m}}">${{m}}</option>`).join('');
-    const pref=['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
+    const pref=['qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
   }}).catch(function(e){{
