@@ -2286,7 +2286,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     else if (tab==='mpp') renderMPP();
     else if (tab==='orp') renderORP();
     else if (tab==='survey') renderSurvey();
-    else if (tab==='ai' && !ollamaModels.length) resolveOllamaUrl().then(() => loadOllamaModels());
+    else if (tab==='ai' && !ollamaModels.length) loadOllamaModels();
   });
 });
 
@@ -2366,8 +2366,8 @@ async function initDashboard(bustCache) {
     document.getElementById('loading-overlay').style.display='none';
     updateTabBadges();
     renderOverview();
-    // Загрузить модели Ollama в фоне (сначала узнать актуальный URL)
-    resolveOllamaUrl().then(() => loadOllamaModels()).then(() => {
+    // Загрузить модели Ollama в фоне
+    loadOllamaModels().then(() => {
       // Auto-insight после загрузки моделей
       setTimeout(generateAutoInsight, 500);
     });
@@ -2381,18 +2381,8 @@ async function initDashboard(bustCache) {
 }
 
 // ========== AI ASSISTANT ==========
-let OLLAMA_API = 'http://localhost:11434/api';
-
-// Получить актуальный адрес Ollama с сервера (если запущен туннель через start-ai.bat)
-async function resolveOllamaUrl() {
-  try {
-    const r = await fetch('/tasks/api/ai/url', { cache: 'no-store' });
-    if (r.ok) {
-      const d = await r.json();
-      if (d && d.url) OLLAMA_API = d.url + '/api';
-    }
-  } catch(e) { /* нет задачника — используем localhost */ }
-}
+// Запросы идут через прокси на VPS — браузер не обращается к Ollama напрямую
+const OLLAMA_API = '/tasks/api/ai/proxy';
 const aiHistory = [];
 let ollamaModels = [];
 

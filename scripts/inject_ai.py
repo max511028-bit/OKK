@@ -215,16 +215,9 @@ def make_js(cfg, dashboard_type):
     return f"""
 // ===== AI FLOATING PANEL ({dashboard_type.upper()}) =====
 (function(){{
-let _OLLAMA = 'http://localhost:11434/api';
+const _OLLAMA = '/tasks/api/ai/proxy';
 const _SUGGS = {suggs_js};
 let _hist=[], _models=[], _open=false;
-
-async function _resolveUrl(){{
-  try{{
-    const r=await fetch('/tasks/api/ai/url',{{cache:'no-store'}});
-    if(r.ok){{const d=await r.json();if(d&&d.url)_OLLAMA=d.url+'/api';}}
-  }}catch(e){{}}
-}}
 
 {cfg['build_ctx']}
 
@@ -320,7 +313,7 @@ function _toggle(){{
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)_resolveUrl().then(function(){{setTimeout(_loadModels,50);}});
+  if(_open&&!_models.length)setTimeout(_loadModels,50);
 }}
 
 function _clear(){{

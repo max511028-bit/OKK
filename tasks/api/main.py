@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+import urllib.request as _urllib
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -339,3 +340,51 @@ def set_ai_url(payload: AIUrlPayload):
         encoding="utf-8",
     )
     return {"ok": True, "url": payload.url}
+
+
+# ═══════════════════════════════════════════════
+# AI PROXY — VPS проксирует запросы к Ollama-туннелю.
+# Браузер обращается к тому же серверу (без CORS),
+# VPS сам запрашивает Ollama через туннель.
+# ═══════════════════════════════════════════════
+
+@app.get("/ai/proxy/tags")
+def proxy_ai_tags():
+    """Вернуть список моделей Ollama через прокси."""
+    data = get_ai_url()
+    base = data.get("url") if isinstance(data, dict) else None
+    if not base:
+        return {"models": [], "offline": True}
+    try:
+        req = _urllib.Request(
+            f"{base}/api/tags",
+            headers={"User-Agent": "STH-Portal/1.0"},
+        )
+        with _urllib.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        return {"models": [], "error": str(e)}
+
+
+@app.post("/ai/proxy/chat")
+async def proxy_ai_chat(request: Request):
+    """Переслать запрос к Ollama /api/chat через прокси."""
+    data = get_ai_url()
+    base = data.get("url") if isinstance(data, dict) else None
+    if not base:
+        raise HTTPException(503, "AI is offline")
+    body = await request.body()
+    try:
+        req = _urllib.Request(
+            f"{base}/api/chat",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "STH-Portal/1.0",
+            },
+            method="POST",
+        )
+        with _urllib.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        raise HTTPException(502, f"AI proxy error: {e}")

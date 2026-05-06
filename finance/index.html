@@ -3032,16 +3032,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 // ===== AI FLOATING PANEL (FINANCE) =====
 (function(){
-let _OLLAMA = 'http://localhost:11434/api';
+const _OLLAMA = '/tasks/api/ai/proxy';
 const _SUGGS = ["Какой проект самый рентабельный?","Где наблюдаются аномалии?","Сравни показатели по городам","Какой тренд по выручке?","Топ клиентов по прибыли","Сравни 2024 и 2025 год"];
 let _hist=[], _models=[], _open=false;
-
-async function _resolveUrl(){
-  try{
-    const r=await fetch('/tasks/api/ai/url',{cache:'no-store'});
-    if(r.ok){const d=await r.json();if(d&&d.url)_OLLAMA=d.url+'/api';}
-  }catch(e){}
-}
 
 function _aiBuildCtx(){
   var lines=['=== ФИНАНСОВЫЙ ДАШБОРД STH GROUP ==='];
@@ -3158,7 +3151,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)_resolveUrl().then(function(){setTimeout(_loadModels,50);});
+  if(_open&&!_models.length)setTimeout(_loadModels,50);
 }
 
 function _clear(){
