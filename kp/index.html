@@ -1734,7 +1734,7 @@ window.kpDeleteItem=kpDeleteItem;
 
 // ===== AI FLOATING PANEL (KP) =====
 (function(){
-const _OLLAMA = 'http://178.63.16.109:11434/api';
+const _OLLAMA = 'http://localhost:11434/api';
 const _SUGGS = ["Как рассчитывается итоговая цена КП?","Что влияет на стоимость найма?","Какова средняя рыночная ЗП?","Как снизить стоимость подбора?","Чем отличаются типы смен?","Как учитываются штрафы в расчёте?"];
 let _hist=[], _models=[], _open=false;
 
@@ -1787,7 +1787,7 @@ function _loadModels(){
     _models=(data.models||[]).map(m=>m.name).sort();
     if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${m}">${m}</option>`).join('');
-    const pref=['qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
+    const pref=['qwen3:8b','qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
   }).catch(function(e){

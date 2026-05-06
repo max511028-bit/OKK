@@ -215,7 +215,7 @@ def make_js(cfg, dashboard_type):
     return f"""
 // ===== AI FLOATING PANEL ({dashboard_type.upper()}) =====
 (function(){{
-const _OLLAMA = 'http://178.63.16.109:11434/api';
+const _OLLAMA = 'http://localhost:11434/api';
 const _SUGGS = {suggs_js};
 let _hist=[], _models=[], _open=false;
 
@@ -255,7 +255,7 @@ function _loadModels(){{
     _models=(data.models||[]).map(m=>m.name).sort();
     if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${{m}}">${{m}}</option>`).join('');
-    const pref=['qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
+    const pref=['qwen3:8b','qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
   }}).catch(function(e){{

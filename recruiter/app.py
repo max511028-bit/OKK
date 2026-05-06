@@ -30,8 +30,8 @@ else:
     st.stop()
 
 # ── OLLAMA ────────────────────────────────────────────────────────────────────
-OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://178.63.16.109:11434")  # внешний Ollama IT-команды
-DEFAULT_MODEL = "qwen3:30b"
+OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")  # локальный Ollama на компьютере пользователя
+DEFAULT_MODEL = "qwen3:8b"
 
 def get_ollama_models() -> list[str]:
     """Возвращает список моделей из локального Ollama."""
