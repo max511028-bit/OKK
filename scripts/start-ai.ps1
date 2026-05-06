@@ -38,12 +38,19 @@ if (-not $ngrok) {
 }
 Write-Host "  [OK]  ngrok: $ngrok" -ForegroundColor Green
 
-# -- Restart Ollama with OLLAMA_ORIGINS=* (required for browser CORS) --
+# -- Restart Ollama with OLLAMA_ORIGINS=* via ProcessStartInfo (guaranteed env var) --
 Write-Host "  ...   Restarting Ollama with CORS enabled..." -ForegroundColor Yellow
 Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
-$env:OLLAMA_ORIGINS = "*"
-Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "ollama"
+$psi.Arguments = "serve"
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+$psi.EnvironmentVariables["OLLAMA_ORIGINS"] = "*"
+[System.Diagnostics.Process]::Start($psi) | Out-Null
+
 Write-Host "  ...   Waiting for Ollama to start..." -NoNewline -ForegroundColor Yellow
 for ($i = 0; $i -lt 15; $i++) {
     Start-Sleep -Seconds 2
