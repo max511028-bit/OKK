@@ -13,35 +13,31 @@ Write-Host "         STH AI Launcher               " -ForegroundColor Cyan
 Write-Host "  ======================================" -ForegroundColor Cyan
 Write-Host ""
 
-# -- Find cloudflared.exe --
-$cf = $null
+# -- Find ngrok.exe --
+$ngrok = $null
 $candidates = @(
-    "$PSScriptRoot\..\cloudflared-windows-amd64.exe",
-    "$PSScriptRoot\..\cloudflared.exe",
-    "$PSScriptRoot\cloudflared-windows-amd64.exe",
-    "$PSScriptRoot\cloudflared.exe",
-    "$env:USERPROFILE\Downloads\cloudflared-windows-amd64.exe",
-    "$env:USERPROFILE\Downloads\cloudflared.exe",
-    "C:\cloudflared\cloudflared.exe"
+    "$PSScriptRoot\..\ngrok.exe",
+    "$PSScriptRoot\ngrok.exe",
+    "$env:USERPROFILE\Downloads\ngrok.exe",
+    "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\ngrok.ngrok_Microsoft.Winget.Source*\ngrok.exe",
+    "C:\ngrok\ngrok.exe"
 )
 foreach ($c in $candidates) {
-    if (Test-Path $c) {
-        $cf = (Resolve-Path $c).Path
-        break
-    }
+    $found = Get-Item $c -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $ngrok = $found.FullName; break }
 }
-if (-not $cf) {
-    $inPath = Get-Command cloudflared -ErrorAction SilentlyContinue
-    if ($inPath) { $cf = $inPath.Source }
+if (-not $ngrok) {
+    $inPath = Get-Command ngrok -ErrorAction SilentlyContinue
+    if ($inPath) { $ngrok = $inPath.Source }
 }
 
-if (-not $cf) {
-    Write-Host "  [ERR] cloudflared.exe not found" -ForegroundColor Red
-    Write-Host "  Place cloudflared-windows-amd64.exe next to start-ai.bat" -ForegroundColor Yellow
+if (-not $ngrok) {
+    Write-Host "  [ERR] ngrok.exe not found" -ForegroundColor Red
+    Write-Host "  Place ngrok.exe next to start-ai.bat" -ForegroundColor Yellow
     Start-Sleep -Seconds 5
     exit 1
 }
-Write-Host "  [OK]  cloudflared: $cf" -ForegroundColor Green
+Write-Host "  [OK]  ngrok: $ngrok" -ForegroundColor Green
 
 # -- Start Ollama (always restart to ensure OLLAMA_ORIGINS=*) --
 Write-Host "  ...   Restarting Ollama with CORS enabled..." -ForegroundColor Yellow
@@ -71,33 +67,35 @@ if ($ollamaRunning) {
 
 $env:OLLAMA_ORIGINS = "*"
 
-# -- Start tunnel --
-Write-Host "  ...   Starting Cloudflare tunnel..." -ForegroundColor Yellow
-$logFile = "$env:TEMP\sth_cf_$PID.log"
+# -- Start ngrok tunnel --
+Write-Host "  ...   Starting ngrok tunnel..." -ForegroundColor Yellow
 
-$cfProc = Start-Process -FilePath $cf `
-    -ArgumentList "tunnel --url http://localhost:11434" `
-    -RedirectStandardError $logFile `
+# Kill any existing ngrok
+Get-Process -Name "ngrok" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+
+$ngrokProc = Start-Process -FilePath $ngrok `
+    -ArgumentList "http 11434" `
     -PassThru -WindowStyle Hidden
 
+# Wait for ngrok local API to be ready, then get URL
 Write-Host "  ...   Waiting for tunnel URL" -NoNewline -ForegroundColor Yellow
 $tunnelUrl = $null
-for ($i = 0; $i -lt 30; $i++) {
+for ($i = 0; $i -lt 20; $i++) {
     Start-Sleep -Seconds 2
     Write-Host "." -NoNewline -ForegroundColor Yellow
-    if (Test-Path $logFile) {
-        $log = Get-Content $logFile -Raw -ErrorAction SilentlyContinue
-        if ($log -match 'https://[a-z0-9\-]+\.trycloudflare\.com') {
-            $tunnelUrl = $Matches[0]
-            break
-        }
-    }
+    try {
+        $info = Invoke-RestMethod "http://localhost:4040/api/tunnels" -ErrorAction Stop
+        $https = $info.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
+        if ($https) { $tunnelUrl = $https.public_url; break }
+    } catch {}
 }
 Write-Host ""
 
 if (-not $tunnelUrl) {
     Write-Host "  [ERR] Could not get tunnel URL" -ForegroundColor Red
-    if ($cfProc -and -not $cfProc.HasExited) { $cfProc.Kill() }
+    Write-Host "  Make sure you ran: ngrok config add-authtoken YOUR_TOKEN" -ForegroundColor Yellow
+    if ($ngrokProc -and -not $ngrokProc.HasExited) { $ngrokProc.Kill() }
     Start-Sleep -Seconds 5
     exit 1
 }
@@ -126,7 +124,7 @@ Write-Host ""
 
 # -- Keep alive while tunnel runs --
 try {
-    $cfProc | Wait-Process -ErrorAction SilentlyContinue
+    $ngrokProc | Wait-Process -ErrorAction SilentlyContinue
 } catch {}
 
 # -- Clear URL on server --

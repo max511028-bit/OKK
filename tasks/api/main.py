@@ -358,7 +358,10 @@ def proxy_ai_tags():
     try:
         req = _urllib.Request(
             f"{base}/api/tags",
-            headers={"User-Agent": "STH-Portal/1.0"},
+            headers={
+                "User-Agent": "STH-Portal/1.0",
+                "ngrok-skip-browser-warning": "true",
+            },
         )
         with _urllib.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
@@ -381,6 +384,7 @@ async def proxy_ai_chat(request: Request):
             headers={
                 "Content-Type": "application/json",
                 "User-Agent": "STH-Portal/1.0",
+                "ngrok-skip-browser-warning": "true",
             },
             method="POST",
         )
