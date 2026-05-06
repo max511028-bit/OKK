@@ -1,5 +1,6 @@
 #!/bin/bash
-# Server setup script: nginx proxy for Ollama + AI Recruiter service
+# Server setup script: nginx proxy for AI Recruiter + Tasks API
+# AI (Ollama) подключается к внешнему серверу 178.63.16.109:11434 — локальный не нужен
 # Runs on VPS after rsync deploy
 
 set -e
@@ -12,19 +13,9 @@ if [ -z "$SITE_CONF" ]; then
   SITE_CONF="/etc/nginx/nginx.conf"
 fi
 
-# ── 1. Write Ollama + Recruiter proxy snippet (legacy, full) ──────────
+# ── 1. Write Recruiter proxy snippet ──────────────────────────────────
+# Ollama НЕ проксируется — дашборды обращаются напрямую к 178.63.16.109:11434
 cat > /etc/nginx/snippets/portal-proxies.conf << 'NGINX_EOF'
-# Ollama local AI proxy
-location /ollama/ {
-    proxy_pass http://127.0.0.1:11434/;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
-    proxy_read_timeout 300s;
-    proxy_connect_timeout 30s;
-    proxy_buffering off;
-    add_header Access-Control-Allow-Origin * always;
-}
-
 # AI Recruiter (Streamlit on port 8501)
 location /recruiter/ {
     proxy_pass http://127.0.0.1:8501/;
@@ -128,27 +119,13 @@ cat /etc/nginx/sites-enabled/default 2>/dev/null | head -80 || true
 echo "=== /etc/nginx/sites-enabled/okk after modification ==="
 cat /etc/nginx/sites-enabled/okk 2>/dev/null | head -80 || true
 
-# ── 3. Install Ollama if not present ──────────────────────────────────
-if ! command -v ollama &> /dev/null; then
-  echo "Installing Ollama..."
-  curl -fsSL https://ollama.ai/install.sh | sh
-else
-  echo "Ollama already installed: $(ollama --version)"
-fi
+# ── 3. Check external Ollama availability ─────────────────────────────
+echo "=== External Ollama check ==="
+EXT=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://178.63.16.109:11434/api/tags)
+echo "  http://178.63.16.109:11434/api/tags → HTTP $EXT"
+[ "$EXT" = "200" ] && echo "  ✓ External Ollama доступен" || echo "  ✗ External Ollama недоступен (HTTP $EXT)"
 
-# ── 4. Start Ollama service ────────────────────────────────────────────
-systemctl enable ollama 2>/dev/null || true
-systemctl start ollama 2>/dev/null || true
-sleep 2
-
-# Pull default model if no models installed
-if ! ollama list 2>/dev/null | grep -q ":"; then
-  echo "Pulling default model llama3.2:3b..."
-  ollama pull llama3.2:3b
-fi
-echo "Models available: $(ollama list 2>/dev/null | grep -v NAME | awk '{print $1}' | tr '\n' ' ')"
-
-# ── 5. Setup AI Recruiter as systemd service ──────────────────────────
+# ── 4. Setup AI Recruiter as systemd service ──────────────────────────
 RECRUITER_DIR="/var/www/okk/recruiter"
 
 if [ -f "$RECRUITER_DIR/app.py" ]; then

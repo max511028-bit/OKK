@@ -30,8 +30,8 @@ else:
     st.stop()
 
 # ── OLLAMA ────────────────────────────────────────────────────────────────────
-OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-DEFAULT_MODEL = "llama3.2:3b"
+OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://178.63.16.109:11434")
+DEFAULT_MODEL = "minimax-m2.7:cloud"
 
 def get_ollama_models() -> list[str]:
     """Возвращает список моделей из локального Ollama."""

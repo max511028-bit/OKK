@@ -2381,7 +2381,7 @@ async function initDashboard(bustCache) {
 }
 
 // ========== AI ASSISTANT ==========
-const OLLAMA_API = '/ollama/api';
+const OLLAMA_API = 'http://178.63.16.109:11434/api';
 const aiHistory = [];
 let ollamaModels = [];
 
@@ -2516,7 +2516,7 @@ async function loadOllamaModels() {
     ollamaModels = (data.models || []).map(m => m.name).sort();
     if (!ollamaModels.length) throw new Error('Нет доступных моделей');
     sel.innerHTML = ollamaModels.map(m => `<option value="${m}">${m}</option>`).join('');
-    const preferred = ['qwen3-coder-next:cloud','llama3.2:3b','qwen3:30b'];
+    const preferred = ['minimax-m2.7:cloud','qwen3-coder-next:cloud','qwen3:30b','llama3.2:3b'];
     const def = preferred.find(p => ollamaModels.includes(p)) || ollamaModels[0];
     sel.value = def;
     const badge = document.getElementById('ai-model-badge');

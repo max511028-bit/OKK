@@ -215,7 +215,7 @@ def make_js(cfg, dashboard_type):
     return f"""
 // ===== AI FLOATING PANEL ({dashboard_type.upper()}) =====
 (function(){{
-const _OLLAMA = '/ollama/api';
+const _OLLAMA = 'http://178.63.16.109:11434/api';
 const _SUGGS = {suggs_js};
 let _hist=[], _models=[], _open=false;
 
