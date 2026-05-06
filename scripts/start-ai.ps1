@@ -43,32 +43,30 @@ if (-not $cf) {
 }
 Write-Host "  [OK]  cloudflared: $cf" -ForegroundColor Green
 
-# -- Start Ollama --
-Write-Host "  ...   Checking Ollama..." -ForegroundColor Yellow
+# -- Start Ollama (always restart to ensure OLLAMA_ORIGINS=*) --
+Write-Host "  ...   Restarting Ollama with CORS enabled..." -ForegroundColor Yellow
+Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
+$env:OLLAMA_ORIGINS = "*"
+Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+
+Write-Host "  ...   Waiting for Ollama" -NoNewline -ForegroundColor Yellow
 $ollamaRunning = $false
-try {
-    Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 2 -ErrorAction Stop | Out-Null
-    $ollamaRunning = $true
-    Write-Host "  [OK]  Ollama already running" -ForegroundColor Green
-} catch {
-    $env:OLLAMA_ORIGINS = "*"
-    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
-    Write-Host "  ...   Waiting for Ollama" -NoNewline -ForegroundColor Yellow
-    for ($i = 0; $i -lt 15; $i++) {
-        Start-Sleep -Seconds 1
-        Write-Host "." -NoNewline -ForegroundColor Yellow
-        try {
-            Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 1 -ErrorAction Stop | Out-Null
-            $ollamaRunning = $true
-            break
-        } catch {}
-    }
-    Write-Host ""
-    if ($ollamaRunning) {
-        Write-Host "  [OK]  Ollama started" -ForegroundColor Green
-    } else {
-        Write-Host "  [!!]  Ollama did not respond - continuing anyway" -ForegroundColor Yellow
-    }
+for ($i = 0; $i -lt 20; $i++) {
+    Start-Sleep -Seconds 1
+    Write-Host "." -NoNewline -ForegroundColor Yellow
+    try {
+        Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 1 -ErrorAction Stop | Out-Null
+        $ollamaRunning = $true
+        break
+    } catch {}
+}
+Write-Host ""
+if ($ollamaRunning) {
+    Write-Host "  [OK]  Ollama started with CORS enabled" -ForegroundColor Green
+} else {
+    Write-Host "  [!!]  Ollama did not respond - continuing anyway" -ForegroundColor Yellow
 }
 
 $env:OLLAMA_ORIGINS = "*"
