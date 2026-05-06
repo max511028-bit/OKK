@@ -13,23 +13,13 @@
 3. [Деплой и CI/CD](#деплой-и-cicd)
 4. [VPS — что и где запущено](#vps--что-и-где-запущено)
 5. [nginx — маршрутизация](#nginx--маршрутизация)
-6. [Дашборды (frontend)](#дашборды-frontend)
-   - [Главная](#главная)
-   - [ОКК — Контроль качества](#окк--контроль-качества)
-   - [WB — Аутсорсинг](#wb--аутсорсинг)
-   - [Финансы](#финансы)
-   - [КП — Коммерческое предложение](#кп--коммерческое-предложение)
-   - [Задачник IT](#задачник-it)
-   - [HR-игра](#hr-игра)
-   - [AI-Рекрутер](#ai-рекрутер)
-7. [Backend сервисы](#backend-сервисы)
-   - [Tasks API (FastAPI + SQLite)](#tasks-api-fastapi--sqlite)
-   - [AI Recruiter (Streamlit)](#ai-recruiter-streamlit)
-   - [Ollama](#ollama)
-8. [Скрипты-инжекторы](#скрипты-инжекторы)
-9. [Источники данных](#источники-данных)
-10. [Аутентификация](#аутентификация)
-11. [Что делать если…](#что-делать-если)
+6. [AI Ассистент — подробное описание](#ai-ассистент--подробное-описание)
+7. [Дашборды (frontend)](#дашборды-frontend)
+8. [Backend сервисы](#backend-сервисы)
+9. [Скрипты-инжекторы](#скрипты-инжекторы)
+10. [Источники данных](#источники-данных)
+11. [Безопасность](#безопасность)
+12. [Что делать если…](#что-делать-если)
 
 ---
 
@@ -47,45 +37,29 @@
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ nginx :80                                               │ │
 │  │  ├─ /                  → /var/www/okk/index.html        │ │
-│  │  ├─ /okk/, /wb/, …     → статика из /var/www/okk/<dir>/ │ │
+│  │  ├─ /okk/, /wb/, …     → статика /var/www/okk/<dir>/   │ │
 │  │  ├─ /tasks/            → /var/www/okk/tasks/index.html  │ │
 │  │  ├─ /tasks/api/        → 127.0.0.1:8601 (FastAPI)       │ │
-│  │  ├─ /ollama/           → 127.0.0.1:11434 (Ollama)       │ │
+│  │  ├─ /ollama/           → 178.63.16.109:11434 (внешний)  │ │
 │  │  └─ /recruiter/        → 127.0.0.1:8501 (Streamlit)     │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                             │
 │  systemd сервисы:                                           │
-│  • tasks-api.service   (FastAPI на venv)                    │
+│  • tasks-api.service   (FastAPI + SQLite)                   │
 │  • recruiter.service   (Streamlit)                          │
-│  • ollama.service      (LLM сервер)                         │
 └─────────────────────────────────────────────────────────────┘
-                           ▲
-                           │ rsync + SSH
-                           │
-┌─────────────────────────────────────────────────────────────┐
-│  GitHub Actions (push → main)                               │
-│  • Шаг 1: rsync файлов                                      │
-│  • Шаг 2: запись service_account.json                       │
-│  • Шаг 3: bash setup-server.sh                              │
-└─────────────────────────────────────────────────────────────┘
-                           ▲
-                           │
-                           │
-┌─────────────────────────────────────────────────────────────┐
-│  Git push → main                                            │
-└─────────────────────────────────────────────────────────────┘
-
-Источники данных:
-• Google Sheets (CSV-export через gid) → читают ОКК, ВБ, Финансы
-• Локальная SQLite БД → Задачник, история КП
-• Локальные JSON в HTML → КП, HR-игра
+         │                              │
+         │ rsync + SSH                  │ прямой fetch из браузера
+         ▼                              ▼
+  GitHub Actions              178.63.16.109:11434
+  (push → main)               Ollama сервер IT-команды
 ```
 
 **Технологии:**
-- Frontend: ванильный HTML/CSS/JS, Chart.js (CDN)
-- Backend: Python 3.12, FastAPI, Streamlit, SQLite
-- AI: Ollama (llama3.2:3b локально + cloud-модели)
-- Хостинг: один VPS под Ubuntu 24.04 + nginx 1.24
+- Frontend: HTML/CSS/JS, Chart.js (CDN)
+- Backend: Python 3.12, FastAPI, SQLite, Streamlit
+- AI: Ollama на сервере IT-команды (`178.63.16.109:11434`)
+- Хостинг: VPS Ubuntu 24.04 + nginx 1.24
 - CI/CD: GitHub Actions
 
 ---
@@ -94,32 +68,30 @@
 
 ```
 OKK/
-├── index.html              # Главная страница портала (тайлы)
+├── index.html              # Главная страница (тайлы)
 ├── DOCS.md                 # ← вы здесь
-├── .github/
-│   └── workflows/
-│       ├── deploy.yml      # Автодеплой на VPS при push в main
-│       └── sync-finance.yml
+├── .github/workflows/
+│   └── deploy.yml          # Автодеплой на VPS при push в main
 │
 ├── okk/index.html          # Дашборд контроля качества колл-центра
-├── wb/index.html           # WB Аутсорсинг (выработка/штрафы/карта)
-├── finance/index.html      # Финансы (P&L, рентабельность)
-├── kp/index.html           # Конструктор коммерческих предложений
-├── tasks/index.html        # IT-Задачник (Kanban + Gantt + Roadmap)
-├── tasks/api/              # FastAPI backend для задачника
+├── wb/index.html           # WB Аутсорсинг
+├── finance/index.html      # Финансы
+├── kp/index.html           # Коммерческие предложения
+├── tasks/index.html        # IT-Задачник
+├── tasks/api/              # FastAPI backend задачника
 │   ├── main.py
 │   ├── requirements.txt
-│   └── seed.json
-├── hr-game/index.html      # Геймификация для рекрутеров
+│   ├── seed.json
+│   └── tasks.db            # SQLite база (НЕ в git, не трогается rsync)
+├── hr-game/index.html      # HR-геймификация
 │
 ├── recruiter/              # Streamlit AI-рекрутер
 │   ├── app.py
-│   ├── requirements.txt
-│   └── index.html          # Stub с редиректом на /recruiter/
+│   └── requirements.txt
 │
 └── scripts/
     ├── setup-server.sh     # Запускается на VPS после деплоя
-    ├── inject_ai.py        # Вшивает плавающую AI-панель в дашборды
+    ├── inject_ai.py        # Вшивает AI-панель в дашборды
     └── inject_auth.py      # Вшивает оверлей пароля
 ```
 
@@ -128,209 +100,211 @@ OKK/
 ## Деплой и CI/CD
 
 ### Триггер
-Любой `git push` в ветку **`main`** запускает `.github/workflows/deploy.yml`.
+Любой `git push` в ветку **`main`** → запускает `.github/workflows/deploy.yml`.
 
-### Шаги workflow
+### Шаги
+1. **rsync** файлов на VPS в `/var/www/okk/` (с исключениями — база данных и venv не трогаются)
+2. **Запись `service_account.json`** из GitHub Secret (права 600)
+3. **`bash setup-server.sh`** — настройка nginx, systemd-сервисов
 
-1. **Checkout** репозитория
-2. **rsync** всех файлов на VPS в `/var/www/okk/`:
-   ```
-   rsync -avz --delete --exclude='.git' --exclude='.github'
-   ```
-   Используется SSH-ключ из секрета `VPS_SSH_KEY`.
-3. **Заливка `service_account.json`** для AI-Рекрутера из секрета `GOOGLE_SERVICE_ACCOUNT_INFO`
-4. **Запуск `bash /var/www/okk/scripts/setup-server.sh`** — настраивает nginx, Ollama, systemd-сервисы
-
-### GitHub Secrets (нужны в репозитории)
+### GitHub Secrets
 
 | Имя | Что |
 |---|---|
 | `VPS_SSH_KEY` | Приватный SSH-ключ для root@195.208.119.67 |
-| `GOOGLE_SERVICE_ACCOUNT_INFO` | JSON-ключ Google Cloud сервисного аккаунта (для Streamlit-рекрутера) |
+| `GOOGLE_SERVICE_ACCOUNT_INFO` | JSON-ключ GCP для Streamlit-рекрутера |
 
-### Время деплоя
-~1 мин 30 сек: rsync → setup-server.sh → пересоздание venv (если нужно) → reload nginx
+### Защита данных при деплое
+`rsync` **не удаляет и не перезаписывает:**
+- `tasks/api/tasks.db` — база задачника (данные сохраняются между деплоями)
+- `tasks/api/.venv` — Python-окружение (пересоздаётся только если нет)
+- `**/__pycache__` — кэш Python
 
 ---
 
 ## VPS — что и где запущено
 
-| Что | Путь / порт | Запуск |
+| Что | Путь / порт | Управление |
 |---|---|---|
 | Статика портала | `/var/www/okk/` | nginx |
-| nginx | :80 (HTTP) | `systemctl status nginx` |
-| Ollama (LLM) | :11434 | `systemctl status ollama` |
-| AI Recruiter (Streamlit) | :8501 | `systemctl status recruiter` |
+| nginx | :80 | `systemctl status nginx` |
 | Tasks API (FastAPI) | :8601 | `systemctl status tasks-api` |
-| SQLite база задачника | `/var/www/okk/tasks/api/tasks.db` | — |
-| venv задачника | `/var/www/okk/tasks/api/.venv/` | создаётся в setup-server.sh |
-| Логи systemd | `journalctl -u <service> -n 50` | — |
+| AI Recruiter (Streamlit) | :8501 | `systemctl status recruiter` |
+| SQLite база | `/var/www/okk/tasks/api/tasks.db` | — |
+| Python venv | `/var/www/okk/tasks/api/.venv/` | — |
+| Логи | — | `journalctl -u tasks-api -n 50` |
+
+> **Ollama не установлен на VPS** — используется внешний сервер IT-команды.
 
 ---
 
 ## nginx — маршрутизация
 
-Конфиг в `/etc/nginx/sites-enabled/okk` (основной для домена) и `/etc/nginx/sites-enabled/default` (для прочих Host).
+Конфиг: `/etc/nginx/sites-enabled/okk` (основной для IP 195.208.119.67)
 
-Сниппеты создаёт `setup-server.sh`:
+Сниппеты (создаются `setup-server.sh`):
+- `/etc/nginx/snippets/portal-proxies.conf` — прокси для `/recruiter/`
+- `/etc/nginx/snippets/tasks-api-proxy.conf` — прокси для `/tasks/api/`
 
-- **`/etc/nginx/snippets/portal-proxies.conf`** — прокси для `/ollama/` и `/recruiter/`
-- **`/etc/nginx/snippets/tasks-api-proxy.conf`** — прокси только для `/tasks/api/`
+### Таблица маршрутов
 
-### Локации
-
-| URL | Назначение | Прокси на |
+| URL | Куда | Примечание |
 |---|---|---|
-| `/` | главная | static |
-| `/okk/`, `/wb/`, `/finance/`, `/kp/`, `/hr-game/`, `/tasks/` | дашборды | static |
-| `/tasks/api/*` | API задачника | `127.0.0.1:8601` |
-| `/ollama/api/*` | Ollama API (для AI-чата) | `127.0.0.1:11434` |
-| `/recruiter/*` | Streamlit UI | `127.0.0.1:8501` |
-| `/recruiter/_stcore/` | Streamlit websocket | `127.0.0.1:8501` (с `Upgrade`) |
+| `/` | static `index.html` | главная |
+| `/okk/`, `/wb/` и др. | static | дашборды |
+| `/tasks/` | static `tasks/index.html` | задачник UI |
+| `/tasks/api/*` | `127.0.0.1:8601` | FastAPI |
+| `/ollama/*` | `178.63.16.109:11434` | Ollama IT-команды |
+| `/recruiter/*` | `127.0.0.1:8501` | Streamlit |
+
+---
+
+## AI Ассистент — подробное описание
+
+### Как это работает
+
+Каждый дашборд имеет встроенную кнопку 🤖 в правом нижнем углу. При нажатии открывается чат-панель с выбором модели и полем для вопроса.
+
+**Схема запроса:**
+
+```
+Браузер пользователя
+       │
+       │  1. GET /api/tags  (загрузка списка моделей)
+       │  2. POST /api/chat  (отправка вопроса)
+       ▼
+178.63.16.109:11434  ←── Ollama-сервер IT-команды
+```
+
+Запросы идут **напрямую из браузера** на сервер IT-команды — наш VPS в цепочке не участвует.
+
+> **Примечание для IT:** Альтернативный маршрут через наш VPS (`/ollama/` → `178.63.16.109:11434`) тоже настроен в nginx, но браузер обращается напрямую для снижения задержки.
+
+### Технические параметры подключения
+
+| Параметр | Значение |
+|---|---|
+| API endpoint (модели) | `http://178.63.16.109:11434/api/tags` |
+| API endpoint (чат) | `http://178.63.16.109:11434/api/chat` |
+| Аутентификация | не требуется |
+| Таймаут | 8 секунд на загрузку моделей |
+| Формат запроса | JSON, `stream: false` |
+
+### Пример запроса (curl)
+
+```bash
+curl http://178.63.16.109:11434/api/chat -d '{
+  "model": "minimax-m2.7:cloud",
+  "messages": [{ "role": "user", "content": "Твой вопрос" }],
+  "stream": false
+}'
+```
+
+### Доступные модели (текущий список)
+
+| Модель | Тип | Размер |
+|---|---|---|
+| `minimax-m2.7:cloud` | облачная | — |
+| `qwen3-coder-next:cloud` | облачная | — |
+| `qwen3.6:35b` | локальная | 36B |
+| `qwen3:30b` | локальная | 30B |
+| `qwen3-coder:30b` | локальная | 30B |
+| `llama3.2:3b` | локальная | 3B |
+| `smollm2:135m` | локальная | 135M |
+
+### Требование к серверу IT (CORS)
+
+Браузер блокирует запросы если сервер не разрешает источник `http://195.208.119.67`.
+
+**Необходимая настройка на сервере `178.63.16.109`:**
+
+```bash
+# Добавить переменную окружения и перезапустить Ollama
+OLLAMA_ORIGINS=http://195.208.119.67
+systemctl restart ollama
+```
+
+Или в `/etc/systemd/system/ollama.service` в секцию `[Service]`:
+```ini
+Environment=OLLAMA_ORIGINS=http://195.208.119.67
+```
+
+**Без этой настройки AI-ассистент не работает** — браузер получает ошибку `403 Forbidden`.
+
+### Где настроен в коде
+
+| Файл | Переменная | Значение |
+|---|---|---|
+| `okk/index.html` | `OLLAMA_API` | `http://178.63.16.109:11434/api` |
+| `scripts/inject_ai.py` | `_OLLAMA` | `http://178.63.16.109:11434/api` |
+| `recruiter/app.py` | `OLLAMA_BASE` | `http://178.63.16.109:11434` |
+
+### AI-панели по дашбордам
+
+| Дашборд | Специализация AI | Как реализовано |
+|---|---|---|
+| ОКК | Анализ качества КЦ, рекрутеры, критерии | Встроен напрямую в HTML |
+| WB | Выработка, штрафы, склады | Через `inject_ai.py` |
+| Финансы | P&L, рентабельность, тренды | Через `inject_ai.py` + кнопки 🤖 у каждого графика |
+| КП | Помощник по коммерческим предложениям | Через `inject_ai.py` |
+| HR-игра | Рекрутинговый ассистент | Через `inject_ai.py` |
+| AI-Рекрутер | Скрининг кандидатов из Google Sheets | Streamlit-приложение (`recruiter/app.py`) |
 
 ---
 
 ## Дашборды (frontend)
 
-Все дашборды — **single-file HTML** со встроенными CSS и JS. Без сборки, без npm. Тёмная тема, шрифт Inter, графики через Chart.js (CDN).
+Все дашборды — **single-file HTML** со встроенными CSS и JS. Без npm, без сборки. Тёмная тема, шрифт Inter, графики Chart.js.
 
 ### Главная
-
-**Файл:** `index.html` (~190 строк)
-**Что делает:** показывает 7 тайлов, ссылающихся на разделы. Без логики и данных. Не требует пароля.
-
----
+**URL:** `/` | **Файл:** `index.html`
+Показывает 7 тайлов с переходами на разделы. Пароль не требует.
 
 ### ОКК — Контроль качества
+**URL:** `/okk/` | **Источник:** Google Sheets (5 листов)
 
-**Файл:** `okk/index.html` (~2660 строк)
-**URL:** `/okk/`
-**Источник данных:** Google Sheets (5 листов CSV)
+Разделы: Сводка КЦ → Прослушка → Динамика обучения → МПП → ОРП → Опросы → AI Ассистент
 
-**Разделы:**
-1. **Сводка КЦ** — 4 KPI-карточки (% прослушки, баллы МПП/ОРП, CSAT) + линейный график динамики
-2. **Прослушка** — рейтинг рекрутеров, карточки, фильтр по месяцу/дивизиону, **модалка с радар-графиком 21 критерия**
-3. **Динамика обучения** — отслеживание роста показателей до/после обучения
-4. **МПП** (методы первичного подбора) — оценки по компетенциям
-5. **ОРП** (отбор резюме по проверкам) — оценки проверок
-6. **Опросы** — CSAT/NPS по складам, должностям, городам
-
-**Особенности:**
-- Все процентные значения парсятся через `parsePercent()` (запятые → точки, `0.79 → 79%`)
-- Кириллица в CSV — обрабатывается напрямую без перекодировки
-- Геймификация: на карточке рекрутера до 4 медалей (`🥇` лучший месяц, `📈` рост 3 мес, `⭐` >90%, `🎧` 50+ звонков)
-- Сравнение «было/стало» — бейдж с зелёной/красной/нейтральной стрелкой над модалкой
-
-**ИИ-помощник:** встроен напрямую в HTML (не через `inject_ai.py`), функция `loadOllamaModels()`, селектор моделей с retry-on-click, таймаут 8с.
-
----
+Особенности:
+- Рейтинг рекрутеров с радар-графиком по 21 критерию
+- Медали на карточках (🥇 лучший месяц, 📈 рост 3 мес, ⭐ >90%, 🎧 50+ звонков)
+- Сравнение «было/стало» по периодам
 
 ### WB — Аутсорсинг
-
-**Файл:** `wb/index.html` (~3030 строк)
 **URL:** `/wb/`
 
-**Разделы:**
-- 📊 Дашборд: KPI выработки, штрафов, операций
-- 👥 Сотрудники: рейтинг, фильтры, риск-зона
-- 💰 ФОТ: разбивка по складам и периодам
-- 📡 **Аномалии**: автоматический детектор (штраф > 3× нормы) + кнопка «Скопировать отчёт» для Telegram-рассылки
-- 🗺 **Карта России**: SVG с ~40 городами, цвет круга = коэф. штраф/выручка
-- ⚙️ Прочее: типы операций, типы штрафов
+Разделы: Дашборд → Сотрудники → ФОТ → Аномалии → Карта России
 
-**ИИ-помощник:** через `inject_ai.py wb` (плавающая кнопка 🤖, чат с моделью).
-
----
+Особенности:
+- Автодетектор аномалий (штраф > 3× нормы) + отчёт для Telegram
+- SVG-карта ~40 городов России, цвет = коэффициент штраф/выручка
 
 ### Финансы
-
-**Файл:** `finance/index.html` (~3240 строк)
 **URL:** `/finance/`
 
-**Разделы:**
-- KPI: выручка, маржа, прибыль, средний чек
-- Тренды: линейные графики по месяцам
-- Waterfall: разбивка маржи
-- ZP: доля ФОТ
-- По дивизионам: радары и stacked bars
-- По клиентам / городам / проектам: drill-down таблицы
-- **AI-Объяснение каждого графика**: рядом с canvas — кнопка `🤖 Объяснить` (атачится через `setInterval` каждые 3с — переживает перерисовку)
+Разделы: KPI → Тренды → Waterfall → По дивизионам → По клиентам/городам
 
-**ИИ-помощник:** через `inject_ai.py finance`.
-
----
+Особенности: кнопка `🤖 Объяснить` рядом с каждым графиком.
 
 ### КП — Коммерческое предложение
-
-**Файл:** `kp/index.html` (~1940 строк)
 **URL:** `/kp/`
 
-**Что делает:** конструктор PDF-стайл коммерческого предложения для аутсорсинга персонала.
-
-- Параметры: город, кол-во человек, ФОТ, накладные, маржа
-- Автопересчёт всех таблиц
-- **Сохранение состояния** в БД (`/tasks/api/kp` — да, сидит в той же FastAPI)
-- **Шаблоны** (`is_template=true`): можно сохранить готовое КП и переиспользовать
-- **История**: все сохранённые КП с датой
-- Печать через `window.print()` стилем PDF
-
-**ИИ-помощник:** `inject_ai.py kp`.
-
----
+Конструктор КП с сохранением в БД. Шаблоны и история через `/tasks/api/kp`.
 
 ### Задачник IT
+**URL:** `/tasks/` | **Backend:** FastAPI на `/tasks/api/`
 
-**Файл:** `tasks/index.html` (~3560 строк)
-**URL:** `/tasks/`
-**Backend:** FastAPI на `/tasks/api/`
+Разделы: Dashboard → Аналитика → Weekly Review → Задачи → Kanban → Gantt → Roadmap → ТЗ
 
-**Что делает:** перенесённый Command Center для IT-команды на ВКР/СТХ.
-
-**Разделы:**
-- 📊 Dashboard — KPI команды и здоровья проекта
-- 📈 Аналитика
-- 📅 Weekly Review — план/факт/просрочено/решения недели
-- ✅ **Задачи** — главный реестр (47 активных)
-- 📋 Kanban — карточки по статусам
-- 📊 Gantt — таймлайн с фазами
-- 🗺 Roadmap — стратегические инициативы
-- 📑 ТЗ — реестр технических заданий
-
-**Создание/редактирование задач:**
-- Кнопка `+ Новая задача` (плавающая FAB снизу справа)
-- Модалка с 14 полями (id, title, desc, system, type, priority, risk, assignee, deadline, status, tz, metric, effect, blockers, deps)
-- Сохраняется в SQLite через `POST /tasks/api/tasks`
-- Изменения логируются в таблицу `task_history`
-
-**Toast-уведомления:**
-- 🟢 «Подключено к серверу»
-- 🟡 «Офлайн-режим (изменения не сохраняются)» — если API недоступен после 3 ретраев
-- 🔴 «Не сохранено: HTTP 500» и т.п.
-
----
+47 активных задач, сохранение в SQLite, история изменений.
 
 ### HR-игра
-
-**Файл:** `hr-game/index.html`
 **URL:** `/hr-game/`
-
-Геймифицированная мотивация для рекрутеров — баллы, рейтинги, ачивки.
-
-**ИИ-помощник:** `inject_ai.py hr-game`.
-
----
+Геймификация для рекрутеров — баллы, рейтинги, ачивки.
 
 ### AI-Рекрутер
-
 **URL:** `/recruiter/`
-**Это Streamlit-приложение**, отдельное от HTML-дашбордов.
-
-**Файл:** `recruiter/app.py` (~790 строк)
-**Что делает:**
-- Читает кандидатов из Google Sheets через `gspread`
-- Через Ollama-модель (локально на VPS) проводит первичный скрининг
-- Отвечает на вопросы рекрутера, генерирует тексты вакансий, скоринг резюме
-- Использует `service_account.json` для GCP
+Streamlit-приложение. Читает кандидатов из Google Sheets, проводит скрининг через Ollama.
 
 ---
 
@@ -338,200 +312,127 @@ OKK/
 
 ### Tasks API (FastAPI + SQLite)
 
-**Файл:** `tasks/api/main.py` (307 строк)
-**Запуск:** `tasks-api.service` через `/var/www/okk/tasks/api/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8601`
-**База:** `/var/www/okk/tasks/api/tasks.db`
-**Префикс маршрутов в коде:** `root_path="/tasks/api"` → реальные пути нацелены на nginx-проксирование
+**Порт:** 8601 | **Файл:** `tasks/api/main.py` | **База:** `tasks/api/tasks.db`
 
 **Схема БД:**
 
-| Таблица | Поля |
+| Таблица | Назначение |
 |---|---|
-| `tasks` | id, title, data (JSON всех полей задачи), created_at, updated_at |
-| `task_history` | id, task_id, event (текст изменения), ts |
-| `lists` | name (PK), data (JSON), updated_at — для weekly_*, roadmap, tz, gantt |
-| `kp_history` | id, title, city, people, payload (JSON), is_template, created_at |
+| `tasks` | Задачи (id, title, data JSON, timestamps) |
+| `task_history` | Лог изменений (автоматически) |
+| `lists` | weekly_plan/fact, roadmap, gantt, tz |
+| `kp_history` | Сохранённые КП и шаблоны |
 
 **Endpoints:**
 
-| Метод | Путь | Что делает |
+| Метод | Путь | Действие |
 |---|---|---|
-| `GET` | `/state` | вся снимка: tasks + все lists |
-| `GET` | `/tasks` | список задач |
-| `GET` | `/tasks/{id}` | одна задача |
-| `POST` | `/tasks` | создать |
-| `PUT` | `/tasks/{id}` | обновить (логируется diff в history) |
-| `DELETE` | `/tasks/{id}` | удалить |
-| `GET` | `/tasks/{id}/history` | хронология изменений |
-| `PUT` | `/lists/{name}` | обновить weekly_plan / roadmap / gantt и др. |
-| `GET` | `/kp` | список сохранённых КП (`?template=true` для шаблонов) |
-| `POST` | `/kp` | сохранить КП |
-| `DELETE` | `/kp/{id}` | удалить КП |
-| `GET` | `/health` | `{"ok": true}` |
+| GET | `/state` | Всё сразу (tasks + lists) |
+| GET/POST | `/tasks` | Список / создать |
+| GET/PUT/DELETE | `/tasks/{id}` | Одна задача |
+| GET | `/tasks/{id}/history` | История изменений |
+| PUT | `/lists/{name}` | Обновить список |
+| GET/POST/DELETE | `/kp` | КП и шаблоны |
+| GET | `/health` | `{"ok": true}` |
 
-**Seed:** при первом запуске (если в `tasks` ноль строк) импортирует `seed.json` с 15 задачами, 8 roadmap, 14 gantt, 6 tz.
-
-**CORS:** `allow_origins=["*"]` (нужно сузить).
-
----
+**CORS:** разрешён только с `http://195.208.119.67`.
 
 ### AI Recruiter (Streamlit)
 
-**Файл:** `recruiter/app.py`
-**Запуск:** `recruiter.service`
-```
-python3 -m streamlit run app.py --server.port 8501
-                                --server.address 127.0.0.1
-                                --server.baseUrlPath /recruiter
-```
+**Порт:** 8501 | **Файл:** `recruiter/app.py`
 
-**Зависимости (`requirements.txt`):** streamlit, gspread, oauth2client, google-api-python-client, requests, openpyxl и др.
-
-**Что использует:**
-- `service_account.json` (или env-переменная `GOOGLE_SERVICE_ACCOUNT_INFO`) — доступ к Google Sheets
-- `127.0.0.1:11434/api/generate` — локальная Ollama для генерации ответов
-
----
-
-### Ollama
-
-**Запуск:** `ollama.service` (стандартный systemd-юнит от установщика)
-**API:** `127.0.0.1:11434`
-**Модели:** скачиваются в `~/.ollama/models/`. По умолчанию ставится `llama3.2:3b`.
-
-**Доступ через nginx:** `/ollama/api/tags`, `/ollama/api/chat` (используется AI-панелями всех дашбордов).
+Использует `service_account.json` для Google Sheets и Ollama (`178.63.16.109:11434`) для генерации.
 
 ---
 
 ## Скрипты-инжекторы
 
-### `scripts/inject_auth.py`
-
+### `inject_auth.py`
 ```bash
-python scripts/inject_auth.py okk/index.html wb/index.html …
+python scripts/inject_auth.py <файл.html>
 ```
+Добавляет оверлей с паролем. Пароль `511028` → `btoa()` = `NTExMDI4`.
 
-Вшивает после `<body>` JS-оверлей с полем пароля. Пароль `511028` хранится как `btoa()` = `NTExMDI4`. После ввода — `sessionStorage.setItem('p_auth', ...)`. **Не криптография**, просто блокировка от случайных пользователей.
-
-### `scripts/inject_ai.py`
-
+### `inject_ai.py`
 ```bash
-python scripts/inject_ai.py wb/index.html wb
-python scripts/inject_ai.py finance/index.html finance
-python scripts/inject_ai.py kp/index.html kp
-python scripts/inject_ai.py hr-game/index.html hr-game
+python scripts/inject_ai.py <файл.html> <тип>
+# Типы: wb, finance, kp, hr-game
 ```
+Добавляет плавающую кнопку 🤖 и чат-панель с подключением к Ollama.
 
-Вшивает в конец `<body>` плавающую AI-кнопку 🤖 + панель чата. Шаблон один, но `CONFIGS[type]` содержит:
-- `title`, `greeting`, `suggestions` — UI-тексты
-- `system_prompt` — роль модели
-- `build_ctx` — JS-функция, собирающая контекст с дашборда (передаётся в Ollama вместе с вопросом)
-
-Для **OKK** AI-чат написан **отдельно прямо в `okk/index.html`** (не через инжектор) — там много специфики.
-
-### `scripts/setup-server.sh`
-
-Запускается **на VPS** после деплоя. Что делает:
-
-1. Записывает nginx-сниппеты (`portal-proxies.conf` + `tasks-api-proxy.conf`)
-2. Через **Python-парсер** вставляет нужные `include` в `server { }` блоки **всех** site-конфигов nginx, **избегая дубликатов** (если в файле уже есть `/ollama/`, не вставляется portal-proxies; tasks-api-proxy всегда безопасен)
-3. Ставит/запускает Ollama
-4. Создаёт `recruiter.service` и стартует
-5. Создаёт venv в `/var/www/okk/tasks/api/.venv/`, ставит fastapi/uvicorn, создаёт `tasks-api.service`
-6. `nginx -t && reload`
-7. Печатает диагностику: статус сервисов, health-check через `Host: 195.208.119.67`
+### `setup-server.sh`
+Запускается на VPS после каждого деплоя:
+1. Создаёт nginx-сниппеты (recruiter, tasks-api)
+2. Вставляет `include` в конфиги nginx (умный Python-парсер, без дубликатов)
+3. Проверяет внешний Ollama
+4. Создаёт/обновляет systemd-сервисы (recruiter, tasks-api)
+5. Перезапускает nginx
 
 ---
 
 ## Источники данных
 
-### Google Sheets (для ОКК, ВБ, Финансов)
+| Дашборд | Источник | Способ |
+|---|---|---|
+| ОКК, WB, Финансы | Google Sheets | CSV-export (таблицы открыты по ссылке) |
+| Задачник | SQLite на VPS | FastAPI `/tasks/api/state` |
+| КП-история | SQLite на VPS | FastAPI `/tasks/api/kp` |
+| HR-игра | JSON в HTML | Статически |
 
-В каждом HTML захардкожены ID листов и `gid` страниц. Загрузка идёт через CSV-export:
+Google Sheets загружаются через:
 ```
 https://docs.google.com/spreadsheets/d/{ID}/export?format=csv&gid={GID}
 ```
-
-**Никакого OAuth** — таблицы должны быть **«доступны по ссылке»** (View). Это работает потому что портал размещён на GitHub Pages-аналоге (статика), и CORS на CSV-export разрешён Google.
-
-### SQLite (для задачника + истории КП)
-
-`/var/www/okk/tasks/api/tasks.db` — управляется FastAPI. Бэкап — копирование файла.
-
-### Локальные JSON в HTML (для КП, HR-игры)
-
-Конфиги статически вшиты в `<script>` блоки. Для смены — редактировать HTML и push.
+Таблицы должны быть **«доступны по ссылке (просмотр)»**.
 
 ---
 
-## Аутентификация
+## Безопасность
 
-| Что | Как |
+| Что | Как защищено |
 |---|---|
-| Пароль на дашборды | `inject_auth.py` → `btoa('511028')` сравнивается с введённым. Слабая защита — base64 видно в DevTools. Подойдёт против случайных людей с правильной ссылкой. |
-| API задачника | **нет аутентификации** (CORS открыт). Защищён только тем, что URL не публикуется и пароль на UI. |
-| Streamlit-рекрутер | без аутентификации (защищён через основной btoa-оверлей в `recruiter/index.html`-обёртке) |
+| Дашборды | Пароль `511028` через `btoa()` (защита от случайных пользователей) |
+| Tasks API | CORS только с `http://195.208.119.67` |
+| service_account.json | `chmod 600` после деплоя |
+| tasks.db | Не попадает в git, не удаляется rsync |
+| SSH-ключ VPS | Только в GitHub Secrets |
 
 ---
 
 ## Что делать если…
 
 ### …задачник пишет «Офлайн-режим»
+1. Открыть http://195.208.119.67/tasks/api/health
+2. Если 404 — посмотреть лог последнего GitHub Actions → шаг «Run server setup»
+3. Если `{"ok":true}` — очистить кэш браузера (Ctrl+Shift+R)
 
-1. Проверить https://195.208.119.67/tasks/api/health — должно вернуть `{"ok":true}`
-2. Если 404 — посмотреть GitHub Actions последнего run, шаг **Run server setup** → строки `[tasks-api] Health check`, `=== nginx tasks/api proxy config ===`
-3. Если health внутренний 200, а внешний 404 — проблема в nginx-include (см. историю фиксов в `setup-server.sh`)
+### …AI-ассистент не загружает модели
+1. Открыть http://178.63.16.109:11434/api/tags — работает ли Ollama IT-команды?
+2. Если работает но в браузере ошибка — IT нужно добавить `OLLAMA_ORIGINS=http://195.208.119.67`
+3. Если не работает — обратиться к IT-команде
 
-### …ИИ-помощник стоит на «Загрузка…»
-
-1. Проверить http://195.208.119.67/ollama/api/tags
-2. Если пусто — `systemctl status ollama` на VPS
-3. Если работает но дашборд не видит — DevTools → Network → запрос `tags` → смотреть статус. Возможен 502 если ollama упал
+### …нужно поменять пароль
+```python
+import base64; print(base64.b64encode(b'НОВЫЙ_ПАРОЛЬ').decode())
+```
+Заменить `T='NTExMDI4'` в `scripts/inject_auth.py` → запустить inject_auth.py для всех HTML → push.
 
 ### …нужно добавить новый дашборд
-
 1. Создать `<имя>/index.html`
-2. (опционально) `python scripts/inject_auth.py <имя>/index.html` — пароль
-3. (опционально) Добавить в `scripts/inject_ai.py` блок в `CONFIGS` и запустить
-4. Добавить тайл в главный `index.html`
+2. Добавить тайл в `index.html`
+3. (опц.) `python scripts/inject_auth.py <имя>/index.html`
+4. (опц.) `python scripts/inject_ai.py <имя>/index.html <тип>`
 5. Push → автодеплой
 
-### …нужно поменять пароль входа
-
-1. В Python: `>>> import base64; base64.b64encode(b'НОВЫЙ').decode()`
-2. Замените `T='NTExMDI4'` в `scripts/inject_auth.py`
-3. Запустите `python scripts/inject_auth.py okk/index.html wb/index.html finance/index.html kp/index.html tasks/index.html hr-game/index.html`
-4. Push
-
-### …нужно посмотреть логи на VPS
-
+### …нужно посмотреть логи VPS
 ```bash
 ssh root@195.208.119.67
-journalctl -u tasks-api -n 100
-journalctl -u recruiter -n 100
-journalctl -u ollama -n 100
+journalctl -u tasks-api -n 100 --no-pager
+journalctl -u recruiter -n 100 --no-pager
 tail -50 /var/log/nginx/error.log
-tail -50 /var/log/nginx/access.log
 ```
 
-### …нужно бэкапнуть задачник
-
+### …нужно бэкапнуть базу задачника
 ```bash
-ssh root@195.208.119.67 'cat /var/www/okk/tasks/api/tasks.db' > backup-$(date +%F).db
+scp root@195.208.119.67:/var/www/okk/tasks/api/tasks.db ./backup-$(date +%F).db
 ```
-
-### …нужно скачать новую модель Ollama
-
-```bash
-ssh root@195.208.119.67 'ollama pull qwen3:8b'
-```
-
----
-
-## Контакты и ответственные
-
-(заполнить)
-
----
-
-_Последнее обновление: автоматически генерируется при правках._
