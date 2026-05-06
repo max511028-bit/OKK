@@ -2788,7 +2788,12 @@ window.addEventListener('DOMContentLoaded',async ()=>{
 
 // ===== AI FLOATING PANEL (WB) =====
 (function(){
-const _OLLAMA = '/tasks/api/ai/proxy';
+let _ollamaUrl=null;
+async function _resolveUrl(){
+  if(_ollamaUrl)return _ollamaUrl;
+  try{const r=await fetch('/tasks/api/ai/url');const d=await r.json();_ollamaUrl=d.url||null;}catch{}
+  return _ollamaUrl;
+}
 const _SUGGS = ["Кто в зоне риска по выработке?","Топ-5 по заработку за период","Самые частые причины штрафов","Средняя выработка по складам","Сколько сотрудников работало?","На каком складе больше всего штрафов?"];
 let _hist=[], _models=[], _open=false;
 
@@ -2863,21 +2868,27 @@ function _addMsg(role,html){
   return d;
 }
 
-function _loadModels(){
+async function _loadModels(){
   const sel=document.getElementById('_ai_model_sel');
   if(!sel)return;
   sel.innerHTML='<option>⏳ Загрузка...</option>';
-  fetch(`${_OLLAMA}/tags`).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
+  try{
+    const url=await _resolveUrl();
+    if(!url)throw new Error('AI оффлайн');
+    const r=await fetch(url+'/api/tags',{headers:{'ngrok-skip-browser-warning':'true'}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
     _models=(data.models||[]).map(m=>m.name).sort();
     if(!_models.length)throw new Error('Нет моделей на сервере');
     sel.innerHTML=_models.map(m=>`<option value="${m}">${m}</option>`).join('');
     const pref=['qwen3:8b','qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
-  }).catch(function(e){
-    sel.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';
-    sel.onclick=function(){if(!_models.length){sel.onclick=null;_loadModels();}};
-  });
+  }catch(e){
+    _ollamaUrl=null;
+    const sel2=document.getElementById('_ai_model_sel');
+    if(sel2){sel2.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';sel2.onclick=function(){if(!_models.length){sel2.onclick=null;_loadModels();}};}
+  }
 }
 
 async function _ask(msg){
@@ -2906,7 +2917,9 @@ async function _ask(msg){
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
     const payload={model,messages,stream:false,think:false};
-    const res=await fetch(`${_OLLAMA}/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const url=await _resolveUrl();
+    if(!url)throw new Error('AI оффлайн');
+    const res=await fetch(url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},body:JSON.stringify(payload)});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     const reply=data.message?.content||'';

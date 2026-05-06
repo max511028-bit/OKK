@@ -2381,8 +2381,17 @@ async function initDashboard(bustCache) {
 }
 
 // ========== AI ASSISTANT ==========
-// Запросы идут через прокси на VPS — браузер не обращается к Ollama напрямую
-const OLLAMA_API = '/tasks/api/ai/proxy';
+// Браузер обращается к ngrok напрямую с заголовком ngrok-skip-browser-warning
+let _aiOllamaUrl = null;
+async function _aiResolveUrl() {
+  if (_aiOllamaUrl) return _aiOllamaUrl;
+  try {
+    const r = await fetch('/tasks/api/ai/url');
+    const d = await r.json();
+    _aiOllamaUrl = d.url || null;
+  } catch {}
+  return _aiOllamaUrl;
+}
 const aiHistory = [];
 let ollamaModels = [];
 
@@ -2507,11 +2516,10 @@ async function loadOllamaModels() {
   if (!sel) return;
   sel.innerHTML = '<option value="">⏳ Загрузка...</option>';
   if (status) status.textContent = '';
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(`${OLLAMA_API}/tags`, { signal: ctrl.signal, cache: 'no-store' });
-    clearTimeout(timer);
+    const baseUrl = await _aiResolveUrl();
+    if (!baseUrl) throw new Error('AI оффлайн');
+    const res = await fetch(`${baseUrl}/api/tags`, { headers: { 'ngrok-skip-browser-warning': 'true' }, cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     ollamaModels = (data.models || []).map(m => m.name).sort();
@@ -2524,8 +2532,8 @@ async function loadOllamaModels() {
     if (badge) badge.textContent = `Ollama · ${ollamaModels.length} моделей`;
     if (status) status.textContent = `✓ ${ollamaModels.length} моделей загружено`;
   } catch(e) {
-    clearTimeout(timer);
-    const msg = e.name === 'AbortError' ? 'Таймаут (8с) — сервер не отвечает' : (e.message || 'Ошибка');
+    _aiOllamaUrl = null;
+    const msg = e.message || 'Ошибка';
     sel.innerHTML = `<option value="">⚠️ ${msg} — клик для повтора</option>`;
     if (status) status.textContent = `Ошибка: ${msg}`;
     sel.onclick = function(){ if(!ollamaModels.length){ sel.onclick=null; loadOllamaModels(); } };
@@ -2535,10 +2543,12 @@ async function loadOllamaModels() {
 async function sendToOllamaStream(userMsg, onChunk) {
   const model = getSelectedModel();
   if (!model) throw new Error('Выберите модель из списка');
+  const baseUrl = await _aiResolveUrl();
+  if (!baseUrl) throw new Error('AI оффлайн');
   const payload = { model, messages: buildOllamaMessages(userMsg), stream: false, think: false };
-  const res = await fetch(`${OLLAMA_API}/chat`, {
+  const res = await fetch(`${baseUrl}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
     body: JSON.stringify(payload)
   });
   if (!res.ok) {
@@ -2568,8 +2578,10 @@ async function generateAutoInsight() {
       stream: false,
       think: false
     };
-    const res = await fetch(`${OLLAMA_API}/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    const _autoUrl = await _aiResolveUrl();
+    if (!_autoUrl) return;
+    const res = await fetch(`${_autoUrl}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify(payload)
     });
     if (!res.ok) return;
     const data = await res.json();
