@@ -4,6 +4,8 @@
 # Runs on VPS after rsync deploy
 
 set -e
+# Не прерываться на ошибках проверки внешних сервисов
+trap 'echo "WARN: non-critical step failed, continuing..." >&2' ERR
 
 SITE_CONF=""
 for f in /etc/nginx/sites-enabled/*; do
@@ -119,11 +121,11 @@ cat /etc/nginx/sites-enabled/default 2>/dev/null | head -80 || true
 echo "=== /etc/nginx/sites-enabled/okk after modification ==="
 cat /etc/nginx/sites-enabled/okk 2>/dev/null | head -80 || true
 
-# ── 3. Check external Ollama availability ─────────────────────────────
+# ── 3. Check external Ollama availability (некритично, не прерывает деплой) ──
 echo "=== External Ollama check ==="
-EXT=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://178.63.16.109:11434/api/tags)
-echo "  http://178.63.16.109:11434/api/tags → HTTP $EXT"
-[ "$EXT" = "200" ] && echo "  ✓ External Ollama доступен" || echo "  ✗ External Ollama недоступен (HTTP $EXT)"
+EXT=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 http://178.63.16.109:11434/api/tags 2>/dev/null || echo "ERR")
+echo "  http://178.63.16.109:11434/api/tags → $EXT"
+[ "$EXT" = "200" ] && echo "  ✓ External Ollama доступен" || echo "  ✗ External Ollama недоступен ($EXT) — дашборды используют nginx /ollama/ прокси"
 
 # ── 4. Setup AI Recruiter as systemd service ──────────────────────────
 RECRUITER_DIR="/var/www/okk/recruiter"
