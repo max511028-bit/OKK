@@ -1,6 +1,7 @@
 
 # STH AI Launcher
-# Runs Ollama + Cloudflare tunnel and publishes the address on the portal.
+# Starts ngrok tunnel and publishes address on the portal.
+# OLLAMA_ORIGINS=* is already set permanently via setx - no need to restart Ollama.
 
 Set-StrictMode -Off
 $ErrorActionPreference = 'Continue'
@@ -19,7 +20,6 @@ $candidates = @(
     "$PSScriptRoot\..\ngrok.exe",
     "$PSScriptRoot\ngrok.exe",
     "$env:USERPROFILE\Downloads\ngrok.exe",
-    "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\ngrok.ngrok_Microsoft.Winget.Source*\ngrok.exe",
     "C:\ngrok\ngrok.exe"
 )
 foreach ($c in $candidates) {
@@ -30,7 +30,6 @@ if (-not $ngrok) {
     $inPath = Get-Command ngrok -ErrorAction SilentlyContinue
     if ($inPath) { $ngrok = $inPath.Source }
 }
-
 if (-not $ngrok) {
     Write-Host "  [ERR] ngrok.exe not found" -ForegroundColor Red
     Write-Host "  Place ngrok.exe next to start-ai.bat" -ForegroundColor Yellow
@@ -39,53 +38,35 @@ if (-not $ngrok) {
 }
 Write-Host "  [OK]  ngrok: $ngrok" -ForegroundColor Green
 
-# -- Start Ollama (always restart to ensure OLLAMA_ORIGINS=*) --
-Write-Host "  ...   Restarting Ollama with CORS enabled..." -ForegroundColor Yellow
-Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
-
-$env:OLLAMA_ORIGINS = "*"
-Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
-
-Write-Host "  ...   Waiting for Ollama" -NoNewline -ForegroundColor Yellow
-$ollamaRunning = $false
-for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Seconds 1
-    Write-Host "." -NoNewline -ForegroundColor Yellow
-    try {
-        Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 1 -ErrorAction Stop | Out-Null
-        $ollamaRunning = $true
-        break
-    } catch {}
-}
-Write-Host ""
-if ($ollamaRunning) {
-    Write-Host "  [OK]  Ollama started with CORS enabled" -ForegroundColor Green
-} else {
-    Write-Host "  [!!]  Ollama did not respond - continuing anyway" -ForegroundColor Yellow
+# -- Check Ollama --
+Write-Host "  ...   Checking Ollama..." -ForegroundColor Yellow
+try {
+    Invoke-RestMethod "http://localhost:11434/api/tags" -TimeoutSec 5 -ErrorAction Stop | Out-Null
+    Write-Host "  [OK]  Ollama is running" -ForegroundColor Green
+} catch {
+    Write-Host "  [!!]  Ollama not responding - starting it..." -ForegroundColor Yellow
+    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+    Start-Sleep -Seconds 5
+    Write-Host "  [OK]  Ollama started" -ForegroundColor Green
 }
 
-$env:OLLAMA_ORIGINS = "*"
-
-# -- Start ngrok tunnel --
+# -- Kill any leftover ngrok, then start fresh --
 Write-Host "  ...   Starting ngrok tunnel..." -ForegroundColor Yellow
-
-# Kill any existing ngrok
 Get-Process -Name "ngrok" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+Start-Sleep -Seconds 2
 
 $ngrokProc = Start-Process -FilePath $ngrok `
     -ArgumentList "http 11434" `
     -PassThru -WindowStyle Hidden
 
-# Wait for ngrok local API to be ready, then get URL
+# -- Wait for ngrok local API (up to 60 sec) --
 Write-Host "  ...   Waiting for tunnel URL" -NoNewline -ForegroundColor Yellow
 $tunnelUrl = $null
-for ($i = 0; $i -lt 20; $i++) {
+for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
     Write-Host "." -NoNewline -ForegroundColor Yellow
     try {
-        $info = Invoke-RestMethod "http://localhost:4040/api/tunnels" -ErrorAction Stop
+        $info = Invoke-RestMethod "http://localhost:4040/api/tunnels" -TimeoutSec 2 -ErrorAction Stop
         $https = $info.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
         if ($https) { $tunnelUrl = $https.public_url; break }
     } catch {}
@@ -94,12 +75,10 @@ Write-Host ""
 
 if (-not $tunnelUrl) {
     Write-Host "  [ERR] Could not get tunnel URL" -ForegroundColor Red
-    Write-Host "  Make sure you ran: ngrok config add-authtoken YOUR_TOKEN" -ForegroundColor Yellow
     if ($ngrokProc -and -not $ngrokProc.HasExited) { $ngrokProc.Kill() }
     Start-Sleep -Seconds 5
     exit 1
 }
-
 Write-Host "  [OK]  Tunnel: $tunnelUrl" -ForegroundColor Green
 
 # -- Send URL to VPS --
@@ -122,7 +101,7 @@ Write-Host ""
 Write-Host "  Close this window to turn off AI for everyone" -ForegroundColor Yellow
 Write-Host ""
 
-# -- Keep alive while tunnel runs --
+# -- Keep alive --
 try {
     $ngrokProc | Wait-Process -ErrorAction SilentlyContinue
 } catch {}
@@ -133,8 +112,6 @@ Write-Host "  Turning off AI for all users..." -ForegroundColor Yellow
 try {
     Invoke-RestMethod -Uri $VPS -Method POST -Body '{"url":null}' -ContentType "application/json" -ErrorAction SilentlyContinue | Out-Null
 } catch {}
-
-if (Test-Path $logFile) { Remove-Item $logFile -Force -ErrorAction SilentlyContinue }
 
 Write-Host "  Done. AI is offline." -ForegroundColor Green
 Start-Sleep -Seconds 2
