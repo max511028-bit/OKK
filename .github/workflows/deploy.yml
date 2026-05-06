@@ -18,6 +18,9 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.gitattributes' \
+            --exclude='tasks/api/tasks.db' \
+            --exclude='tasks/api/.venv' \
+            --exclude='**/__pycache__' \
             -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \
             . root@195.208.119.67:/var/www/okk/
           rm /tmp/vps_key
@@ -29,7 +32,7 @@ jobs:
           echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_INFO }}' | \
             ssh -i /tmp/vps_key -o StrictHostKeyChecking=no \
               root@195.208.119.67 \
-              'cat > /var/www/okk/recruiter/service_account.json'
+              'cat > /var/www/okk/recruiter/service_account.json && chmod 600 /var/www/okk/recruiter/service_account.json'
           rm /tmp/vps_key
 
       - name: Run server setup (nginx + Ollama + Recruiter service)
