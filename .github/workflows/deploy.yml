@@ -19,6 +19,7 @@ jobs:
             --exclude='.github' \
             --exclude='.gitattributes' \
             --exclude='tasks/api/tasks.db' \
+            --exclude='tasks/api/ai_url.json' \
             --exclude='tasks/api/.venv' \
             --exclude='**/__pycache__' \
             -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \

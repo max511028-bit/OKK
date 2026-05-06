@@ -305,3 +305,37 @@ def delete_kp(kpid: int):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════
+# AI URL RELAY — хранит текущий адрес Ollama-туннеля
+# Скрипт start-ai.ps1 пишет сюда URL при запуске,
+# дашборды читают его при загрузке страницы.
+# ═══════════════════════════════════════════════
+
+AI_URL_FILE = Path(__file__).parent / "ai_url.json"
+
+
+class AIUrlPayload(BaseModel):
+    url: Optional[str] = None
+
+
+@app.get("/ai/url")
+def get_ai_url():
+    """Вернуть текущий адрес Ollama (или null если оффлайн)."""
+    if AI_URL_FILE.exists():
+        try:
+            return json.loads(AI_URL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"url": None}
+
+
+@app.post("/ai/url")
+def set_ai_url(payload: AIUrlPayload):
+    """Сохранить новый адрес Ollama (вызывается скриптом start-ai.ps1)."""
+    AI_URL_FILE.write_text(
+        json.dumps({"url": payload.url}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return {"ok": True, "url": payload.url}

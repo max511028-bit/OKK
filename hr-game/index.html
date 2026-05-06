@@ -1364,9 +1364,16 @@ setTimeout(() => {
 
 // ===== AI FLOATING PANEL (HR-GAME) =====
 (function(){
-const _OLLAMA = 'http://localhost:11434/api';
+let _OLLAMA = 'http://localhost:11434/api';
 const _SUGGS = ["Как правильно провести собеседование?","Какие документы нужны при оформлении?","Как снизить текучку персонала?","Критерии отбора кандидатов на склад","Как провести онбординг новичка?","Типичные ошибки рекрутеров"];
 let _hist=[], _models=[], _open=false;
+
+async function _resolveUrl(){
+  try{
+    const r=await fetch('/tasks/api/ai/url',{cache:'no-store'});
+    if(r.ok){const d=await r.json();if(d&&d.url)_OLLAMA=d.url+'/api';}
+  }catch(e){}
+}
 
 function _aiBuildCtx(){
   return '=== HR-ИГРА STH ===\nИнструмент для обучения рекрутеров по найму складского персонала.';
@@ -1473,7 +1480,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)setTimeout(_loadModels,50);
+  if(_open&&!_models.length)_resolveUrl().then(function(){setTimeout(_loadModels,50);});
 }
 
 function _clear(){
