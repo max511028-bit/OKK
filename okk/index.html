@@ -2366,7 +2366,8 @@ async function initDashboard(bustCache) {
     document.getElementById('loading-overlay').style.display='none';
     updateTabBadges();
     renderOverview();
-    // Загрузить модели Ollama в фоне
+    // Загрузить системный промпт и модели Ollama в фоне
+    _loadOkkPrompt();
     loadOllamaModels().then(() => {
       // Auto-insight после загрузки моделей
       setTimeout(generateAutoInsight, 500);
@@ -2382,6 +2383,14 @@ async function initDashboard(bustCache) {
 
 // ========== AI ASSISTANT ==========
 const _OLLAMA_PROXY = '/tasks/api/ai/proxy';
+let _okkSystemPrompt = null; // загружается с VPS, fallback — вшитый
+
+async function _loadOkkPrompt() {
+  try {
+    const r = await fetch('/tasks/api/ai/prompt/okk');
+    if (r.ok) { const d = await r.json(); _okkSystemPrompt = d.prompt || null; }
+  } catch {}
+}
 const aiHistory = [];
 let ollamaModels = [];
 
@@ -2469,7 +2478,8 @@ function getSelectedModel() {
 function buildOllamaMessages(userMsg) {
   const systemMsg = {
     role: 'system',
-    content: `Ты — AI-аналитик системы контроля качества (ОКК) колл-центра по подбору складского персонала.
+    content: (_okkSystemPrompt ||
+`Ты — AI-аналитик системы контроля качества (ОКК) колл-центра по подбору складского персонала.
 
 Роль: анализируешь данные прослушки звонков, проверок МПП и ОРП, опросов новичков. Помогаешь руководителям принимать решения на основе цифр.
 
@@ -2491,10 +2501,7 @@ function buildOllamaMessages(userMsg) {
 - Прослушка: норма ≥85%, ниже 75% — критично
 - МПП/ОРП: норма ≥80 баллов, ниже 60 — зона риска
 - Опросы: CSAT норма ≥4.5, NPS норма ≥4.0
-- Всегда указывай период (месяц) анализируемых данных
-
-АКТУАЛЬНЫЕ ДАННЫЕ:
-${buildDataContext()}`
+- Всегда указывай период (месяц) анализируемых данных`) + '\n\nАКТУАЛЬНЫЕ ДАННЫЕ:\n' + buildDataContext()`
   };
   const history = aiHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : h.role, content: h.content }));
   return [systemMsg, ...history, { role: 'user', content: userMsg }];

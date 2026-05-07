@@ -1366,11 +1366,23 @@ setTimeout(() => {
 
 <script>
 
+</script>
+
+<script>
+
 // ===== AI FLOATING PANEL (HR-GAME) =====
 (function(){
 const _SUGGS = ["Как правильно провести собеседование?","Какие документы нужны при оформлении?","Как снизить текучку персонала?","Критерии отбора кандидатов на склад","Как провести онбординг новичка?","Типичные ошибки рекрутеров"];
 const _OLLAMA='/tasks/api/ai/proxy';
-let _hist=[], _models=[], _open=false;
+const _DASH_TYPE='hr-game';
+let _hist=[], _models=[], _open=false, _dynPrompt=null;
+
+async function _loadDynPrompt(){
+  try{
+    const r=await fetch('/tasks/api/ai/prompt/'+_DASH_TYPE);
+    if(r.ok){const d=await r.json();_dynPrompt=d.prompt||null;}
+  }catch{}
+}
 
 function _aiBuildCtx(){
   return '=== HR-ИГРА STH ===\nИнструмент для обучения рекрутеров по найму складского персонала.';
@@ -1432,7 +1444,7 @@ async function _ask(msg){
   try{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
-    const sysContent=`Ты — HR-ассистент компании STH по найму складского персонала. Отвечаешь на вопросы по процессам подбора, оформления и адаптации сотрудников.
+    const sysContent=(_dynPrompt||`Ты — HR-ассистент компании STH по найму складского персонала. Отвечаешь на вопросы по процессам подбора, оформления и адаптации сотрудников.
 
 Правила:
 - Отвечай ТОЛЬКО на русском языке
@@ -1441,7 +1453,7 @@ async function _ask(msg){
 - Формат: структурированный, с примерами. Максимум 8 предложений.
 
 КОНТЕКСТ:
-`+_aiBuildCtx();
+`)+_aiBuildCtx();
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
     const payload={model,messages,stream:false,think:false};
@@ -1480,7 +1492,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)setTimeout(_loadModels,50);
+  if(_open&&!_models.length){setTimeout(_loadModels,50);_loadDynPrompt();}
 }
 
 function _clear(){

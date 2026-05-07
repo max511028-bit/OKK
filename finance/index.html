@@ -3034,11 +3034,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 <script>
 
+</script>
+
+<script>
+
 // ===== AI FLOATING PANEL (FINANCE) =====
 (function(){
 const _SUGGS = ["Какой проект самый рентабельный?","Где наблюдаются аномалии?","Сравни показатели по городам","Какой тренд по выручке?","Топ клиентов по прибыли","Сравни 2024 и 2025 год"];
 const _OLLAMA='/tasks/api/ai/proxy';
-let _hist=[], _models=[], _open=false;
+const _DASH_TYPE='finance';
+let _hist=[], _models=[], _open=false, _dynPrompt=null;
+
+async function _loadDynPrompt(){
+  try{
+    const r=await fetch('/tasks/api/ai/prompt/'+_DASH_TYPE);
+    if(r.ok){const d=await r.json();_dynPrompt=d.prompt||null;}
+  }catch{}
+}
 
 function _aiBuildCtx(){
   var lines=['=== ФИНАНСОВЫЙ ДАШБОРД STH GROUP ==='];
@@ -3109,7 +3121,7 @@ async function _ask(msg){
   try{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
-    const sysContent=`Ты — AI-аналитик финансового дашборда STH Group. Анализируешь рентабельность, P&L, тренды по проектам, городам и клиентам.
+    const sysContent=(_dynPrompt||`Ты — AI-аналитик финансового дашборда STH Group. Анализируешь рентабельность, P&L, тренды по проектам, городам и клиентам.
 
 Правила:
 - Отвечай ТОЛЬКО на русском языке
@@ -3119,7 +3131,7 @@ async function _ask(msg){
 - Используй **жирный** для названий проектов и ключевых цифр
 
 КОНТЕКСТ:
-`+_aiBuildCtx();
+`)+_aiBuildCtx();
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
     const payload={model,messages,stream:false,think:false};
@@ -3158,7 +3170,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)setTimeout(_loadModels,50);
+  if(_open&&!_models.length){setTimeout(_loadModels,50);_loadDynPrompt();}
 }
 
 function _clear(){

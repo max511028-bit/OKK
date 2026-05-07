@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Админ-панель — Аналитический портал</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0F172A;--bg2:#1E293B;--bg3:#334155;
+  --blue:#3B82F6;--green:#10B981;--red:#EF4444;--yellow:#F59E0B;--purple:#8B5CF6;
+  --text1:#F1F5F9;--text2:#94A3B8;--text3:#64748B;
+  --border:rgba(255,255,255,0.08);--glass:rgba(255,255,255,0.04);
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-height:100vh;}
+
+/* ── Password gate ── */
+#gate{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:24px;
+}
+.gate-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:24px;
+  padding:48px 40px;max-width:400px;width:100%;text-align:center;
+  box-shadow:0 24px 80px rgba(0,0,0,.5);
+}
+.gate-icon{font-size:48px;margin-bottom:20px;}
+.gate-title{font-size:22px;font-weight:800;margin-bottom:8px;}
+.gate-sub{font-size:14px;color:var(--text2);margin-bottom:32px;}
+.gate-input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:12px;
+  color:var(--text1);font-size:18px;padding:14px 18px;outline:none;
+  letter-spacing:4px;text-align:center;font-family:inherit;
+  transition:border-color .2s;
+}
+.gate-input:focus{border-color:var(--blue);}
+.gate-btn{
+  margin-top:16px;width:100%;background:var(--blue);border:none;border-radius:12px;
+  color:#fff;font-size:15px;font-weight:600;padding:14px;cursor:pointer;
+  transition:background .2s;
+}
+.gate-btn:hover{background:#2563EB;}
+.gate-error{
+  margin-top:12px;color:var(--red);font-size:13px;
+  min-height:20px;transition:opacity .2s;
+}
+
+/* ── Admin layout ── */
+#admin{display:none;flex-direction:column;min-height:100vh;}
+.admin-header{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:0 32px;display:flex;align-items:center;gap:16px;height:64px;
+  position:sticky;top:0;z-index:10;
+}
+.admin-logo{font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px;}
+.admin-logo span{font-size:22px;}
+.admin-back{
+  margin-left:auto;background:var(--bg3);border:1px solid var(--border);
+  border-radius:10px;color:var(--text2);font-size:13px;padding:7px 14px;
+  cursor:pointer;text-decoration:none;transition:color .2s,border-color .2s;
+}
+.admin-back:hover{color:var(--text1);border-color:var(--blue);}
+
+.admin-body{display:flex;flex:1;overflow:hidden;}
+
+/* ── Sidebar tabs ── */
+.admin-sidebar{
+  width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
+  padding:20px 12px;display:flex;flex-direction:column;gap:4px;
+}
+.sidebar-tab{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+  cursor:pointer;font-size:14px;font-weight:500;color:var(--text2);
+  transition:background .15s,color .15s;border:none;background:none;width:100%;text-align:left;
+}
+.sidebar-tab:hover{background:var(--glass);color:var(--text1);}
+.sidebar-tab.active{background:rgba(59,130,246,.15);color:var(--blue);}
+.sidebar-tab .tab-icon{font-size:17px;width:20px;text-align:center;}
+
+/* ── Content panels ── */
+.admin-content{flex:1;overflow-y:auto;padding:32px;}
+.admin-panel{display:none;}
+.admin-panel.active{display:block;}
+
+/* ── Prompts panel ── */
+.panel-title{
+  font-size:20px;font-weight:800;margin-bottom:6px;
+}
+.panel-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.5;}
+
+.prompt-block{
+  background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  padding:24px;margin-bottom:20px;
+}
+.prompt-header{
+  display:flex;align-items:center;gap:12px;margin-bottom:14px;
+}
+.prompt-icon{
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center;font-size:18px;flex-shrink:0;
+}
+.prompt-name{font-size:15px;font-weight:700;}
+.prompt-path{font-size:11px;color:var(--text3);margin-top:2px;font-family:monospace;}
+.prompt-textarea{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;
+  color:var(--text1);font-size:13px;line-height:1.65;padding:14px 16px;
+  font-family:'Inter',monospace;resize:vertical;outline:none;min-height:160px;
+  transition:border-color .2s;
+}
+.prompt-textarea:focus{border-color:var(--blue);}
+
+.prompts-actions{
+  display:flex;align-items:center;gap:12px;margin-top:8px;padding-top:20px;
+  border-top:1px solid var(--border);
+}
+.btn-save{
+  background:var(--blue);border:none;border-radius:10px;color:#fff;
+  font-size:14px;font-weight:600;padding:11px 28px;cursor:pointer;
+  transition:background .2s;display:flex;align-items:center;gap:8px;
+}
+.btn-save:hover{background:#2563EB;}
+.btn-save:disabled{background:var(--bg3);cursor:not-allowed;color:var(--text3);}
+.btn-reset{
+  background:none;border:1px solid var(--border);border-radius:10px;color:var(--text2);
+  font-size:13px;padding:11px 20px;cursor:pointer;transition:border-color .2s,color .2s;
+}
+.btn-reset:hover{border-color:var(--red);color:var(--red);}
+.save-status{font-size:13px;color:var(--text2);margin-left:auto;}
+.save-status.ok{color:var(--green);}
+.save-status.err{color:var(--red);}
+
+/* ── Info panel placeholder ── */
+.info-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  padding:28px;margin-bottom:16px;
+}
+.info-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;
+  border-bottom:1px solid var(--border);}
+.info-row:last-child{border-bottom:none;}
+.info-label{font-size:13px;color:var(--text2);}
+.info-val{font-size:13px;font-weight:600;}
+.dot-green{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;}
+.dot-red{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px;}
+</style>
+</head>
+<body>
+
+<!-- ═══ PASSWORD GATE ═══ -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-icon">🔐</div>
+    <div class="gate-title">Панель администратора</div>
+    <div class="gate-sub">Введите пароль для доступа к настройкам портала</div>
+    <input id="pwd-input" class="gate-input" type="password" placeholder="••••••" maxlength="20">
+    <button class="gate-btn" onclick="checkPassword()">Войти</button>
+    <div class="gate-error" id="gate-error"></div>
+  </div>
+</div>
+
+<!-- ═══ ADMIN PANEL ═══ -->
+<div id="admin">
+
+  <header class="admin-header">
+    <div class="admin-logo"><span>⚡</span>Аналитический портал — Администратор</div>
+    <a class="admin-back" href="/">← На главную</a>
+  </header>
+
+  <div class="admin-body">
+
+    <!-- Sidebar -->
+    <nav class="admin-sidebar">
+      <button class="sidebar-tab active" onclick="showTab('prompts')" id="tab-btn-prompts">
+        <span class="tab-icon">🤖</span>Системный промпт
+      </button>
+      <button class="sidebar-tab" onclick="showTab('status')" id="tab-btn-status">
+        <span class="tab-icon">📡</span>Статус AI
+      </button>
+    </nav>
+
+    <!-- Content -->
+    <main class="admin-content">
+
+      <!-- ═══ PROMPTS PANEL ═══ -->
+      <div class="admin-panel active" id="panel-prompts">
+        <div class="panel-title">Системные промпты AI</div>
+        <div class="panel-sub">
+          Промпт задаёт роль, правила и формат ответов AI-ассистента.<br>
+          Изменения применяются сразу — при следующем вопросе пользователя.
+        </div>
+
+        <!-- OKK -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.25);">🎧</div>
+            <div>
+              <div class="prompt-name">Контроль Качества (ОКК)</div>
+              <div class="prompt-path">okk/ — вкладка «AI Ассистент»</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-okk" rows="10" spellcheck="false"></textarea>
+        </div>
+
+        <!-- WB -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.25);">🛍️</div>
+            <div>
+              <div class="prompt-name">Дашборд Wildberries</div>
+              <div class="prompt-path">wb/ — плавающий чат</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-wb" rows="8" spellcheck="false"></textarea>
+        </div>
+
+        <!-- Finance -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.25);">💰</div>
+            <div>
+              <div class="prompt-name">Дашборд Финансы</div>
+              <div class="prompt-path">finance/ — плавающий чат</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-finance" rows="8" spellcheck="false"></textarea>
+        </div>
+
+        <!-- KP -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(6,182,212,.15);border:1px solid rgba(6,182,212,.25);">📊</div>
+            <div>
+              <div class="prompt-name">Расчёт КП</div>
+              <div class="prompt-path">kp/ — плавающий чат</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-kp" rows="8" spellcheck="false"></textarea>
+        </div>
+
+        <!-- HR-Game -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.25);">🎮</div>
+            <div>
+              <div class="prompt-name">HR-Игра</div>
+              <div class="prompt-path">hr-game/ — плавающий чат</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-hr-game" rows="8" spellcheck="false"></textarea>
+        </div>
+
+        <div class="prompts-actions">
+          <button class="btn-save" id="btn-save" onclick="savePrompts()">
+            💾 Сохранить всё
+          </button>
+          <button class="btn-reset" onclick="resetPrompts()">Сбросить к дефолтам</button>
+          <span class="save-status" id="save-status"></span>
+        </div>
+      </div>
+
+      <!-- ═══ STATUS PANEL ═══ -->
+      <div class="admin-panel" id="panel-status">
+        <div class="panel-title">Статус AI</div>
+        <div class="panel-sub">Информация о текущем состоянии AI-сервиса.</div>
+        <div class="info-card" id="status-card">
+          <div class="info-row">
+            <span class="info-label">Статус Ollama</span>
+            <span class="info-val" id="st-ollama">Проверяю...</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Туннель ngrok</span>
+            <span class="info-val" id="st-url">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Доступных моделей</span>
+            <span class="info-val" id="st-models">—</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Активная модель</span>
+            <span class="info-val" id="st-active">—</span>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>
+const API = '/tasks/api';
+const PASSWORD = '028511';
+let _pwd = '';
+let _defaultPrompts = {};
+
+// ── Auth ──
+function checkPassword() {
+  const val = document.getElementById('pwd-input').value;
+  if (val === PASSWORD) {
+    _pwd = val;
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('admin').style.display = 'flex';
+    loadPrompts();
+    loadStatus();
+  } else {
+    const err = document.getElementById('gate-error');
+    err.textContent = 'Неверный пароль';
+    document.getElementById('pwd-input').style.borderColor = '#EF4444';
+    setTimeout(() => {
+      err.textContent = '';
+      document.getElementById('pwd-input').style.borderColor = '';
+    }, 2000);
+  }
+}
+document.getElementById('pwd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') checkPassword();
+});
+
+// ── Tabs ──
+function showTab(name) {
+  document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-btn-' + name).classList.add('active');
+  if (name === 'status') loadStatus();
+}
+
+// ── Load prompts ──
+async function loadPrompts() {
+  try {
+    const r = await fetch(`${API}/admin/prompts?password=${_pwd}`);
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    _defaultPrompts = data;
+    fillTextareas(data);
+  } catch(e) {
+    document.getElementById('save-status').textContent = 'Ошибка загрузки: ' + e.message;
+    document.getElementById('save-status').className = 'save-status err';
+  }
+}
+
+function fillTextareas(prompts) {
+  const keys = ['okk','wb','finance','kp','hr-game'];
+  keys.forEach(k => {
+    const el = document.getElementById('prompt-' + k);
+    if (el && prompts[k] != null) el.value = prompts[k];
+  });
+}
+
+// ── Save prompts ──
+async function savePrompts() {
+  const btn = document.getElementById('btn-save');
+  const status = document.getElementById('save-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Сохраняю...';
+  status.className = 'save-status';
+  status.textContent = '';
+
+  const payload = {};
+  ['okk','wb','finance','kp','hr-game'].forEach(k => {
+    const el = document.getElementById('prompt-' + k);
+    if (el) payload[k] = el.value;
+  });
+
+  try {
+    const r = await fetch(`${API}/admin/prompts?password=${_pwd}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Ошибка');
+    status.textContent = '✓ Сохранено ' + new Date().toLocaleTimeString('ru');
+    status.className = 'save-status ok';
+  } catch(e) {
+    status.textContent = '✗ ' + e.message;
+    status.className = 'save-status err';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '💾 Сохранить всё';
+}
+
+// ── Reset to defaults ──
+async function resetPrompts() {
+  if (!confirm('Сбросить все промпты к дефолтным значениям?')) return;
+  try {
+    const r = await fetch(`${API}/admin/prompts?password=${_pwd}`);
+    const data = await r.json();
+    fillTextareas(data);
+    document.getElementById('save-status').textContent = 'Промпты загружены. Нажмите «Сохранить» для применения.';
+    document.getElementById('save-status').className = 'save-status';
+  } catch(e) {}
+}
+
+// ── Status ──
+async function loadStatus() {
+  try {
+    const r = await fetch(`${API}/ai/proxy/tags`);
+    const data = await r.json();
+    const urlR = await fetch(`${API}/ai/url`);
+    const urlD = await urlR.json();
+
+    const urlEl = document.getElementById('st-url');
+    const ollamaEl = document.getElementById('st-ollama');
+    const modelsEl = document.getElementById('st-models');
+    const activeEl = document.getElementById('st-active');
+
+    if (data.offline) {
+      ollamaEl.innerHTML = '<span class="dot-red"></span>Оффлайн';
+      urlEl.innerHTML = urlD.url ? `<a href="${urlD.url}" target="_blank" style="color:var(--blue);font-size:11px">${urlD.url}</a>` : '—';
+      modelsEl.textContent = '0';
+      activeEl.textContent = '—';
+    } else if (data.error) {
+      ollamaEl.innerHTML = '<span class="dot-red"></span>Ошибка: ' + data.error;
+      urlEl.innerHTML = data.url ? `<a href="${data.url}" target="_blank" style="color:var(--blue);font-size:11px">${data.url}</a>` : '—';
+    } else {
+      ollamaEl.innerHTML = '<span class="dot-green"></span>Работает';
+      urlEl.innerHTML = urlD.url ? `<a href="${urlD.url}" target="_blank" style="color:var(--blue);font-size:11px">${urlD.url}</a>` : '—';
+      const models = (data.models || []).map(m => m.name);
+      modelsEl.textContent = models.length;
+      const pref = ['qwen3:8b','qwen3:30b','llama3.2:3b'];
+      activeEl.textContent = pref.find(p => models.includes(p)) || models[0] || '—';
+    }
+  } catch(e) {
+    document.getElementById('st-ollama').innerHTML = '<span class="dot-red"></span>Недоступен';
+  }
+}
+</script>
+</body>
+</html>

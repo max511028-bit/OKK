@@ -196,6 +196,14 @@ body{
   font-size:12px;
   color:var(--text3);
 }
+.admin-link{
+  display:inline-flex;align-items:center;gap:6px;
+  margin-top:12px;color:var(--text3);font-size:11px;
+  text-decoration:none;padding:5px 12px;border-radius:8px;
+  border:1px solid rgba(255,255,255,0.06);
+  transition:color .2s,border-color .2s;
+}
+.admin-link:hover{color:var(--text2);border-color:rgba(255,255,255,0.15);}
 
 /* ── Responsive ── */
 @media(max-width:720px){
@@ -296,7 +304,8 @@ body{
 </div>
 
 <footer class="portal-footer">
-  2026 · Аналитический портал
+  2026 · Аналитический портал<br>
+  <a class="admin-link" href="admin.html">⚙ Панель администратора</a>
 </footer>
 
 </body>

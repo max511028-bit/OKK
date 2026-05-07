@@ -2790,11 +2790,23 @@ window.addEventListener('DOMContentLoaded',async ()=>{
 
 <script>
 
+</script>
+
+<script>
+
 // ===== AI FLOATING PANEL (WB) =====
 (function(){
 const _SUGGS = ["Кто в зоне риска по выработке?","Топ-5 по заработку за период","Самые частые причины штрафов","Средняя выработка по складам","Сколько сотрудников работало?","На каком складе больше всего штрафов?"];
 const _OLLAMA='/tasks/api/ai/proxy';
-let _hist=[], _models=[], _open=false;
+const _DASH_TYPE='wb';
+let _hist=[], _models=[], _open=false, _dynPrompt=null;
+
+async function _loadDynPrompt(){
+  try{
+    const r=await fetch('/tasks/api/ai/prompt/'+_DASH_TYPE);
+    if(r.ok){const d=await r.json();_dynPrompt=d.prompt||null;}
+  }catch{}
+}
 
 function _aiBuildCtx(){
   var lines=['=== ДАННЫЕ WB АУТСОРСИНГ ==='];
@@ -2897,7 +2909,7 @@ async function _ask(msg){
   try{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
-    const sysContent=`Ты — AI-аналитик дашборда WB Аутсорсинг. Анализируешь данные по выработке, штрафам и операциям складских сотрудников.
+    const sysContent=(_dynPrompt||`Ты — AI-аналитик дашборда WB Аутсорсинг. Анализируешь данные по выработке, штрафам и операциям складских сотрудников.
 
 Правила:
 - Отвечай ТОЛЬКО на русском языке
@@ -2909,7 +2921,7 @@ async function _ask(msg){
 Используй **жирный** для имён и ключевых цифр.
 
 АКТУАЛЬНЫЕ ДАННЫЕ:
-`+_aiBuildCtx();
+`)+_aiBuildCtx();
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
     const payload={model,messages,stream:false,think:false};
@@ -2948,7 +2960,7 @@ function _toggle(){
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)setTimeout(_loadModels,50);
+  if(_open&&!_models.length){setTimeout(_loadModels,50);_loadDynPrompt();}
 }
 
 function _clear(){

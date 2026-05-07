@@ -217,7 +217,15 @@ def make_js(cfg, dashboard_type):
 (function(){{
 const _SUGGS = {suggs_js};
 const _OLLAMA='/tasks/api/ai/proxy';
-let _hist=[], _models=[], _open=false;
+const _DASH_TYPE='{dashboard_type}';
+let _hist=[], _models=[], _open=false, _dynPrompt=null;
+
+async function _loadDynPrompt(){{
+  try{{
+    const r=await fetch('/tasks/api/ai/prompt/'+_DASH_TYPE);
+    if(r.ok){{const d=await r.json();_dynPrompt=d.prompt||null;}}
+  }}catch{{}}
+}}
 
 {cfg['build_ctx']}
 
@@ -277,7 +285,7 @@ async function _ask(msg){{
   try{{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
-    const sysContent=`{system_prompt}`+_aiBuildCtx();
+    const sysContent=(_dynPrompt||`{system_prompt}`)+_aiBuildCtx();
     const messages=[{{role:'system',content:sysContent}},..._hist.map(h=>h)];
     messages.push({{role:'user',content:msg}});
     const payload={{model,messages,stream:false,think:false}};
@@ -316,7 +324,7 @@ function _toggle(){{
   _open=!_open;
   const panel=document.getElementById('_ai_panel');
   if(panel)panel.style.display=_open?'flex':'none';
-  if(_open&&!_models.length)setTimeout(_loadModels,50);
+  if(_open&&!_models.length){{setTimeout(_loadModels,50);_loadDynPrompt();}}
 }}
 
 function _clear(){{
