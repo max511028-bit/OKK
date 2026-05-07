@@ -82,7 +82,7 @@ try {
 if (-not $tunnelUrl) {
     Write-Host "  ...   Starting ngrok tunnel..." -ForegroundColor Yellow
     $ngrokConfig = "$env:LOCALAPPDATA\ngrok\ngrok.yml"
-    Start-Process -FilePath $ngrok -ArgumentList @("start", "ollama", "--config", $ngrokConfig)
+    Start-Process -FilePath $ngrok -ArgumentList @("http", "11434", "--config", $ngrokConfig)
 }
 
 # -- Wait for tunnel URL if ngrok was just started --

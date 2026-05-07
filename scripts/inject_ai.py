@@ -216,17 +216,8 @@ def make_js(cfg, dashboard_type):
 // ===== AI FLOATING PANEL ({dashboard_type.upper()}) =====
 (function(){{
 const _SUGGS = {suggs_js};
-let _hist=[], _models=[], _open=false, _ollamaUrl=null;
-
-async function _resolveUrl(){{
-  if(_ollamaUrl)return _ollamaUrl;
-  try{{
-    const r=await fetch('/tasks/api/ai/url');
-    const d=await r.json();
-    _ollamaUrl=d.url||null;
-  }}catch{{}}
-  return _ollamaUrl;
-}}
+const _OLLAMA='/tasks/api/ai/proxy';
+let _hist=[], _models=[], _open=false;
 
 {cfg['build_ctx']}
 
@@ -261,9 +252,7 @@ async function _loadModels(){{
   if(!sel)return;
   sel.innerHTML='<option>⏳ Загрузка...</option>';
   try{{
-    const url=await _resolveUrl();
-    if(!url)throw new Error('AI оффлайн');
-    const r=await fetch(url+'/api/tags');
+    const r=await fetch(_OLLAMA+'/tags');
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     _models=(data.models||[]).map(m=>m.name).sort();
@@ -273,7 +262,6 @@ async function _loadModels(){{
     const def=pref.find(p=>_models.includes(p))||_models[0];
     sel.value=def;
   }}catch(e){{
-    _ollamaUrl=null;
     const sel2=document.getElementById('_ai_model_sel');
     if(sel2){{sel2.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';sel2.onclick=function(){{if(!_models.length){{sel2.onclick=null;_loadModels();}}}};}}
   }}
@@ -293,9 +281,7 @@ async function _ask(msg){{
     const messages=[{{role:'system',content:sysContent}},..._hist.map(h=>h)];
     messages.push({{role:'user',content:msg}});
     const payload={{model,messages,stream:false,think:false}};
-    const url=await _resolveUrl();
-    if(!url)throw new Error('AI оффлайн');
-    const res=await fetch(url+'/api/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+    const res=await fetch(_OLLAMA+'/chat',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     const reply=data.message?.content||'';
