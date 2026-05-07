@@ -1410,7 +1410,7 @@ async function _loadModels(){
   try{
     const url=await _resolveUrl();
     if(!url)throw new Error('AI оффлайн');
-    const r=await fetch(url+'/api/tags',{headers:{'ngrok-skip-browser-warning':'true'}});
+    const r=await fetch(url+'/api/tags');
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     _models=(data.models||[]).map(m=>m.name).sort();
@@ -1451,7 +1451,7 @@ async function _ask(msg){
     const payload={model,messages,stream:false,think:false};
     const url=await _resolveUrl();
     if(!url)throw new Error('AI оффлайн');
-    const res=await fetch(url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json','ngrok-skip-browser-warning':'true'},body:JSON.stringify(payload)});
+    const res=await fetch(url+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     const reply=data.message?.content||'';

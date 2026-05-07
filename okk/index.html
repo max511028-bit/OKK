@@ -2519,7 +2519,7 @@ async function loadOllamaModels() {
   try {
     const baseUrl = await _aiResolveUrl();
     if (!baseUrl) throw new Error('AI оффлайн');
-    const res = await fetch(`${baseUrl}/api/tags`, { headers: { 'ngrok-skip-browser-warning': 'true' }, cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/api/tags`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     ollamaModels = (data.models || []).map(m => m.name).sort();
@@ -2548,7 +2548,7 @@ async function sendToOllamaStream(userMsg, onChunk) {
   const payload = { model, messages: buildOllamaMessages(userMsg), stream: false, think: false };
   const res = await fetch(`${baseUrl}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
   if (!res.ok) {
@@ -2581,7 +2581,7 @@ async function generateAutoInsight() {
     const _autoUrl = await _aiResolveUrl();
     if (!_autoUrl) return;
     const res = await fetch(`${_autoUrl}/api/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }, body: JSON.stringify(payload)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     if (!res.ok) return;
     const data = await res.json();
