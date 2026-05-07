@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import urllib.request as _urllib
+import urllib.error as _urllib_error
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -365,8 +366,14 @@ def proxy_ai_tags():
         )
         with _urllib.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
+    except _urllib_error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            body = ""
+        return {"models": [], "error": str(e), "url": base, "body": body}
     except Exception as e:
-        return {"models": [], "error": str(e)}
+        return {"models": [], "error": str(e), "url": base}
 
 
 @app.post("/ai/proxy/chat")
