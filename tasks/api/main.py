@@ -13,6 +13,7 @@ import urllib.request as _urllib
 import urllib.error as _urllib_error
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 DB_PATH = os.getenv("TASKS_DB", "/var/www/okk/tasks/api/tasks.db")
@@ -378,6 +379,22 @@ DEFAULT_PROMPTS: dict = {
         "- Без вступлений типа \"Конечно!\", \"Отличный вопрос!\"\n"
         "- Формат: структурированный, с примерами. Максимум 8 предложений."
     ),
+    "recruiter": (
+        "Ты — AI-помощник рекрутера. Твоя задача — помочь рекрутеру отработать возражение кандидата так, чтобы он согласился выйти на стажировку.\n\n"
+        "ПРАВИЛА:\n"
+        "1. Отвечай ТОЛЬКО на русском языке.\n"
+        "2. Факты (зарплата, график, транспорт, оформление) бери ТОЛЬКО из ТЗ проекта. Не придумывай.\n"
+        "3. Текст должен быть ПРОДАЮЩИМ, не информационным — показывай выгоду для кандидата.\n"
+        "4. НЕ предлагай альтернативных проектов — закрывай конкретное возражение.\n"
+        "5. ЗАВЕРШАЙ каждый вариант призывом: \"В любом случае вы ничего не теряете, поэтому предлагаю вам приехать на объект...\"\n\n"
+        "ФОРМАТ ОТВЕТА (строго):\n"
+        "АНАЛИЗ: [тип возражения]\n"
+        "ВАРИАНТ 1: [название] / [скрипт] / [призыв]\n"
+        "ВАРИАНТ 2: [название] / [скрипт] / [призыв]\n"
+        "ВАРИАНТ 3: [название, если уместен] / [скрипт] / [призыв]\n"
+        "УТОЧНИТЬ: [только если факта нет в ТЗ]\n"
+        "РЕКОМЕНДАЦИИ: [не более 2 техник из учебника, если уместно]"
+    ),
 }
 
 
@@ -446,7 +463,7 @@ async def admin_save_prompts(request: Request, password: str = ""):
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(400, "Ожидается JSON-объект")
-    # Слить с дефолтами, сохранить только известные ключи
+    # Сохранить все известные ключи (включая recruiter)
     to_save = {k: str(v) for k, v in body.items() if k in DEFAULT_PROMPTS}
     PROMPTS_FILE.write_text(json.dumps(to_save, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True, "saved": list(to_save.keys())}
@@ -487,7 +504,7 @@ def proxy_ai_tags():
 
 @app.post("/ai/proxy/chat")
 async def proxy_ai_chat(request: Request):
-    """Переслать запрос к Ollama /api/chat через прокси."""
+    """Переслать запрос к Ollama /api/chat через прокси (non-streaming)."""
     data = get_ai_url()
     base = data.get("url") if isinstance(data, dict) else None
     if not base:
@@ -508,3 +525,273 @@ async def proxy_ai_chat(request: Request):
             return json.loads(resp.read())
     except Exception as e:
         raise HTTPException(502, f"AI proxy error: {e}")
+
+
+@app.post("/ai/proxy/chat/stream")
+async def proxy_ai_chat_stream(request: Request):
+    """Стриминг-прокси к Ollama /api/chat. Возвращает NDJSON (stream:true)."""
+    data = get_ai_url()
+    base = data.get("url") if isinstance(data, dict) else None
+    if not base:
+        raise HTTPException(503, "AI is offline")
+
+    raw_body = await request.body()
+    # Принудительно включить stream:true в теле запроса
+    try:
+        body_json = json.loads(raw_body)
+        body_json["stream"] = True
+        body_bytes = json.dumps(body_json, ensure_ascii=False).encode()
+    except Exception:
+        body_bytes = raw_body
+
+    def generate():
+        try:
+            req = _urllib.Request(
+                f"{base}/api/chat",
+                data=body_bytes,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "STH-Portal/1.0",
+                    "ngrok-skip-browser-warning": "true",
+                },
+                method="POST",
+            )
+            with _urllib.urlopen(req, timeout=300) as resp:
+                for line in resp:
+                    if line:
+                        yield line
+        except Exception as e:
+            yield json.dumps({"error": str(e)}, ensure_ascii=False).encode() + b"\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+# ═══════════════════════════════════════════════
+# RECRUITER API — AI-помощник рекрутера
+# ═══════════════════════════════════════════════
+
+def _recruiter_logic():
+    """Ленивая загрузка модуля recruiter_logic."""
+    import importlib.util, sys
+    mod_path = Path(__file__).parent / "recruiter_logic.py"
+    if "recruiter_logic" in sys.modules:
+        return sys.modules["recruiter_logic"]
+    spec = importlib.util.spec_from_file_location("recruiter_logic", mod_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["recruiter_logic"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@app.get("/recruiter/projects")
+def recruiter_projects():
+    """Список проектов из Google Sheets (Roadmap)."""
+    try:
+        rl = _recruiter_logic()
+        projects = rl.load_projects_list()
+        return {"projects": list(projects.keys()), "ok": True}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/recruiter/tz")
+def recruiter_load_tz(project: str = ""):
+    """Загрузить ТЗ проекта из Google Sheets."""
+    try:
+        rl = _recruiter_logic()
+        projects = rl.load_projects_list()
+        if project not in projects:
+            raise HTTPException(404, f"Проект не найден: {project}")
+        tz_id = projects[project]["tz_id"]
+        tz_text = rl.read_tz_data(tz_id)
+        return {"tz": tz_text, "ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+class RecruiterAnswerReq(BaseModel):
+    project: str
+    objection: str
+    tz: str
+    model: str = "qwen3:8b"
+
+
+@app.post("/recruiter/answer/stream")
+async def recruiter_answer_stream(req: RecruiterAnswerReq):
+    """Стриминг ответа на возражение кандидата."""
+    data = get_ai_url()
+    base = data.get("url") if isinstance(data, dict) else None
+    if not base:
+        raise HTTPException(503, "AI is offline")
+
+    rl = _recruiter_logic()
+    handbook = rl.load_handbook()
+    prompt = rl.build_prompt(req.tz, handbook, req.objection)
+
+    payload = json.dumps({
+        "model": req.model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "stream": True,
+        "think": False,
+    }, ensure_ascii=False).encode()
+
+    def generate():
+        try:
+            http_req = _urllib.Request(
+                f"{base}/api/chat",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "STH-Portal/1.0",
+                    "ngrok-skip-browser-warning": "true",
+                },
+                method="POST",
+            )
+            with _urllib.urlopen(http_req, timeout=300) as resp:
+                for line in resp:
+                    if line:
+                        yield line
+        except Exception as e:
+            yield json.dumps({"error": str(e)}, ensure_ascii=False).encode() + b"\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
+class RecruiterChatReq(BaseModel):
+    project: str
+    objection: str
+    tz: str
+    first_answer: str
+    history: list
+    message: str
+    model: str = "qwen3:8b"
+
+
+@app.post("/recruiter/chat/stream")
+async def recruiter_chat_stream(req: RecruiterChatReq):
+    """Стриминг уточняющего вопроса в диалоге рекрутера."""
+    data = get_ai_url()
+    base = data.get("url") if isinstance(data, dict) else None
+    if not base:
+        raise HTTPException(503, "AI is offline")
+
+    rl = _recruiter_logic()
+    handbook = rl.load_handbook()
+    prompt = rl.build_chat_prompt(
+        req.tz, handbook, req.objection,
+        req.first_answer, req.history, req.message
+    )
+
+    payload = json.dumps({
+        "model": req.model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+        "think": False,
+    }, ensure_ascii=False).encode()
+
+    def generate():
+        try:
+            http_req = _urllib.Request(
+                f"{base}/api/chat",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "STH-Portal/1.0",
+                    "ngrok-skip-browser-warning": "true",
+                },
+                method="POST",
+            )
+            with _urllib.urlopen(http_req, timeout=300) as resp:
+                for line in resp:
+                    if line:
+                        yield line
+        except Exception as e:
+            yield json.dumps({"error": str(e)}, ensure_ascii=False).encode() + b"\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
+class FeedbackReq(BaseModel):
+    project: str
+    objection: str
+    variant_title: str
+    feedback: str  # "like" | "dislike"
+
+
+@app.post("/recruiter/feedback")
+async def recruiter_feedback(req: FeedbackReq):
+    """Сохранить оценку варианта скрипта."""
+    try:
+        rl = _recruiter_logic()
+        rl.save_feedback(req.project, req.objection, req.variant_title, req.feedback)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class LogReq(BaseModel):
+    project: str
+    objection: str
+    variants: list  # [{"title": ..., "body": ...}]
+
+
+@app.post("/recruiter/log")
+async def recruiter_log(req: LogReq):
+    """Записать лог запроса в Google Sheets."""
+    try:
+        rl = _recruiter_logic()
+        rl.save_request_log(req.project, req.objection, req.variants)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class ChatLogReq(BaseModel):
+    project: str
+    objection: str
+    question: str
+    answer: str
+
+
+@app.post("/recruiter/chat-log")
+async def recruiter_chat_log(req: ChatLogReq):
+    """Записать диалог рекрутера в Google Sheets."""
+    try:
+        rl = _recruiter_logic()
+        rl.save_chat_log(req.project, req.objection, req.question, req.answer)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/recruiter/status")
+def recruiter_status():
+    """Проверить доступность Google API."""
+    try:
+        rl = _recruiter_logic()
+        ready = rl.clients_ready()
+        return {
+            "ok": ready,
+            "error": rl._clients_error if not ready else None,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

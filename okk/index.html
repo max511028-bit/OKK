@@ -2537,8 +2537,8 @@ async function loadOllamaModels() {
 async function sendToOllamaStream(userMsg, onChunk) {
   const model = getSelectedModel();
   if (!model) throw new Error('Выберите модель из списка');
-  const payload = { model, messages: buildOllamaMessages(userMsg), stream: false, think: false };
-  const res = await fetch(_OLLAMA_PROXY + '/chat', {
+  const payload = { model, messages: buildOllamaMessages(userMsg), stream: true, think: false };
+  const res = await fetch(_OLLAMA_PROXY + '/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -2547,9 +2547,26 @@ async function sendToOllamaStream(userMsg, onChunk) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `HTTP ${res.status}`);
   }
-  const data = await res.json();
-  const fullText = data.message?.content || '';
-  if (fullText) onChunk(fullText);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const chunk = JSON.parse(line);
+        if (chunk.error) throw new Error(chunk.error);
+        const piece = chunk.message?.content || '';
+        if (piece) { fullText += piece; onChunk(fullText); }
+      } catch(e) { if (e.message && !e.message.includes('JSON')) throw e; }
+    }
+  }
   return fullText;
 }
 
@@ -2567,16 +2584,27 @@ async function generateAutoInsight() {
         { role: 'system', content: `Ты аналитик КЦ. Данные:\n${buildDataContext()}` },
         { role: 'user', content: 'Дай 2-3 предложения — самый главный вывод: кто лидер, что требует срочного внимания. Очень кратко.' }
       ],
-      stream: false,
+      stream: true,
       think: false
     };
-    const res = await fetch(_OLLAMA_PROXY + '/chat', {
+    const res = await fetch(_OLLAMA_PROXY + '/chat/stream', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     if (!res.ok) return;
-    const data = await res.json();
-    const text = data.message?.content;
-    if (text) { textEl.innerHTML = formatAIText(text); banner.style.display = 'block'; }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = ''; let buf = '';
+    banner.style.display = 'block';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try { const c = JSON.parse(line); const p = c.message?.content||''; if(p){text+=p; textEl.innerHTML=formatAIText(text);} } catch{}
+      }
+    }
   } catch(e) {}
 }
 

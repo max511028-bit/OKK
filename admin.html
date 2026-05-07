@@ -249,6 +249,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
           <textarea class="prompt-textarea" id="prompt-hr-game" rows="8" spellcheck="false"></textarea>
         </div>
 
+        <!-- Recruiter -->
+        <div class="prompt-block">
+          <div class="prompt-header">
+            <div class="prompt-icon" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.25);">🎯</div>
+            <div>
+              <div class="prompt-name">AI Рекрутер</div>
+              <div class="prompt-path">recruiter/ — отработка возражений</div>
+            </div>
+          </div>
+          <textarea class="prompt-textarea" id="prompt-recruiter" rows="12" spellcheck="false"></textarea>
+        </div>
+
         <div class="prompts-actions">
           <button class="btn-save" id="btn-save" onclick="savePrompts()">
             💾 Сохранить всё
@@ -339,7 +351,7 @@ async function loadPrompts() {
 }
 
 function fillTextareas(prompts) {
-  const keys = ['okk','wb','finance','kp','hr-game'];
+  const keys = ['okk','wb','finance','kp','hr-game','recruiter'];
   keys.forEach(k => {
     const el = document.getElementById('prompt-' + k);
     if (el && prompts[k] != null) el.value = prompts[k];
@@ -356,7 +368,7 @@ async function savePrompts() {
   status.textContent = '';
 
   const payload = {};
-  ['okk','wb','finance','kp','hr-game'].forEach(k => {
+  ['okk','wb','finance','kp','hr-game','recruiter'].forEach(k => {
     const el = document.getElementById('prompt-' + k);
     if (el) payload[k] = el.value;
   });

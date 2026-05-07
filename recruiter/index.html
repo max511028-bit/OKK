@@ -1,1 +1,854 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ИИ-Рекрутер — Скоро</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Inter',sans-serif;background:#0F172A;color:#F1F5F9;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}.icon{font-size:64px}.title{font-size:28px;font-weight:700}.sub{font-size:15px;color:#64748B}.back{margin-top:12px;color:#3B82F6;text-decoration:none;font-size:14px}</style></head><body><div class="icon">🤖</div><div class="title">Дашборд ИИ-Рекрутер</div><div class="sub">Раздел в разработке</div><a class="back" href="../">← На главную</a></body></html>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ИИ Рекрутер — STH Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0F172A;--bg2:#1E293B;--bg3:#334155;--bg4:rgba(30,41,59,0.6);
+  --blue:#3B82F6;--green:#10B981;--red:#EF4444;--yellow:#F59E0B;--purple:#8B5CF6;--pink:#EC4899;
+  --text1:#F1F5F9;--text2:#94A3B8;--text3:#64748B;
+  --border:rgba(255,255,255,0.08);--glass:rgba(255,255,255,0.04);
+  --radius:16px;--radius-sm:10px;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-height:100vh;display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+.header{
+  background:rgba(15,23,42,0.95);border-bottom:1px solid var(--border);
+  padding:0 24px;display:flex;align-items:center;gap:16px;height:60px;
+  position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);
+}
+.header-logo{font-size:20px;font-weight:800;display:flex;align-items:center;gap:10px;color:var(--text1);}
+.header-logo .logo-icon{font-size:22px;}
+.header-back{
+  margin-left:auto;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text2);font-size:13px;padding:6px 14px;cursor:pointer;text-decoration:none;
+  transition:color .2s,border-color .2s;display:flex;align-items:center;gap:6px;
+}
+.header-back:hover{color:var(--text1);border-color:var(--blue);}
+.header-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--bg3);}
+.status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green);}
+.status-dot.offline{background:var(--red);}
+
+/* ── LAYOUT ── */
+.main-layout{display:flex;flex:1;gap:0;overflow:hidden;}
+.sidebar{
+  width:340px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.content-area{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+
+/* ── SIDEBAR SECTIONS ── */
+.sidebar-section{padding:16px;border-bottom:1px solid var(--border);}
+.sidebar-section:last-child{border-bottom:none;flex:1;overflow-y:auto;}
+.section-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;}
+
+/* ── PROJECT SELECT ── */
+.project-search-wrap{position:relative;margin-bottom:8px;}
+.project-search{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text1);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;
+  transition:border-color .2s;
+}
+.project-search:focus{border-color:var(--blue);}
+.project-list{
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  max-height:180px;overflow-y:auto;display:none;
+}
+.project-list.open{display:block;}
+.project-item{
+  padding:8px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);
+  transition:background .15s;
+}
+.project-item:last-child{border-bottom:none;}
+.project-item:hover,.project-item.selected{background:rgba(59,130,246,.15);color:var(--blue);}
+.project-item.selected{font-weight:600;}
+
+.btn-load-tz{
+  width:100%;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);
+  border-radius:var(--radius-sm);color:var(--blue);font-size:13px;font-weight:500;
+  padding:8px 14px;cursor:pointer;transition:background .2s;margin-top:6px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.btn-load-tz:hover{background:rgba(59,130,246,.22);}
+.btn-load-tz:disabled{opacity:.4;cursor:not-allowed;}
+
+.tz-status{
+  margin-top:6px;font-size:12px;color:var(--text3);
+  display:flex;align-items:center;gap:6px;min-height:18px;
+}
+.tz-status.loaded{color:var(--green);}
+.tz-status.error{color:var(--red);}
+
+/* ── MODEL SELECT ── */
+.model-select-wrap{margin-top:4px;}
+select.model-sel{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text1);font-family:inherit;font-size:13px;padding:8px 12px;cursor:pointer;outline:none;
+}
+select.model-sel option{background:#1e293b;}
+
+/* ── QUICK TAGS ── */
+.tags-wrap{display:flex;flex-wrap:wrap;gap:6px;}
+.tag{
+  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:20px;
+  padding:4px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.tag:hover{background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.35);color:var(--blue);}
+
+/* ── OBJECTION INPUT ── */
+.objection-wrap{padding:16px 20px;border-bottom:1px solid var(--border);}
+.objection-label{font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;}
+.objection-textarea{
+  width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text1);font-size:14px;line-height:1.55;padding:12px 14px;outline:none;
+  resize:none;font-family:inherit;min-height:72px;transition:border-color .2s;
+}
+.objection-textarea:focus{border-color:var(--blue);}
+.objection-actions{display:flex;align-items:center;gap:10px;margin-top:10px;}
+.btn-primary{
+  background:var(--blue);border:none;border-radius:var(--radius-sm);color:#fff;
+  font-size:13px;font-weight:600;padding:9px 20px;cursor:pointer;
+  transition:background .2s;display:flex;align-items:center;gap:7px;
+}
+.btn-primary:hover{background:#2563EB;}
+.btn-primary:disabled{background:var(--bg3);color:var(--text3);cursor:not-allowed;}
+.btn-ghost{
+  background:none;border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text2);font-size:13px;padding:9px 16px;cursor:pointer;
+  transition:border-color .2s,color .2s;
+}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue);}
+.char-count{margin-left:auto;font-size:11px;color:var(--text3);}
+
+/* ── RESPONSE AREA ── */
+.response-area{flex:1;padding:20px;overflow-y:auto;}
+.response-placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:300px;color:var(--text3);text-align:center;gap:12px;
+}
+.placeholder-icon{font-size:48px;opacity:.4;}
+.placeholder-title{font-size:16px;font-weight:600;}
+.placeholder-sub{font-size:13px;line-height:1.6;max-width:320px;}
+
+/* ── STREAMING INDICATOR ── */
+.streaming-indicator{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;
+  background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);
+  border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px;color:var(--blue);
+}
+.streaming-dots{display:flex;gap:4px;}
+.streaming-dots span{
+  width:6px;height:6px;border-radius:50%;background:var(--blue);
+  animation:bounce .8s ease-in-out infinite;
+}
+.streaming-dots span:nth-child(2){animation-delay:.15s;}
+.streaming-dots span:nth-child(3){animation-delay:.3s;}
+@keyframes bounce{0%,80%,100%{transform:scale(.7);opacity:.5}40%{transform:scale(1);opacity:1}}
+
+/* ── RESPONSE BLOCKS ── */
+.response-raw{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;font-size:13px;line-height:1.7;color:var(--text1);white-space:pre-wrap;
+  word-break:break-word;margin-bottom:16px;
+}
+.response-raw .cursor{
+  display:inline-block;width:2px;height:14px;background:var(--blue);
+  vertical-align:middle;animation:blink 1s step-end infinite;margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── PARSED BLOCKS ── */
+.parsed-section{margin-bottom:14px;}
+.parsed-block{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:18px 20px;margin-bottom:12px;
+  animation:fadeSlide .3s ease;
+}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.block-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:12px;
+  padding-bottom:10px;border-bottom:1px solid var(--border);
+}
+.block-badge{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+  padding:3px 10px;border-radius:20px;flex-shrink:0;
+}
+.block-badge.analysis{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+.block-badge.variant{background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.25);}
+.block-badge.clarify{background:rgba(139,92,246,.15);color:var(--purple);border:1px solid rgba(139,92,246,.25);}
+.block-badge.tips{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.25);}
+.block-title{font-size:14px;font-weight:600;color:var(--text1);}
+.block-body{font-size:13px;line-height:1.7;color:var(--text2);}
+.block-body strong{color:var(--text1);}
+
+/* ── FEEDBACK BUTTONS ── */
+.feedback-row{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.fb-btn{
+  background:none;border:1px solid var(--border);border-radius:20px;
+  padding:4px 12px;font-size:12px;cursor:pointer;color:var(--text3);
+  transition:all .15s;display:flex;align-items:center;gap:5px;
+}
+.fb-btn:hover.like{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.4);color:var(--green);}
+.fb-btn:hover.dislike{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4);color:var(--red);}
+.fb-btn.active.like{background:rgba(16,185,129,.15);border-color:var(--green);color:var(--green);}
+.fb-btn.active.dislike{background:rgba(239,68,68,.15);border-color:var(--red);color:var(--red);}
+.fb-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ── CHAT SECTION ── */
+.chat-section{
+  border-top:2px solid var(--border);background:var(--bg2);
+  display:flex;flex-direction:column;
+}
+.chat-header{
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+.chat-header-title{font-size:14px;font-weight:600;color:var(--text1);}
+.chat-header-sub{font-size:12px;color:var(--text3);margin-left:auto;}
+.chat-messages{
+  flex:1;overflow-y:auto;padding:16px 20px;
+  display:flex;flex-direction:column;gap:10px;max-height:320px;
+}
+.chat-msg{max-width:88%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word;}
+.chat-msg.user{
+  align-self:flex-end;background:rgba(59,130,246,.18);
+  border:1px solid rgba(59,130,246,.3);color:var(--text1);border-bottom-right-radius:3px;
+}
+.chat-msg.bot{
+  align-self:flex-start;background:rgba(255,255,255,.04);
+  border:1px solid var(--border);color:var(--text2);border-bottom-left-radius:3px;
+}
+.chat-msg.bot strong{color:var(--text1);}
+.chat-inp-row{
+  padding:12px 20px;border-top:1px solid var(--border);
+  display:flex;gap:8px;align-items:flex-end;
+}
+.chat-inp{
+  flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text1);font-size:13px;padding:9px 12px;outline:none;resize:none;
+  font-family:inherit;max-height:100px;transition:border-color .2s;
+}
+.chat-inp:focus{border-color:var(--blue);}
+.chat-send{
+  background:var(--blue);border:none;border-radius:var(--radius-sm);
+  color:#fff;padding:9px 14px;cursor:pointer;font-size:16px;
+  transition:background .15s;flex-shrink:0;align-self:flex-end;
+}
+.chat-send:hover{background:#2563EB;}
+.chat-send:disabled{background:var(--bg3);cursor:not-allowed;}
+
+/* ── ERROR BANNER ── */
+.error-banner{
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+  border-radius:var(--radius-sm);padding:12px 16px;
+  font-size:13px;color:#fca5a5;display:flex;align-items:center;gap:8px;margin-bottom:14px;
+}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .main-layout{flex-direction:column;}
+  .sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);}
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="header">
+  <div class="header-logo">
+    <span class="logo-icon">🎯</span>
+    ИИ Рекрутер
+  </div>
+  <div class="header-status">
+    <span class="status-dot" id="ai-dot"></span>
+    <span id="ai-status-text">Подключение...</span>
+  </div>
+  <a class="header-back" href="../">← Портал</a>
+</header>
+
+<!-- ── MAIN LAYOUT ── -->
+<div class="main-layout">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar">
+
+    <!-- Project -->
+    <div class="sidebar-section">
+      <div class="section-label">Проект</div>
+      <div class="project-search-wrap">
+        <input class="project-search" id="project-search" type="text" placeholder="Поиск проекта..." autocomplete="off">
+      </div>
+      <div class="project-list" id="project-list"></div>
+      <div id="selected-project" style="font-size:12px;color:var(--text3);margin-top:6px;min-height:16px;"></div>
+      <button class="btn-load-tz" id="btn-load-tz" disabled onclick="loadTZ()">
+        📄 Загрузить ТЗ
+      </button>
+      <div class="tz-status" id="tz-status"></div>
+    </div>
+
+    <!-- Model -->
+    <div class="sidebar-section">
+      <div class="section-label">Модель</div>
+      <div class="model-select-wrap">
+        <select class="model-sel" id="model-sel">
+          <option value="">⏳ Загрузка...</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Quick tags -->
+    <div class="sidebar-section">
+      <div class="section-label">Быстрые возражения</div>
+      <div class="tags-wrap" id="tags-wrap">
+        <span class="tag" onclick="useTag(this)">Мало платят</span>
+        <span class="tag" onclick="useTag(this)">Далеко ехать</span>
+        <span class="tag" onclick="useTag(this)">Нет официального оформления</span>
+        <span class="tag" onclick="useTag(this)">Нет опыта</span>
+        <span class="tag" onclick="useTag(this)">Уже работаю</span>
+        <span class="tag" onclick="useTag(this)">Сдельная, не хочу</span>
+        <span class="tag" onclick="useTag(this)">Вахта, не хочу</span>
+        <span class="tag" onclick="useTag(this)">Не нравится график</span>
+        <span class="tag" onclick="useTag(this)">Нет транспорта</span>
+        <span class="tag" onclick="useTag(this)">Нет жилья</span>
+        <span class="tag" onclick="useTag(this)">Подумаю</span>
+        <span class="tag" onclick="useTag(this)">Посоветуюсь</span>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ═══ CONTENT ═══ -->
+  <div class="content-area">
+
+    <!-- Objection input -->
+    <div class="objection-wrap">
+      <div class="objection-label">Возражение кандидата</div>
+      <textarea class="objection-textarea" id="objection-inp" rows="3"
+        placeholder="Введите возражение кандидата или выберите тег слева..."
+        oninput="updateCharCount(this)"></textarea>
+      <div class="objection-actions">
+        <button class="btn-primary" id="btn-ask" onclick="askAI()">
+          🎯 Получить скрипт
+        </button>
+        <button class="btn-ghost" onclick="clearAll()">Очистить</button>
+        <span class="char-count" id="char-count">0 симв.</span>
+      </div>
+    </div>
+
+    <!-- Response area -->
+    <div class="response-area" id="response-area">
+      <div class="response-placeholder" id="response-placeholder">
+        <div class="placeholder-icon">🤖</div>
+        <div class="placeholder-title">Готов помочь с возражением</div>
+        <div class="placeholder-sub">
+          Выберите проект, загрузите ТЗ и введите возражение кандидата.<br>
+          ИИ предложит 3 варианта скрипта отработки.
+        </div>
+      </div>
+
+      <!-- Streaming raw output (while generating) -->
+      <div id="streaming-wrap" style="display:none;">
+        <div class="streaming-indicator">
+          <div class="streaming-dots"><span></span><span></span><span></span></div>
+          Генерирую скрипты...
+        </div>
+        <div class="response-raw" id="response-raw"></div>
+      </div>
+
+      <!-- Parsed structured output -->
+      <div id="parsed-output" style="display:none;"></div>
+
+      <!-- Chat section -->
+      <div class="chat-section" id="chat-section" style="display:none;">
+        <div class="chat-header">
+          <span style="font-size:16px;">💬</span>
+          <span class="chat-header-title">Уточняющие вопросы</span>
+          <span class="chat-header-sub">Спросите что-то по скрипту</span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-inp-row">
+          <textarea class="chat-inp" id="chat-inp" rows="1"
+            placeholder="Задайте уточняющий вопрос..."
+            onkeydown="chatKeydown(event)"></textarea>
+          <button class="chat-send" id="chat-send" onclick="sendChat()">➤</button>
+        </div>
+      </div>
+
+    </div><!-- /response-area -->
+  </div><!-- /content-area -->
+</div><!-- /main-layout -->
+
+<script>
+const API = '/tasks/api';
+
+// ── State ──
+let selectedProject = '';
+let tzText = '';
+let firstAnswer = '';
+let chatHistory = [];
+let currentVariants = [];
+let isStreaming = false;
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+  loadModels();
+  loadProjects();
+  checkAIStatus();
+});
+
+// ── AI Status ──
+async function checkAIStatus() {
+  try {
+    const r = await fetch(API + '/ai/proxy/tags');
+    const d = await r.json();
+    const dot = document.getElementById('ai-dot');
+    const txt = document.getElementById('ai-status-text');
+    if (d.offline || d.error) {
+      dot.className = 'status-dot offline';
+      txt.textContent = 'AI оффлайн';
+    } else {
+      const models = (d.models || []).map(m => m.name);
+      dot.className = 'status-dot online';
+      txt.textContent = `AI онлайн · ${models.length} мод.`;
+    }
+  } catch {
+    document.getElementById('ai-dot').className = 'status-dot offline';
+    document.getElementById('ai-status-text').textContent = 'Нет связи';
+  }
+}
+
+// ── Models ──
+async function loadModels() {
+  const sel = document.getElementById('model-sel');
+  try {
+    const r = await fetch(API + '/ai/proxy/tags');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const models = (d.models || []).map(m => m.name).sort();
+    if (!models.length) throw new Error('Нет моделей');
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    const pref = ['qwen3:8b', 'qwen3:30b', 'llama3.2:3b'];
+    const def = pref.find(p => models.includes(p)) || models[0];
+    sel.value = def;
+  } catch (e) {
+    sel.innerHTML = `<option value="">⚠ ${e.message}</option>`;
+  }
+}
+
+// ── Projects ──
+let allProjects = [];
+
+async function loadProjects() {
+  try {
+    const r = await fetch(API + '/recruiter/projects');
+    const d = await r.json();
+    allProjects = d.projects || [];
+    renderProjectList(allProjects);
+  } catch (e) {
+    allProjects = [];
+  }
+}
+
+function renderProjectList(list) {
+  const el = document.getElementById('project-list');
+  if (!list.length) {
+    el.innerHTML = '<div class="project-item" style="color:var(--text3)">Нет проектов</div>';
+    return;
+  }
+  el.innerHTML = list.map(p =>
+    `<div class="project-item ${p === selectedProject ? 'selected' : ''}" onclick="selectProject('${esc(p)}')">${esc(p)}</div>`
+  ).join('');
+}
+
+function selectProject(name) {
+  selectedProject = name;
+  document.getElementById('project-search').value = name;
+  document.getElementById('project-list').classList.remove('open');
+  document.getElementById('selected-project').textContent = '✓ ' + name;
+  document.getElementById('btn-load-tz').disabled = false;
+  document.getElementById('tz-status').textContent = '';
+  document.getElementById('tz-status').className = 'tz-status';
+  tzText = '';
+  renderProjectList(allProjects.filter(p =>
+    p.toLowerCase().includes(name.toLowerCase())
+  ));
+}
+
+// Search filter
+document.getElementById('project-search').addEventListener('input', function () {
+  const q = this.value.toLowerCase();
+  const filtered = allProjects.filter(p => p.toLowerCase().includes(q));
+  renderProjectList(filtered);
+  document.getElementById('project-list').classList.add('open');
+  if (!q) { selectedProject = ''; document.getElementById('btn-load-tz').disabled = true; }
+});
+document.getElementById('project-search').addEventListener('focus', () => {
+  document.getElementById('project-list').classList.add('open');
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.project-search-wrap') && !e.target.closest('#project-list')) {
+    document.getElementById('project-list').classList.remove('open');
+  }
+});
+
+// ── Load TZ ──
+async function loadTZ() {
+  if (!selectedProject) return;
+  const btn = document.getElementById('btn-load-tz');
+  const status = document.getElementById('tz-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Загружаю...';
+  status.className = 'tz-status';
+  status.textContent = 'Загрузка ТЗ...';
+  try {
+    const r = await fetch(API + '/recruiter/tz?project=' + encodeURIComponent(selectedProject));
+    if (!r.ok) {
+      const d = await r.json();
+      throw new Error(d.detail || 'Ошибка');
+    }
+    const d = await r.json();
+    tzText = d.tz || '';
+    status.className = 'tz-status loaded';
+    status.textContent = `✓ ТЗ загружено (${tzText.length} симв.)`;
+  } catch (e) {
+    status.className = 'tz-status error';
+    status.textContent = '✗ ' + e.message;
+    tzText = '';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '📄 Загрузить ТЗ';
+}
+
+// ── Tags ──
+function useTag(el) {
+  const inp = document.getElementById('objection-inp');
+  inp.value = el.textContent;
+  updateCharCount(inp);
+  inp.focus();
+}
+
+// ── Char count ──
+function updateCharCount(el) {
+  document.getElementById('char-count').textContent = el.value.length + ' симв.';
+}
+
+// ── Clear ──
+function clearAll() {
+  document.getElementById('objection-inp').value = '';
+  document.getElementById('char-count').textContent = '0 симв.';
+  document.getElementById('response-placeholder').style.display = 'flex';
+  document.getElementById('streaming-wrap').style.display = 'none';
+  document.getElementById('parsed-output').style.display = 'none';
+  document.getElementById('chat-section').style.display = 'none';
+  document.getElementById('response-raw').textContent = '';
+  document.getElementById('chat-messages').innerHTML = '';
+  firstAnswer = '';
+  chatHistory = [];
+  currentVariants = [];
+}
+
+// ── Ask AI ──
+async function askAI() {
+  const objection = document.getElementById('objection-inp').value.trim();
+  if (!objection) { document.getElementById('objection-inp').focus(); return; }
+  if (!selectedProject) { alert('Выберите проект'); return; }
+  if (!tzText) { alert('Загрузите ТЗ проекта'); return; }
+  const model = document.getElementById('model-sel').value;
+  if (!model) { alert('Выберите модель AI'); return; }
+  if (isStreaming) return;
+
+  isStreaming = true;
+  firstAnswer = '';
+  chatHistory = [];
+  currentVariants = [];
+
+  // Show streaming
+  document.getElementById('response-placeholder').style.display = 'none';
+  document.getElementById('parsed-output').style.display = 'none';
+  document.getElementById('parsed-output').innerHTML = '';
+  document.getElementById('chat-section').style.display = 'none';
+  document.getElementById('streaming-wrap').style.display = 'block';
+  const rawEl = document.getElementById('response-raw');
+  rawEl.innerHTML = '';
+
+  document.getElementById('btn-ask').disabled = true;
+
+  let accumulated = '';
+
+  try {
+    const r = await fetch(API + '/recruiter/answer/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: selectedProject, objection, tz: tzText, model })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    rawEl.innerHTML = '<span class="cursor"></span>';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const c = JSON.parse(line);
+          if (c.error) throw new Error(c.error);
+          const piece = c.message?.content || '';
+          if (piece) {
+            accumulated += piece;
+            rawEl.innerHTML = escHtml(accumulated) + '<span class="cursor"></span>';
+            rawEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          }
+        } catch (e2) {
+          if (e2.message && !e2.message.includes('JSON')) throw e2;
+        }
+      }
+    }
+
+    firstAnswer = accumulated;
+    // Show parsed output
+    document.getElementById('streaming-wrap').style.display = 'none';
+    renderParsed(accumulated, objection);
+    document.getElementById('parsed-output').style.display = 'block';
+    document.getElementById('chat-section').style.display = 'flex';
+    document.getElementById('chat-section').style.flexDirection = 'column';
+
+    // Log to sheets (async, don't wait)
+    fetch(API + '/recruiter/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project: selectedProject, objection,
+        variants: currentVariants.map(v => ({ title: v.title, body: v.body }))
+      })
+    }).catch(() => {});
+
+  } catch (e) {
+    document.getElementById('streaming-wrap').style.display = 'none';
+    document.getElementById('parsed-output').innerHTML =
+      `<div class="error-banner">⚠️ Ошибка: ${escHtml(e.message)}</div>`;
+    document.getElementById('parsed-output').style.display = 'block';
+  }
+
+  isStreaming = false;
+  document.getElementById('btn-ask').disabled = false;
+}
+
+// ── Parse & Render ──
+function renderParsed(text, objection) {
+  const out = document.getElementById('parsed-output');
+  const sections = parseResponse(text);
+  currentVariants = sections.variants;
+  let html = '';
+
+  // АНАЛИЗ
+  if (sections.analysis) {
+    html += `<div class="parsed-block">
+      <div class="block-header">
+        <span class="block-badge analysis">Анализ</span>
+      </div>
+      <div class="block-body">${formatText(sections.analysis)}</div>
+    </div>`;
+  }
+
+  // ВАРИАНТЫ
+  sections.variants.forEach((v, i) => {
+    html += `<div class="parsed-block" id="variant-block-${i}">
+      <div class="block-header">
+        <span class="block-badge variant">Вариант ${i + 1}</span>
+        <span class="block-title">${escHtml(v.title)}</span>
+      </div>
+      <div class="block-body">${formatText(v.body)}</div>
+      <div class="feedback-row">
+        <button class="fb-btn like" id="fb-like-${i}" onclick="sendFeedback(${i}, 'like', '${esc(v.title)}', '${esc(objection)}')">👍 Хороший</button>
+        <button class="fb-btn dislike" id="fb-dis-${i}" onclick="sendFeedback(${i}, 'dislike', '${esc(v.title)}', '${esc(objection)}')">👎 Не то</button>
+      </div>
+    </div>`;
+  });
+
+  // УТОЧНИТЬ
+  if (sections.clarify) {
+    html += `<div class="parsed-block">
+      <div class="block-header">
+        <span class="block-badge clarify">Уточнить</span>
+      </div>
+      <div class="block-body">${formatText(sections.clarify)}</div>
+    </div>`;
+  }
+
+  // РЕКОМЕНДАЦИИ
+  if (sections.tips) {
+    html += `<div class="parsed-block">
+      <div class="block-header">
+        <span class="block-badge tips">Рекомендации</span>
+      </div>
+      <div class="block-body">${formatText(sections.tips)}</div>
+    </div>`;
+  }
+
+  out.innerHTML = html;
+}
+
+function parseResponse(text) {
+  const result = { analysis: '', variants: [], clarify: '', tips: '' };
+
+  // АНАЛИЗ
+  const analMatch = text.match(/АНАЛИЗ:\s*\n?([\s\S]*?)(?=ВАРИАНТ\s*\d|УТОЧНИТЬ:|РЕКОМЕНДАЦИИ:|$)/i);
+  if (analMatch) result.analysis = analMatch[1].trim();
+
+  // ВАРИАНТЫ
+  const varRx = /ВАРИАНТ\s*(\d+):\s*([^\n]*)\n([\s\S]*?)(?=ВАРИАНТ\s*\d|УТОЧНИТЬ:|РЕКОМЕНДАЦИИ:|$)/gi;
+  let m;
+  while ((m = varRx.exec(text)) !== null) {
+    result.variants.push({ title: m[2].trim(), body: m[3].trim() });
+  }
+
+  // УТОЧНИТЬ
+  const clarMatch = text.match(/УТОЧНИТЬ:\s*([^\n]*(?:\n(?!РЕКОМЕНДАЦИИ:)[^\n]*)*)/i);
+  if (clarMatch) result.clarify = clarMatch[1].trim();
+
+  // РЕКОМЕНДАЦИИ
+  const tipsMatch = text.match(/РЕКОМЕНДАЦИИ:\s*([\s\S]*?)$/i);
+  if (tipsMatch) result.tips = tipsMatch[1].trim();
+
+  return result;
+}
+
+// ── Feedback ──
+async function sendFeedback(idx, type, varTitle, objection) {
+  const likeBtn = document.getElementById('fb-like-' + idx);
+  const disBtn = document.getElementById('fb-dis-' + idx);
+  if (likeBtn) likeBtn.disabled = true;
+  if (disBtn) disBtn.disabled = true;
+  const activeBtn = document.getElementById(type === 'like' ? 'fb-like-' + idx : 'fb-dis-' + idx);
+  if (activeBtn) activeBtn.classList.add('active');
+  fetch(API + '/recruiter/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: selectedProject, objection, variant_title: varTitle, feedback: type })
+  }).catch(() => {});
+}
+
+// ── Chat ──
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+async function sendChat() {
+  const inp = document.getElementById('chat-inp');
+  const msg = inp.value.trim();
+  if (!msg || isStreaming) return;
+  inp.value = '';
+
+  const objection = document.getElementById('objection-inp').value.trim();
+  const model = document.getElementById('model-sel').value;
+
+  addChatMsg('user', escHtml(msg));
+  isStreaming = true;
+  document.getElementById('chat-send').disabled = true;
+
+  const botEl = addChatMsg('bot', '<span style="opacity:.5">⏳ Думаю...</span>');
+  let reply = '';
+
+  try {
+    const r = await fetch(API + '/recruiter/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project: selectedProject, objection, tz: tzText,
+        first_answer: firstAnswer, history: chatHistory,
+        message: msg, model
+      })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    botEl.innerHTML = '▍';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const c = JSON.parse(line);
+          if (c.error) throw new Error(c.error);
+          const p = c.message?.content || '';
+          if (p) { reply += p; botEl.innerHTML = formatText(reply) + '<span style="animation:blink 1s step-end infinite">▍</span>'; }
+        } catch (e2) { if (e2.message && !e2.message.includes('JSON')) throw e2; }
+      }
+    }
+    botEl.innerHTML = formatText(reply);
+    chatHistory.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
+    if (chatHistory.length > 20) chatHistory.splice(0, 2);
+
+    // Log
+    fetch(API + '/recruiter/chat-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: selectedProject, objection, question: msg, answer: reply })
+    }).catch(() => {});
+
+  } catch (e) {
+    botEl.innerHTML = `<span style="color:var(--red)">⚠ ${escHtml(e.message)}</span>`;
+  }
+
+  isStreaming = false;
+  document.getElementById('chat-send').disabled = false;
+  inp.focus();
+}
+
+function addChatMsg(role, html) {
+  const box = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = 'chat-msg ' + role;
+  d.innerHTML = html;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+
+// ── Helpers ──
+function esc(s) {
+  return String(s).replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function formatText(t) {
+  // Remove CJK artifacts
+  t = t.replace(/[\u4e00-\u9fff\u3040-\u30ff]{1,3}(?=\s|[\u0400-\u04ff])/g, '');
+  t = escHtml(t);
+  return t
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- (.+)$/gm, '• $1')
+    .replace(/\n/g, '<br>');
+}
+</script>
+</body>
+</html>

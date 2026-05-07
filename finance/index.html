@@ -3038,6 +3038,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 <script>
 
+</script>
+
+<script>
+
 // ===== AI FLOATING PANEL (FINANCE) =====
 (function(){
 const _SUGGS = ["Какой проект самый рентабельный?","Где наблюдаются аномалии?","Сравни показатели по городам","Какой тренд по выручке?","Топ клиентов по прибыли","Сравни 2024 и 2025 год"];
@@ -3118,6 +3122,7 @@ async function _ask(msg){
   if(inp)inp.disabled=true;
   _addMsg('user',_fmtAI(msg));
   const thinking=_addMsg('bot','<span>⏳ Анализирую...</span>');
+  let reply='';
   try{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
@@ -3134,11 +3139,28 @@ async function _ask(msg){
 `)+_aiBuildCtx();
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
-    const payload={model,messages,stream:false,think:false};
-    const res=await fetch(_OLLAMA+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const payload={model,messages,stream:true,think:false};
+    const res=await fetch(_OLLAMA+'/chat/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!res.ok)throw new Error('HTTP '+res.status);
-    const data=await res.json();
-    const reply=data.message?.content||'';
+    const reader=res.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    if(thinking)thinking.innerHTML='▍';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n');buf=lines.pop();
+      for(const line of lines){
+        if(!line.trim())continue;
+        try{
+          const c=JSON.parse(line);
+          if(c.error)throw new Error(c.error);
+          const p=c.message?.content||'';
+          if(p){reply+=p;if(thinking)thinking.innerHTML=_fmtAI(reply)+'<span style="animation:blink 1s step-end infinite">▍</span>';}
+        }catch(e2){if(e2.message&&!e2.message.includes('JSON'))throw e2;}
+      }
+    }
     if(thinking)thinking.innerHTML=_fmtAI(reply);
     _hist.push({role:'user',content:msg},{role:'assistant',content:reply});
     if(_hist.length>20)_hist.splice(0,2);
