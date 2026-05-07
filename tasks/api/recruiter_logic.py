@@ -313,8 +313,122 @@ def save_chat_log(project: str, objection: str, question: str, answer: str):
 
 
 # ── ПОСТРОЕНИЕ ПРОМПТОВ ────────────────────────────────────────────────────────
+
+# Ключевые слова по типам возражений → какие строки ТЗ важны
+_OBJECTION_KEYWORDS: dict[str, list[str]] = {
+    "salary": [
+        "зарплат", "оплат", "заработ", "ставк", "оклад", "рубл", "₽",
+        "выплат", "премия", "бонус", "надбав", "доход", "фот", "сдельн",
+        "почасов", "смен", "час", "итог", "аванс", "получ",
+    ],
+    "transport": [
+        "транспорт", "автобус", "метро", "маршрут", "доставк", "подвоз",
+        "добират", "расстоян", "км", "адрес", "склад", "город", "район",
+        "остановк", "станци",
+    ],
+    "schedule": [
+        "график", "смена", "сутки", "часов", "выходн", "рабочих", "смен",
+        "ночн", "дневн", "недел", "расписан", "режим", "11", "12",
+        "перерыв", "обед",
+    ],
+    "contract": [
+        "оформлен", "договор", "гпх", "трудов", "официальн", "нк рф",
+        "самозанят", "ип ", "белая", "зарплат", "налог", "пфр", "снилс",
+    ],
+    "rotation": [
+        "вахт", "общежит", "проживан", "питан", "компенсац", "билет",
+        "приезд", "отъезд", "смен вахт", "ротац",
+    ],
+    "experience": [
+        "опыт", "обучен", "стажировк", "требован", "навык", "услови",
+        "без опыт", "новичк",
+    ],
+    "general": [
+        "проект", "склад", "клиент", "работодател", "компани", "объект",
+        "контакт", "менеджер", "телефон",
+    ],
+}
+
+# Карта слов из возражения → тип
+_OBJECTION_MAP: list[tuple[list[str], str]] = [
+    (["мало", "платят", "зарплат", "деньг", "оплат", "заработ", "ставк", "рубл", "бонус", "доход"], "salary"),
+    (["транспорт", "далеко", "добират", "автобус", "метро", "ехать", "дорог"], "transport"),
+    (["график", "смена", "сутки", "часов", "ночн", "выходн", "режим", "рабочий"], "schedule"),
+    (["оформлен", "официальн", "договор", "гпх", "трудов", "белая", "налог", "самозанят"], "contract"),
+    (["вахт", "общежит", "жильё", "жилье", "проживан", "питан", "далеко живу"], "rotation"),
+    (["опыт", "не умею", "новичок", "обучен", "не работал"], "experience"),
+]
+
+MAX_TZ_CHARS = 4000  # Максимум символов ТЗ в промпте (~1000 токенов)
+
+
+def _detect_objection_type(objection: str) -> list[str]:
+    """Определить тип возражения, вернуть список типов по убыванию релевантности."""
+    obj_lower = objection.lower()
+    scores: dict[str, int] = {}
+    for keywords, obj_type in _OBJECTION_MAP:
+        score = sum(1 for kw in keywords if kw in obj_lower)
+        if score:
+            scores[obj_type] = score
+    if not scores:
+        return ["salary", "general"]
+    sorted_types = sorted(scores, key=lambda t: scores[t], reverse=True)
+    if "general" not in sorted_types:
+        sorted_types.append("general")
+    return sorted_types
+
+
+def extract_relevant_tz(tz: str, objection: str) -> str:
+    """
+    Умная вырезка ТЗ: возвращает только строки, релевантные для данного возражения.
+    Максимум MAX_TZ_CHARS символов — чтобы не перегружать контекст модели.
+    """
+    if len(tz) <= MAX_TZ_CHARS:
+        return tz  # маленькое ТЗ — берём целиком
+
+    obj_types = _detect_objection_type(objection)
+    # Собираем нужные ключевые слова (тип возражения + general)
+    wanted_kws: list[str] = []
+    for t in obj_types[:2]:  # максимум 2 типа
+        wanted_kws.extend(_OBJECTION_KEYWORDS.get(t, []))
+    wanted_kws.extend(_OBJECTION_KEYWORDS["general"])
+
+    lines = tz.split("\n")
+    always_include: list[str] = []  # заголовки листов + первые строки
+    relevant: list[str] = []
+    other: list[str] = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        low = stripped.lower()
+        if low.startswith("=== лист:") or i < 5:
+            always_include.append(line)
+            continue
+        score = sum(1 for kw in wanted_kws if kw in low)
+        if score > 0:
+            relevant.append(line)
+        else:
+            other.append(line)
+
+    # Собираем: заголовки + релевантные + добиваем другими если есть место
+    result_lines = always_include + relevant
+    result = "\n".join(result_lines)
+    if len(result) < MAX_TZ_CHARS // 2:
+        # Если мало данных — добавляем ещё из остальных строк
+        for line in other:
+            if len(result) + len(line) > MAX_TZ_CHARS:
+                break
+            result += "\n" + line
+    elif len(result) > MAX_TZ_CHARS:
+        result = result[:MAX_TZ_CHARS] + "\n[ТЗ обрезано для скорости]"
+
+    return result
+
+
 def extract_relevant_handbook(handbook: str, objection: str) -> str:
-    """Извлечь релевантные разделы учебника по тексту возражения."""
+    """Извлечь ОДИН наиболее релевантный раздел учебника (для скорости)."""
     lines = handbook.split("\n")
     sections = []
     current: list[str] = []
@@ -328,28 +442,33 @@ def extract_relevant_handbook(handbook: str, objection: str) -> str:
     if current:
         sections.append("\n".join(current))
 
-    base = sections[:2] if len(sections) >= 2 else sections
+    if not sections:
+        return handbook[:2000]
+
+    # Берём только 1 базовый раздел + 1 наиболее релевантный
     obj_lower = objection.lower()
     best = None
     best_score = 0
-    for sec in sections[2:]:
+    for sec in sections:
         score = sum(1 for word in obj_lower.split() if len(word) > 3 and word in sec.lower())
         if score > best_score:
             best_score = score
             best = sec
-    result = base[:]
-    if best:
-        result.append(best)
-    return "\n\n".join(result)
+
+    result = sections[0] if sections else ""
+    if best and best != sections[0]:
+        result = result + "\n\n" + best
+    return result[:3000]  # ограничиваем учебник
 
 
 def build_prompt(tz: str, handbook: str, objection: str) -> str:
-    """Собрать полный промпт для генерации скрипта отработки."""
-    relevant = extract_relevant_handbook(handbook, objection)
+    """Собрать промпт для генерации скрипта отработки (с умной вырезкой)."""
+    tz_relevant = extract_relevant_tz(tz, objection)
+    handbook_relevant = extract_relevant_handbook(handbook, objection)
     return (
         f"{RECRUITER_SYSTEM_PROMPT}\n\n"
-        f"---\nТЗ ПРОЕКТА:\n{tz}\n\n"
-        f"---\nУЧЕБНИК (релевантные разделы):\n{relevant}\n\n"
+        f"---\nТЗ ПРОЕКТА:\n{tz_relevant}\n\n"
+        f"---\nУЧЕБНИК (релевантные разделы):\n{handbook_relevant}\n\n"
         f"---\nВОЗРАЖЕНИЕ КАНДИДАТА:\n{objection}\n\n"
         f"---\nДай ответ рекрутеру:"
     )
@@ -364,17 +483,18 @@ def build_chat_prompt(
     user_message: str,
 ) -> str:
     """Собрать промпт для уточняющего вопроса в диалоге."""
-    relevant = extract_relevant_handbook(handbook, user_message)
+    tz_relevant = extract_relevant_tz(tz, user_message or objection)
+    handbook_relevant = extract_relevant_handbook(handbook, user_message)
     history_text = "\n".join(
         f"{'Рекрутер' if m['role'] == 'user' else 'AI'}: {m['content']}"
-        for m in chat_history
+        for m in chat_history[-6:]  # последние 6 сообщений достаточно
     )
     return (
         f"{CHAT_SYSTEM_PROMPT}\n\n"
-        f"---\nТЗ ПРОЕКТА:\n{tz}\n\n"
-        f"---\nУЧЕБНИК (релевантные разделы):\n{relevant}\n\n"
+        f"---\nТЗ ПРОЕКТА:\n{tz_relevant}\n\n"
+        f"---\nУЧЕБНИК:\n{handbook_relevant}\n\n"
         f"---\nИСХОДНОЕ ВОЗРАЖЕНИЕ: {objection}\n\n"
-        f"ПЕРВЫЙ ОТВЕТ AI:\n{first_answer}\n\n"
+        f"ПЕРВЫЙ ОТВЕТ AI:\n{first_answer[:500]}...\n\n"
         f"---\nДИАЛОГ:\n{history_text}\n\n"
         f"Рекрутер: {user_message}\nAI:"
     )
