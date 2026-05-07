@@ -38,10 +38,12 @@ if (-not $ngrok) {
 }
 Write-Host "  [OK]  ngrok: $ngrok" -ForegroundColor Green
 
-# -- Restart Ollama with OLLAMA_ORIGINS=* via ProcessStartInfo (guaranteed env var) --
+# -- Restart Ollama with OLLAMA_ORIGINS=* --
+# Must kill BOTH "ollama" server AND "ollama app" tray (tray auto-restarts server without OLLAMA_ORIGINS)
 Write-Host "  ...   Restarting Ollama with CORS enabled..." -ForegroundColor Yellow
-Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
+Get-Process -Name "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name "ollama"     -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "ollama"
