@@ -23,7 +23,13 @@ SCOPES = [
     "https://www.googleapis.com/auth/documents.readonly",
 ]
 
-CREDS_FILE = Path(__file__).parent / "google_credentials.json"
+# Ищем credentials в нескольких местах (чтобы не зависеть от деплоя)
+_CREDS_CANDIDATES = [
+    Path(__file__).parent / "google_credentials.json",  # рядом с кодом
+    Path("/root/google_credentials.json"),               # безопасное место на VPS
+    Path("/etc/okk/google_credentials.json"),            # альтернатива
+]
+CREDS_FILE = next((p for p in _CREDS_CANDIDATES if p.exists()), _CREDS_CANDIDATES[0])
 
 # ── СИСТЕМНЫЙ ПРОМПТ ──────────────────────────────────────────────────────────
 RECRUITER_SYSTEM_PROMPT = """Ты — AI-помощник рекрутера. Твоя задача — помочь рекрутеру отработать возражение кандидата так, чтобы он согласился выйти на стажировку.
