@@ -1,66 +1,97 @@
-# Аналитический портал — Полная документация
+# Аналитический портал STH — Техническая документация
 
-> Production: **http://195.208.119.67/**
-> Репозиторий: **https://github.com/max511028-bit/OKK**
-> Пароль входа: **`511028`** (на всех дашбордах кроме главной)
+> **Production:** http://195.208.119.67/
+> **Репозиторий:** https://github.com/max511028-bit/OKK
+> **Пароль портала:** `511028` (только wb / finance / kp)
+> **Пароль админки:** `028511`
+>
+> ⚠️ Пароли хранятся в env-переменных на VPS, в репозитории — только дефолты для обратной совместимости.
 
 ---
 
-## Оглавление
+## Содержание
 
-1. [Архитектура](#архитектура)
-2. [Структура репозитория](#структура-репозитория)
-3. [Деплой и CI/CD](#деплой-и-cicd)
-4. [VPS — что и где запущено](#vps--что-и-где-запущено)
-5. [nginx — маршрутизация](#nginx--маршрутизация)
-6. [AI Ассистент — подробное описание](#ai-ассистент--подробное-описание)
-7. [Дашборды (frontend)](#дашборды-frontend)
-8. [Backend сервисы](#backend-сервисы)
-9. [Скрипты-инжекторы](#скрипты-инжекторы)
-10. [Источники данных](#источники-данных)
-11. [Безопасность](#безопасность)
-12. [Что делать если…](#что-делать-если)
+1. [Быстрый старт](#быстрый-старт)
+2. [Архитектура](#архитектура)
+3. [Структура репозитория](#структура-репозитория)
+4. [Дашборды](#дашборды)
+5. [Бэкенд (FastAPI)](#бэкенд-fastapi)
+6. [Авторизация](#авторизация)
+7. [AI-инфраструктура](#ai-инфраструктура)
+8. [Деплой](#деплой)
+9. [VPS — что где](#vps--что-где)
+10. [nginx-конфиг](#nginx-конфиг)
+11. [Скрипты и инжекторы](#скрипты-и-инжекторы)
+12. [Источники данных](#источники-данных)
+13. [Запуск AI после ребута компа](#запуск-ai-после-ребута-компа)
+14. [Troubleshooting](#troubleshooting)
+15. [История изменений](#история-изменений)
+16. [Известные проблемы и roadmap](#известные-проблемы-и-roadmap)
+
+---
+
+## Быстрый старт
+
+### Чтобы AI работал
+
+1. На локальном компе должны крутиться **Ollama** + **ngrok**.
+2. После ребута компа: двойной клик по `start-ai.bat` в корне репозитория.
+3. Окно `cmd.exe` не закрывать — пока оно открыто, AI работает.
+4. Проверка: `http://195.208.119.67/admin.html` → пароль `028511` → вкладка «Статус AI» → должна быть зелёная точка и URL туннеля.
+
+### Чтобы зайти на портал
+
+- Главная: `http://195.208.119.67/` — открыта без пароля
+- WB / Финансы / КП — пароль `511028` (одноразово на сессию)
+- Админка: `http://195.208.119.67/admin.html` — пароль `028511`
+- Остальные дашборды (ОКК, HR, Задачник, Рекрутер) — открыты без пароля
 
 ---
 
 ## Архитектура
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Браузер пользователя                                       │
-│  http://195.208.119.67/<dashboard>/                         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  VPS 195.208.119.67 (Ubuntu 24.04)                          │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │ nginx :80                                               │ │
-│  │  ├─ /                  → /var/www/okk/index.html        │ │
-│  │  ├─ /okk/, /wb/, …     → статика /var/www/okk/<dir>/   │ │
-│  │  ├─ /tasks/            → /var/www/okk/tasks/index.html  │ │
-│  │  ├─ /tasks/api/        → 127.0.0.1:8601 (FastAPI)       │ │
-│  │  ├─ /ollama/           → 178.63.16.109:11434 (внешний)  │ │
-│  │  └─ /recruiter/        → 127.0.0.1:8501 (Streamlit)     │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                             │
-│  systemd сервисы:                                           │
-│  • tasks-api.service   (FastAPI + SQLite)                   │
-│  • recruiter.service   (Streamlit)                          │
-└─────────────────────────────────────────────────────────────┘
-         │                              │
-         │ rsync + SSH                  │ прямой fetch из браузера
-         ▼                              ▼
-  GitHub Actions              178.63.16.109:11434
-  (push → main)               Ollama сервер IT-команды
+┌─────────────────────────────────────────────────────────────────┐
+│ Браузер                                                          │
+│ http://195.208.119.67/<dashboard>/                               │
+└────────────────────────────────┬─────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ VPS 195.208.119.67 (Ubuntu 24.04)                               │
+│ ┌────────────────────────────────────────────────────────────┐  │
+│ │ nginx :80                                                  │  │
+│ │  /                 → /var/www/okk/index.html               │  │
+│ │  /okk/ /wb/ ...    → /var/www/okk/<dir>/                   │  │
+│ │  /admin.html       → /var/www/okk/admin.html               │  │
+│ │  /tasks/api/*      → 127.0.0.1:8601  (FastAPI)             │  │
+│ │  /recruiter/*      → /var/www/okk/recruiter/  (статика)    │  │
+│ └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│ systemd:                                                         │
+│  • tasks-api.service   FastAPI + SQLite (порт 8601)              │
+│                                                                  │
+│ FastAPI ↔ Ollama: через прокси /ai/proxy/* → ngrok-URL → Ollama  │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ ngrok HTTPS-туннель
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Локальный комп (Windows)                                         │
+│ • ngrok.exe — туннель https://...ngrok-free.dev → :11434         │
+│ • ollama serve — LLM (qwen3:8b) на 127.0.0.1:11434               │
+│ • start-ai.ps1 — диспетчер: проверки, запуск, мониторинг         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Технологии:**
-- Frontend: HTML/CSS/JS, Chart.js (CDN)
-- Backend: Python 3.12, FastAPI, SQLite, Streamlit
-- AI: Ollama на сервере IT-команды (`178.63.16.109:11434`)
-- Хостинг: VPS Ubuntu 24.04 + nginx 1.24
-- CI/CD: GitHub Actions
+**Поток AI-запроса:**
+
+1. Браузер → `POST /tasks/api/ai/proxy/chat/stream` → nginx → FastAPI
+2. FastAPI читает текущий ngrok-URL из `ai_url.json`
+3. FastAPI делает HTTPS-запрос к `https://...ngrok-free.dev/api/chat`
+4. ngrok пробрасывает на локальную Ollama
+5. Ollama стримит NDJSON-ответ обратно через всю цепочку
+6. Браузер показывает текст по мере прихода
 
 ---
 
@@ -68,371 +99,534 @@
 
 ```
 OKK/
-├── index.html              # Главная страница (тайлы)
-├── DOCS.md                 # ← вы здесь
-├── .github/workflows/
-│   └── deploy.yml          # Автодеплой на VPS при push в main
+├── index.html                  # Главная (каталог карточек)
+├── admin.html                  # Админ-панель (промпты + статус AI)
+├── start-ai.bat                # Запуск AI-стека (вызывает PS-скрипт)
+├── start-ai.ps1                # Корневой launcher (тонкая обертка)
 │
-├── okk/index.html          # Дашборд контроля качества колл-центра
-├── wb/index.html           # WB Аутсорсинг
-├── finance/index.html      # Финансы
-├── kp/index.html           # Коммерческие предложения
-├── tasks/index.html        # IT-Задачник
-├── tasks/api/              # FastAPI backend задачника
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── seed.json
-│   └── tasks.db            # SQLite база (НЕ в git, не трогается rsync)
-├── hr-game/index.html      # HR-геймификация
+├── okk/index.html              # ОКК — Контроль качества колл-центра
+├── wb/index.html               # WB — Аутсорсинг Wildberries
+├── finance/index.html          # Финансы — P&L, движение денег
+├── kp/index.html               # КП — Калькулятор коммерческих предложений
+├── hr-game/index.html          # HR-Консультант — чат для HR-вопросов
+├── tasks/index.html            # Задачник IT — Kanban/Gantt/Roadmap
+├── recruiter/index.html        # Рекрутер — отработка возражений
+├── recruiter/app.py            # (deprecated) Streamlit-версия рекрутера
 │
-├── recruiter/              # Streamlit AI-рекрутер
-│   ├── app.py
-│   └── requirements.txt
+├── tasks/api/
+│   ├── main.py                 # FastAPI: все эндпоинты
+│   ├── recruiter_logic.py      # Логика рекрутера (Google Sheets + LLM-промпт)
+│   ├── ai_prompts.json         # Сохранённые промпты из админки
+│   ├── ai_url.json             # Текущий ngrok-URL (пишется start-ai.ps1)
+│   ├── auth_secret.bin         # HMAC-секрет для токенов (gitignored)
+│   ├── tasks.db                # SQLite задач (gitignored)
+│   └── recruiter.db            # SQLite рекрутера (gitignored)
 │
-└── scripts/
-    ├── setup-server.sh     # Запускается на VPS после деплоя
-    ├── inject_ai.py        # Вшивает AI-панель в дашборды
-    └── inject_auth.py      # Вшивает оверлей пароля
+├── scripts/
+│   ├── start-ai.ps1            # Bulletproof launcher v2 (Ollama + ngrok)
+│   ├── inject_ai.py            # Инжектит AI-чат в дашборды (wb/fin/kp/hr/okk)
+│   ├── inject_auth.py          # Инжектит парольный гейт (только wb/fin/kp)
+│   └── setup-server.sh         # Setup VPS: nginx + systemd
+│
+├── DOCS.md                     # Этот файл
+└── README.md                   # Краткое описание (для GitHub)
 ```
 
 ---
 
-## Деплой и CI/CD
+## Дашборды
 
-### Триггер
-Любой `git push` в ветку **`main`** → запускает `.github/workflows/deploy.yml`.
+| Дашборд | URL | Размер | Источник данных | AI | Пароль |
+|---|---|---|---|---|---|
+| Главная | `/` | 312 строк | — | нет | нет |
+| ОКК | `/okk/` | 2692 строк | 5 Google Sheets (CSV) | ✅ кнопка ✨ | нет |
+| WB | `/wb/` | 3097 строк | GitHub CSV | ✅ кнопка 🤖 | ✅ |
+| Финансы | `/finance/` | 3359 строк | GitHub CSV | ✅ кнопка 🤖 | ✅ |
+| КП | `/kp/` | 2011 строк | поля формы | ✅ кнопка 🤖 | ✅ |
+| HR | `/hr-game/` | 1616 строк | — | ✅ кнопка 🤖 | нет |
+| Задачник | `/tasks/` | 3559 строк | FastAPI (`/tasks/api/*`) | ❌ | нет |
+| Рекрутер | `/recruiter/` | 854 строк | Google Sheets/Docs | ✅ основной интерфейс | нет |
+| Админка | `/admin.html` | 442 строк | FastAPI | — | ✅ admin |
 
-### Шаги
-1. **rsync** файлов на VPS в `/var/www/okk/` (с исключениями — база данных и venv не трогаются)
-2. **Запись `service_account.json`** из GitHub Secret (права 600)
-3. **`bash setup-server.sh`** — настройка nginx, systemd-сервисов
+### ОКК (Контроль Качества)
 
-### GitHub Secrets
+**Назначение:** анализ работы колл-центра подбора складского персонала.
 
-| Имя | Что |
-|---|---|
-| `VPS_SSH_KEY` | Приватный SSH-ключ для root@195.208.119.67 |
-| `GOOGLE_SERVICE_ACCOUNT_INFO` | JSON-ключ GCP для Streamlit-рекрутера |
+**Источники данных:** 5 листов Google Sheets через CSV-экспорт:
+- Прослушка звонков (МПП/ОРП)
+- Опросы новичков
+- Сводные метрики
+- Калибровки
+- Чек-листы
 
-### Защита данных при деплое
-`rsync` **не удаляет и не перезаписывает:**
-- `tasks/api/tasks.db` — база задачника (данные сохраняются между деплоями)
-- `tasks/api/.venv` — Python-окружение (пересоздаётся только если нет)
-- `**/__pycache__` — кэш Python
+**AI:** кнопка ✨ в шапке. Видит данные всех 5 листов целиком. Промпт настраивается в админке (ключ `okk`).
 
----
+**Уникальное:** ручной AI-код (не через инжектор) — отличается от других дашбордов.
 
-## VPS — что и где запущено
+### WB (Wildberries Аутсорсинг)
 
-| Что | Путь / порт | Управление |
-|---|---|---|
-| Статика портала | `/var/www/okk/` | nginx |
-| nginx | :80 | `systemctl status nginx` |
-| Tasks API (FastAPI) | :8601 | `systemctl status tasks-api` |
-| AI Recruiter (Streamlit) | :8501 | `systemctl status recruiter` |
-| SQLite база | `/var/www/okk/tasks/api/tasks.db` | — |
-| Python venv | `/var/www/okk/tasks/api/.venv/` | — |
-| Логи | — | `journalctl -u tasks-api -n 50` |
+**Источник:** CSV из приватного GitHub-репо `max511028-bit/WB`.
 
-> **Ollama не установлен на VPS** — используется внешний сервер IT-команды.
+**Что показывает:** выработка сотрудников, штрафы, операции, риск-зона.
 
----
-
-## nginx — маршрутизация
-
-Конфиг: `/etc/nginx/sites-enabled/okk` (основной для IP 195.208.119.67)
-
-Сниппеты (создаются `setup-server.sh`):
-- `/etc/nginx/snippets/portal-proxies.conf` — прокси для `/recruiter/`
-- `/etc/nginx/snippets/tasks-api-proxy.conf` — прокси для `/tasks/api/`
-
-### Таблица маршрутов
-
-| URL | Куда | Примечание |
-|---|---|---|
-| `/` | static `index.html` | главная |
-| `/okk/`, `/wb/` и др. | static | дашборды |
-| `/tasks/` | static `tasks/index.html` | задачник UI |
-| `/tasks/api/*` | `127.0.0.1:8601` | FastAPI |
-| `/ollama/*` | `178.63.16.109:11434` | Ollama IT-команды |
-| `/recruiter/*` | `127.0.0.1:8501` | Streamlit |
-
----
-
-## AI Ассистент — подробное описание
-
-### Как это работает
-
-Каждый дашборд имеет встроенную кнопку 🤖 в правом нижнем углу. При нажатии открывается чат-панель с выбором модели и полем для вопроса.
-
-**Схема запроса:**
-
-```
-Браузер пользователя
-       │
-       │  1. GET /api/tags  (загрузка списка моделей)
-       │  2. POST /api/chat  (отправка вопроса)
-       ▼
-178.63.16.109:11434  ←── Ollama-сервер IT-команды
-```
-
-Запросы идут **напрямую из браузера** на сервер IT-команды — наш VPS в цепочке не участвует.
-
-> **Примечание для IT:** Альтернативный маршрут через наш VPS (`/ollama/` → `178.63.16.109:11434`) тоже настроен в nginx, но браузер обращается напрямую для снижения задержки.
-
-### Технические параметры подключения
-
-| Параметр | Значение |
-|---|---|
-| API endpoint (модели) | `http://178.63.16.109:11434/api/tags` |
-| API endpoint (чат) | `http://178.63.16.109:11434/api/chat` |
-| Аутентификация | не требуется |
-| Таймаут | 8 секунд на загрузку моделей |
-| Формат запроса | JSON, `stream: false` |
-
-### Пример запроса (curl)
-
-```bash
-curl http://178.63.16.109:11434/api/chat -d '{
-  "model": "minimax-m2.7:cloud",
-  "messages": [{ "role": "user", "content": "Твой вопрос" }],
-  "stream": false
-}'
-```
-
-### Доступные модели (текущий список)
-
-| Модель | Тип | Размер |
-|---|---|---|
-| `minimax-m2.7:cloud` | облачная | — |
-| `qwen3-coder-next:cloud` | облачная | — |
-| `qwen3.6:35b` | локальная | 36B |
-| `qwen3:30b` | локальная | 30B |
-| `qwen3-coder:30b` | локальная | 30B |
-| `llama3.2:3b` | локальная | 3B |
-| `smollm2:135m` | локальная | 135M |
-
-### Требование к серверу IT (CORS)
-
-Браузер блокирует запросы если сервер не разрешает источник `http://195.208.119.67`.
-
-**Необходимая настройка на сервере `178.63.16.109`:**
-
-```bash
-# Добавить переменную окружения и перезапустить Ollama
-OLLAMA_ORIGINS=http://195.208.119.67
-systemctl restart ollama
-```
-
-Или в `/etc/systemd/system/ollama.service` в секцию `[Service]`:
-```ini
-Environment=OLLAMA_ORIGINS=http://195.208.119.67
-```
-
-**Без этой настройки AI-ассистент не работает** — браузер получает ошибку `403 Forbidden`.
-
-### Где настроен в коде
-
-| Файл | Переменная | Значение |
-|---|---|---|
-| `okk/index.html` | `OLLAMA_API` | `http://178.63.16.109:11434/api` |
-| `scripts/inject_ai.py` | `_OLLAMA` | `http://178.63.16.109:11434/api` |
-| `recruiter/app.py` | `OLLAMA_BASE` | `http://178.63.16.109:11434` |
-
-### AI-панели по дашбордам
-
-| Дашборд | Специализация AI | Как реализовано |
-|---|---|---|
-| ОКК | Анализ качества КЦ, рекрутеры, критерии | Встроен напрямую в HTML |
-| WB | Выработка, штрафы, склады | Через `inject_ai.py` |
-| Финансы | P&L, рентабельность, тренды | Через `inject_ai.py` + кнопки 🤖 у каждого графика |
-| КП | Помощник по коммерческим предложениям | Через `inject_ai.py` |
-| HR-игра | Рекрутинговый ассистент | Через `inject_ai.py` |
-| AI-Рекрутер | Скрининг кандидатов из Google Sheets | Streamlit-приложение (`recruiter/app.py`) |
-
----
-
-## Дашборды (frontend)
-
-Все дашборды — **single-file HTML** со встроенными CSS и JS. Без npm, без сборки. Тёмная тема, шрифт Inter, графики Chart.js.
-
-### Главная
-**URL:** `/` | **Файл:** `index.html`
-Показывает 7 тайлов с переходами на разделы. Пароль не требует.
-
-### ОКК — Контроль качества
-**URL:** `/okk/` | **Источник:** Google Sheets (5 листов)
-
-Разделы: Сводка КЦ → Прослушка → Динамика обучения → МПП → ОРП → Опросы → AI Ассистент
-
-Особенности:
-- Рейтинг рекрутеров с радар-графиком по 21 критерию
-- Медали на карточках (🥇 лучший месяц, 📈 рост 3 мес, ⭐ >90%, 🎧 50+ звонков)
-- Сравнение «было/стало» по периодам
-
-### WB — Аутсорсинг
-**URL:** `/wb/`
-
-Разделы: Дашборд → Сотрудники → ФОТ → Аномалии → Карта России
-
-Особенности:
-- Автодетектор аномалий (штраф > 3× нормы) + отчёт для Telegram
-- SVG-карта ~40 городов России, цвет = коэффициент штраф/выручка
+**AI:** плавающая кнопка справа внизу. Контекст: `periods[curPeriod]` (выработка/штрафы/операции по выбранному периоду).
 
 ### Финансы
-**URL:** `/finance/`
 
-Разделы: KPI → Тренды → Waterfall → По дивизионам → По клиентам/городам
+**Источник:** CSV из GitHub.
 
-Особенности: кнопка `🤖 Объяснить` рядом с каждым графиком.
+**Метрики:** P&L по компаниям/филиалам, движение денежных средств, план-факт, проекты, маржа.
 
-### КП — Коммерческое предложение
-**URL:** `/kp/`
+**AI:** плавающая кнопка. После недавнего фикса видит **реальные числа**:
+- monthly aggregates
+- топ-5 проектов по выручке
+- убыточные проекты
+- топ-3 по марже
+- динамика за последние 3 месяца
 
-Конструктор КП с сохранением в БД. Шаблоны и история через `/tasks/api/kp`.
+### КП (Расчёт КП)
+
+**Назначение:** калькулятор стоимости услуг для коммерческих предложений.
+
+**AI:** объясняет расчёт, отвечает на вопросы про поля формы.
+
+### HR-Консультант
+
+**Назначение:** AI-чат для HR-вопросов о процессах найма/оформления/адаптации складского персонала.
+
+**AI:** обычный чат, без аналитики, **без контекста данных** — работает как обычный консультант LLM на промпте `hr-game`.
+
+⚠️ Прежняя ветка задумывалась как «игра» — оценка ответов рекрутёра, лидерборд — не реализовано.
 
 ### Задачник IT
-**URL:** `/tasks/` | **Backend:** FastAPI на `/tasks/api/`
 
-Разделы: Dashboard → Аналитика → Weekly Review → Задачи → Kanban → Gantt → Roadmap → ТЗ
+**Назначение:** командный центр IT-задач.
 
-47 активных задач, сохранение в SQLite, история изменений.
+**Возможности:** список, Kanban, Gantt, Roadmap, Weekly Review.
 
-### HR-игра
-**URL:** `/hr-game/`
-Геймификация для рекрутеров — баллы, рейтинги, ачивки.
+**Бэкенд:** SQLite через FastAPI (`/tasks/api/tasks/`, `/lists/`, `/kp/`).
 
-### AI-Рекрутер
-**URL:** `/recruiter/`
-Streamlit-приложение. Читает кандидатов из Google Sheets, проводит скрининг через Ollama.
+**AI:** **отсутствует.** Самая большая страница без ассистента.
+
+### Рекрутер
+
+**Назначение:** помощь рекрутёру в отработке возражений кандидатов.
+
+**Источники:**
+- ТЗ проектов из Google Sheets (`STATS_SHEET_ID`)
+- Учебник из Google Docs (`HANDBOOK_DOC_ID`)
+- Roadmap проектов (`ROADMAP_SHEET_ID`)
+
+**Логика:** `recruiter_logic.py` — извлекает релевантный кусок ТЗ под возражение через keyword-scoring, инжектит в промпт.
+
+**Кэш:** in-memory с TTL (handbook 24h, projects 5min, TZ 4h).
+
+**Формат ответа:** структурированный (АНАЛИЗ / ВАРИАНТ N / УТОЧНИТЬ / РЕКОМЕНДАЦИИ).
 
 ---
 
-## Backend сервисы
+## Бэкенд (FastAPI)
 
-### Tasks API (FastAPI + SQLite)
+**Файл:** `tasks/api/main.py` (~870 строк)
 
-**Порт:** 8601 | **Файл:** `tasks/api/main.py` | **База:** `tasks/api/tasks.db`
+**Запуск:** systemd-сервис `tasks-api.service` → `uvicorn main:app --host 127.0.0.1 --port 8601`
 
-**Схема БД:**
+**База:** SQLite (`tasks.db`, `recruiter.db`) рядом с `main.py`.
 
-| Таблица | Назначение |
-|---|---|
-| `tasks` | Задачи (id, title, data JSON, timestamps) |
-| `task_history` | Лог изменений (автоматически) |
-| `lists` | weekly_plan/fact, roadmap, gantt, tz |
-| `kp_history` | Сохранённые КП и шаблоны |
+### Основные эндпоинты
 
-**Endpoints:**
+| Метод | Путь | Назначение | Авторизация |
+|---|---|---|---|
+| `POST` | `/auth/check` | Проверка пароля → токен | — |
+| `GET` | `/admin/prompts` | Получить все промпты | `X-Auth-Token` или `?password=` |
+| `POST` | `/admin/prompts` | Сохранить промпты | то же |
+| `GET` | `/ai/prompt/{dashboard}` | Промпт для одного дашборда (публично) | — |
+| `GET` | `/ai/url` | Текущий ngrok-URL | — |
+| `POST` | `/ai/url` | Обновить ngrok-URL (whitelist `.ngrok-*`) | — |
+| `GET` | `/ai/proxy/tags` | Список моделей Ollama (через туннель) | — |
+| `POST` | `/ai/proxy/chat/stream` | Стриминг чата с Ollama | — |
+| `GET` | `/tasks/` | Список задач | — |
+| `POST` | `/tasks/` | Создать задачу | ⚠️ нет |
+| `PUT` | `/tasks/{id}` | Обновить | ⚠️ нет |
+| `DELETE` | `/tasks/{id}` | Удалить | ⚠️ нет |
+| `GET/POST/PUT/DELETE` | `/lists/*` | CRUD списков | ⚠️ нет |
+| `POST` | `/recruiter/generate` | Сгенерировать варианты ответа | — |
+| `POST` | `/recruiter/chat` | Чат-режим рекрутера | — |
 
-| Метод | Путь | Действие |
+⚠️ Эндпоинты задачника / списков **не защищены** — любой кто знает API-путь может изменить данные. См. roadmap.
+
+### Конфиг через env
+
+| Переменная | Дефолт | Назначение |
 |---|---|---|
-| GET | `/state` | Всё сразу (tasks + lists) |
-| GET/POST | `/tasks` | Список / создать |
-| GET/PUT/DELETE | `/tasks/{id}` | Одна задача |
-| GET | `/tasks/{id}/history` | История изменений |
-| PUT | `/lists/{name}` | Обновить список |
-| GET/POST/DELETE | `/kp` | КП и шаблоны |
-| GET | `/health` | `{"ok": true}` |
+| `ADMIN_PASSWORD` | `028511` | Пароль админки |
+| `PORTAL_PASSWORD` | `511028` | Пароль защищённых дашбордов |
 
-**CORS:** разрешён только с `http://195.208.119.67`.
+Прописывать в `/etc/systemd/system/tasks-api.service`:
+```ini
+[Service]
+Environment="ADMIN_PASSWORD=..." "PORTAL_PASSWORD=..."
+```
 
-### AI Recruiter (Streamlit)
-
-**Порт:** 8501 | **Файл:** `recruiter/app.py`
-
-Использует `service_account.json` для Google Sheets и Ollama (`178.63.16.109:11434`) для генерации.
+Затем `systemctl daemon-reload && systemctl restart tasks-api`.
 
 ---
 
-## Скрипты-инжекторы
+## Авторизация
 
-### `inject_auth.py`
-```bash
-python scripts/inject_auth.py <файл.html>
+### Принцип
+
+Пароли **никогда** не попадают в клиентский код. Проверка идёт серверным эндпоинтом `POST /auth/check`. Клиент после успешной проверки получает opaque-токен (HMAC-SHA256 от серверного секрета) и хранит его в `sessionStorage`.
+
+### Flow
+
 ```
-Добавляет оверлей с паролем. Пароль `511028` → `btoa()` = `NTExMDI4`.
-
-### `inject_ai.py`
-```bash
-python scripts/inject_ai.py <файл.html> <тип>
-# Типы: wb, finance, kp, hr-game
+Браузер                      FastAPI
+   │                            │
+   │  POST /auth/check          │
+   │  {password, kind}          │
+   ├───────────────────────────►│
+   │                            │ HMAC-проверка
+   │  {ok: true, token: "..."}  │
+   │◄───────────────────────────┤
+   │                            │
+   ▼ sessionStorage[K] = token
+   
+Следующая загрузка страницы:
+   │                            │
+   │ if (sessionStorage[K]) →   │
+   │   скрыть оверлей           │
 ```
-Добавляет плавающую кнопку 🤖 и чат-панель с подключением к Ollama.
 
-### `setup-server.sh`
-Запускается на VPS после каждого деплоя:
-1. Создаёт nginx-сниппеты (recruiter, tasks-api)
-2. Вставляет `include` в конфиги nginx (умный Python-парсер, без дубликатов)
-3. Проверяет внешний Ollama
-4. Создаёт/обновляет systemd-сервисы (recruiter, tasks-api)
-5. Перезапускает nginx
+### Что защищено
+
+| Объект | Тип | Пароль | Где |
+|---|---|---|---|
+| `wb/`, `finance/`, `kp/` | портал | `PORTAL_PASSWORD` | оверлей через `inject_auth.py` |
+| Главная, ОКК, HR, Задачник, Рекрутер | — | — | без пароля |
+| `/admin.html` | админка | `ADMIN_PASSWORD` | встроенный в HTML гейт + проверка через `/auth/check` |
+| `/admin/prompts` (API) | админка | токен `X-Auth-Token` или `?password=` | серверная проверка |
+
+### Серверный секрет
+
+`tasks/api/auth_secret.bin` — 32 случайных байта, генерируется один раз при первом старте FastAPI. **Если удалить — все выданные токены инвалидируются.** Файл должен быть в `.gitignore`.
+
+### ⚠️ Что НЕ защищено
+
+- API задачника (`/tasks/`, `/lists/`) — открыт всем, кто знает endpoint
+- AI-эндпоинты (`/ai/proxy/*`) — открыты (это нормально, проксируем публичные модели)
+- Файлы статики дашбордов в принципе открыты — оверлей пароля можно обойти через DevTools (sessionStorage можно подделать). Это защита от **случайного** просмотра, не от атаки.
+
+---
+
+## AI-инфраструктура
+
+### Стек
+
+- **Локально:** Ollama + ngrok
+- **VPS:** FastAPI-прокси
+- **Модель:** `qwen3:8b` (5.2 GB, помещается в 16GB RAM)
+
+### Поток запроса
+
+```
+браузер → /tasks/api/ai/proxy/chat/stream → FastAPI →
+HTTPS → https://...ngrok-free.dev/api/chat → ngrok →
+локальная Ollama (127.0.0.1:11434) → стрим NDJSON →
+обратно вверх по цепочке → браузер
+```
+
+### CORS
+
+Ollama должна запускаться с `OLLAMA_ORIGINS=*`. Переменная стоит в User env постоянно, после ребута компа Ollama tray её подхватывает.
+
+### Промпты
+
+Хранятся в `tasks/api/ai_prompts.json`. Ключи: `okk`, `wb`, `finance`, `kp`, `hr-game`, `recruiter`. Дефолты — в `DEFAULT_PROMPTS` в `main.py`. Редактируются через `admin.html`.
+
+### Сводка ассистентов
+
+| Дашборд | UX | Контекст | Качество |
+|---|---|---|---|
+| ОКК | кнопка ✨ + чат | Полные данные 5 листов | ★★★★☆ |
+| WB | плавающая 🤖 | Выработка/штрафы/операции (детально) | ★★★★☆ |
+| Финансы | плавающая 🤖 | P&L, топ-проекты, маржа, тренды (после фикса) | ★★★★☆ |
+| КП | плавающая 🤖 | Поля формы + результат | ★★★☆☆ |
+| HR | плавающая 🤖 | **Пустой контекст** — работает как general-purpose chat | ★★☆☆☆ |
+| Рекрутер | основной интерфейс | Релевантный кусок ТЗ + учебник | ★★★★★ |
+
+---
+
+## Деплой
+
+### Изменения в HTML/JS
+
+```bash
+scp -i ~/.ssh/okk_key_openssh path/to/file.html root@195.208.119.67:/var/www/okk/path/to/file.html
+```
+
+### Изменения в бэкенде
+
+```bash
+scp -i ~/.ssh/okk_key_openssh tasks/api/main.py root@195.208.119.67:/var/www/okk/tasks/api/main.py
+ssh -i ~/.ssh/okk_key_openssh root@195.208.119.67 "systemctl restart tasks-api"
+```
+
+### Проверка
+
+```bash
+ssh -i ~/.ssh/okk_key_openssh root@195.208.119.67 "systemctl is-active tasks-api && journalctl -u tasks-api -n 20"
+```
+
+---
+
+## VPS — что где
+
+| Что | Путь |
+|---|---|
+| Статика портала | `/var/www/okk/` |
+| FastAPI код | `/var/www/okk/tasks/api/` |
+| SQLite БД | `/var/www/okk/tasks/api/tasks.db`, `recruiter.db` |
+| Google credentials | `/root/google_credentials.json` (chmod 400 рекомендуется) |
+| systemd | `/etc/systemd/system/tasks-api.service` |
+| nginx config | `/etc/nginx/sites-enabled/okk` |
+| nginx logs | `/var/log/nginx/access.log`, `error.log` |
+| API logs | `journalctl -u tasks-api -f` |
+
+---
+
+## nginx-конфиг
+
+```nginx
+server {
+    listen 80;
+    server_name 195.208.119.67 _;
+    root /var/www/okk;
+    index index.html;
+
+    location /tasks/api/ {
+        proxy_pass http://127.0.0.1:8601/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;            # критично для стриминга
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+**Важно:** `proxy_buffering off` — без этого AI-стрим в браузер приходит большими блоками с задержками.
+
+---
+
+## Скрипты и инжекторы
+
+### `scripts/start-ai.ps1` (v2)
+
+Bulletproof-лаунчер AI. Делает:
+
+1. Pre-flight: ищет `ngrok.exe`, валидирует `ngrok config check`
+2. Убивает стейлые ngrok-процессы (бесплатный тариф = 1 сессия)
+3. Проверяет `OLLAMA_ORIGINS=*` в User env (ставит если нет)
+4. Запускает Ollama tray если не запущена
+5. Проверяет CORS preflight на Ollama
+6. Запускает ngrok с захватом stdout/stderr в `%LOCALAPPDATA%\sth-ai-launcher\ngrok.log`
+7. Fail-fast: если ngrok падает — сразу читает лог и ищет известные ошибки (`ERR_NGROK_108` = session limit, `ERR_NGROK_105` = auth)
+8. Получает HTTPS-URL из `127.0.0.1:4040/api/tunnels`
+9. Публикует URL на VPS: `POST http://195.208.119.67/tasks/api/ai/url`
+10. Keep-alive: каждые 15с проверяет жив ли туннель и процесс ngrok
+11. На выходе: чистит URL на VPS, гасит ngrok-процесс
+
+**Режим диагностики:** `start-ai.bat -Diagnose` или прямой вызов с флагом — все проверки без поднятия туннеля. Полезно когда что-то ломается.
+
+**Логи:** `%LOCALAPPDATA%\sth-ai-launcher\`:
+- `launch.log` — история запусков
+- `ngrok.log` — stdout ngrok с таймстампами
+- `ngrok.log.err` — stderr
+- `ollama.log` — если запускался свой ollama
+
+### `scripts/inject_ai.py`
+
+Инжектит плавающую AI-кнопку + чат в HTML дашбордов.
+
+**Использование:**
+```bash
+python scripts/inject_ai.py wb/index.html
+```
+
+**Что встраивает:**
+- кнопка 🤖 в правом нижнем углу
+- модалка чата с прокруткой
+- стриминг через `/tasks/api/ai/proxy/chat/stream`
+- сбор контекста из `window.chartData` / `window.dashboardData`
+
+### `scripts/inject_auth.py` (v2)
+
+Инжектит/удаляет парольный гейт.
+
+**Использование:**
+```bash
+python scripts/inject_auth.py inject wb/index.html finance/index.html kp/index.html
+python scripts/inject_auth.py remove old-protected-file.html
+```
+
+**Что встраивает:** оверлей на весь экран, форма пароля, при отправке делает POST на `/tasks/api/auth/check`. Пароль в коде НЕ хранится.
 
 ---
 
 ## Источники данных
 
-| Дашборд | Источник | Способ |
+| Дашборд | Источник | Тип |
 |---|---|---|
-| ОКК, WB, Финансы | Google Sheets | CSV-export (таблицы открыты по ссылке) |
-| Задачник | SQLite на VPS | FastAPI `/tasks/api/state` |
-| КП-история | SQLite на VPS | FastAPI `/tasks/api/kp` |
-| HR-игра | JSON в HTML | Статически |
+| ОКК | 5 Google Sheets | CSV-экспорт |
+| WB | GitHub `max511028-bit/WB` (приватный) | CSV |
+| Финансы | GitHub | CSV |
+| КП | поля формы | в браузере |
+| HR | — | только статичный промпт |
+| Задачник | FastAPI + SQLite | REST |
+| Рекрутер | Google Sheets (ТЗ) + Google Doc (учебник) + Google Sheets (roadmap) | API |
 
-Google Sheets загружаются через:
-```
-https://docs.google.com/spreadsheets/d/{ID}/export?format=csv&gid={GID}
-```
-Таблицы должны быть **«доступны по ссылке (просмотр)»**.
+### Google Service Account
 
----
+Используется для рекрутера. Credentials лежат в `/root/google_credentials.json` на VPS.
 
-## Безопасность
-
-| Что | Как защищено |
-|---|---|
-| Дашборды | Пароль `511028` через `btoa()` (защита от случайных пользователей) |
-| Tasks API | CORS только с `http://195.208.119.67` |
-| service_account.json | `chmod 600` после деплоя |
-| tasks.db | Не попадает в git, не удаляется rsync |
-| SSH-ключ VPS | Только в GitHub Secrets |
+Доступы выданы service account email на:
+- `STATS_SHEET_ID` (ТЗ проектов)
+- `HANDBOOK_DOC_ID` (учебник)
+- `ROADMAP_SHEET_ID` (roadmap)
 
 ---
 
-## Что делать если…
+## Запуск AI после ребута компа
 
-### …задачник пишет «Офлайн-режим»
-1. Открыть http://195.208.119.67/tasks/api/health
-2. Если 404 — посмотреть лог последнего GitHub Actions → шаг «Run server setup»
-3. Если `{"ok":true}` — очистить кэш браузера (Ctrl+Shift+R)
+1. Открой Ollama tray из меню «Пуск» (или дождись автозапуска — иконка в трее).
+2. Дабл-клик `start-ai.bat` в корне репо.
+3. В окне `cmd.exe` пройдут проверки → должна появиться зелёная строка `AI is available for all users!` с URL туннеля.
+4. **Не закрывай окно** — AI работает только пока оно открыто.
+5. Проверь админку: `http://195.208.119.67/admin.html` → пароль `028511` → вкладка «Статус AI» → должна быть зелёная точка.
 
-### …AI-ассистент не загружает модели
-1. Открыть http://178.63.16.109:11434/api/tags — работает ли Ollama IT-команды?
-2. Если работает но в браузере ошибка — IT нужно добавить `OLLAMA_ORIGINS=http://195.208.119.67`
-3. Если не работает — обратиться к IT-команде
+Если что-то пошло не так — см. [Troubleshooting](#troubleshooting).
 
-### …нужно поменять пароль
-```python
-import base64; print(base64.b64encode(b'НОВЫЙ_ПАРОЛЬ').decode())
-```
-Заменить `T='NTExMDI4'` в `scripts/inject_auth.py` → запустить inject_auth.py для всех HTML → push.
+---
 
-### …нужно добавить новый дашборд
-1. Создать `<имя>/index.html`
-2. Добавить тайл в `index.html`
-3. (опц.) `python scripts/inject_auth.py <имя>/index.html`
-4. (опц.) `python scripts/inject_ai.py <имя>/index.html <тип>`
-5. Push → автодеплой
+## Troubleshooting
 
-### …нужно посмотреть логи VPS
+### Скрипт `start-ai.bat` сразу закрылся
+
+Запусти из PowerShell вручную: `pwsh scripts\start-ai.ps1` — увидишь ошибку.
+
+### `Could not get tunnel URL`
+
+1. Запусти `start-ai.bat -Diagnose` — покажет на каком шаге падает.
+2. Посмотри лог: `%LOCALAPPDATA%\sth-ai-launcher\ngrok.log`.
+3. Частые причины:
+   - **`ERR_NGROK_108` (session limit)** → старая сессия не отвалилась. Зайди на https://dashboard.ngrok.com/agents и убей.
+   - **`ERR_NGROK_105` (auth)** → токен в `ngrok.yml` протух. Перепрописать: `ngrok config add-authtoken <TOKEN>`.
+   - **Port 4040 busy** → другой ngrok жив. `Get-Process ngrok | Stop-Process -Force`.
+
+### `Статус AI: Оффлайн` в админке
+
+1. Окно `start-ai.bat` ещё открыто? Если закрыли — перезапусти.
+2. `http://localhost:11434` в браузере должно отдавать `Ollama is running`.
+3. На VPS проверь URL: `curl http://195.208.119.67/tasks/api/ai/url` — должен быть не `null`.
+
+### AI отвечает «AI оффлайн» в браузере, но в админке всё ок
+
+Проверь DevTools → Network → запрос на `/tasks/api/ai/proxy/chat/stream` → код ответа и body. Возможно nginx не пускает или таймаут на стороне VPS.
+
+### Рекрутер: «Не нашлось ни одного проекта»
+
+На VPS пропал `google_credentials.json` или service account потерял доступ к таблице. Проверь:
 ```bash
-ssh root@195.208.119.67
-journalctl -u tasks-api -n 100 --no-pager
-journalctl -u recruiter -n 100 --no-pager
-tail -50 /var/log/nginx/error.log
+ssh root@195.208.119.67 "ls -la /root/google_credentials.json && cat /root/google_credentials.json | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"client_email\"])'"
 ```
 
-### …нужно бэкапнуть базу задачника
-```bash
-scp root@195.208.119.67:/var/www/okk/tasks/api/tasks.db ./backup-$(date +%F).db
-```
+### AI отвечает с задержкой, текст приходит блоками
+
+Проблема с `proxy_buffering` в nginx. Проверь `/etc/nginx/sites-enabled/okk` — для `/tasks/api/` должно быть `proxy_buffering off`.
+
+### Хочу сменить пароль
+
+1. SSH на VPS.
+2. Открой `/etc/systemd/system/tasks-api.service`, в `[Service]` добавь:
+   ```
+   Environment="ADMIN_PASSWORD=новыйпароль"
+   Environment="PORTAL_PASSWORD=другойпароль"
+   ```
+3. `systemctl daemon-reload && systemctl restart tasks-api`.
+4. Удали `tasks/api/auth_secret.bin` если хочешь инвалидировать старые сессии.
+
+---
+
+## История изменений
+
+### 2026-05-12 — Auth refactor + ngrok launcher v2
+
+- Пароли вынесены из клиентского JS на бэкенд (`/auth/check`)
+- HMAC-токены вместо `btoa(password)` сравнения
+- Защита оставлена только на wb / finance / kp
+- `start-ai.ps1` переписан: pre-flight checks, fail-fast, парсинг ошибок ngrok, режим `-Diagnose`
+- Запуск ngrok через `ngrok http 11434` инлайн (вместо `start <tunnel>`) — не зависит от секции `tunnels:` в yml
+- Финансы AI: реальный контекст (P&L, топ-проекты, маржа, тренды) вместо `JSON.stringify().slice(0,2000)`
+- HR: переименован из «HR-Игра» в честный «HR-Консультант»
+- Валидация ngrok-URL: whitelist `*.ngrok-free.dev/.app/.io`
+
+### 2026-05-XX — Streaming + Admin panel
+
+- Стриминг всех AI-ответов через NDJSON
+- Админ-панель с редактируемыми системными промптами
+- Рекрутер вынесен в отдельный интерфейс
+- Smart TZ extraction для рекрутера (keyword scoring)
+
+---
+
+## Известные проблемы и roadmap
+
+### Critical (нужно исправить)
+
+- [ ] **API задачника без авторизации** — любой может удалить чужие задачи через POST/DELETE
+- [ ] **HTTP, не HTTPS** — пароли и данные идут в открытом виде
+- [ ] **Rate-limiting на `/auth/check`** — можно брутфорсить
+- [ ] **Пароли в `.env`** — сейчас работают дефолты в коде
+
+### High
+
+- [ ] Whitelist для `/ai/url` в проде, отдельный токен для записи URL
+- [ ] `main.py` 870 строк в одном файле → разбить на handlers/services
+- [ ] Логирование вместо `print` / `except: pass`
+- [ ] Архивация SQLite раз в день
+
+### Medium
+
+- [ ] AI-ассистент в Задачник IT (самая большая страница без AI)
+- [ ] HR — реальная геймификация или удалить (сейчас просто чат)
+- [ ] SQLite-кэш для рекрутера (TZ + ответы)
+- [ ] Тесты на `recruiter_logic.py` (extract_relevant_tz, _detect_objection_type)
+- [ ] CI/CD: GitHub Actions для деплоя (сейчас всё руками SCP)
+- [ ] Единый компонент состояний loading/error/empty
+
+### Low
+
+- [ ] Минификация HTML/JS на nginx (Gzip, Brotli)
+- [ ] Lazy-load Chart.js
+- [ ] Метрика использования AI (по дашбордам / частые вопросы)
+- [ ] Бэкапы в S3 / другой VPS
+- [ ] Sentry или хотя бы лог-файл
+
+---
+
+## Контакты и доступы
+
+- **VPS:** `root@195.208.119.67` (SSH-ключ `okk_key_openssh`)
+- **ngrok dashboard:** https://dashboard.ngrok.com/agents
+- **GitHub:** https://github.com/max511028-bit/OKK
+- **Ollama tray:** трей Windows на компе пользователя
+
+---
+
+*Документация актуальна на 2026-05-12.*

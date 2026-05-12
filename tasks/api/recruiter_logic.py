@@ -467,12 +467,13 @@ def extract_relevant_handbook(handbook: str, objection: str) -> str:
     return result[:3000]  # ограничиваем учебник
 
 
-def build_prompt(tz: str, handbook: str, objection: str) -> str:
+def build_prompt(tz: str, handbook: str, objection: str, system_prompt: str = "") -> str:
     """Собрать промпт для генерации скрипта отработки (с умной вырезкой)."""
     tz_relevant = extract_relevant_tz(tz, objection)
     handbook_relevant = extract_relevant_handbook(handbook, objection)
+    sys = system_prompt.strip() if system_prompt and system_prompt.strip() else RECRUITER_SYSTEM_PROMPT
     return (
-        f"{RECRUITER_SYSTEM_PROMPT}\n\n"
+        f"{sys}\n\n"
         f"---\nТЗ ПРОЕКТА:\n{tz_relevant}\n\n"
         f"---\nУЧЕБНИК (релевантные разделы):\n{handbook_relevant}\n\n"
         f"---\nВОЗРАЖЕНИЕ КАНДИДАТА:\n{objection}\n\n"
@@ -487,6 +488,7 @@ def build_chat_prompt(
     first_answer: str,
     chat_history: list,
     user_message: str,
+    system_prompt: str = "",
 ) -> str:
     """Собрать промпт для уточняющего вопроса в диалоге."""
     tz_relevant = extract_relevant_tz(tz, user_message or objection)
@@ -495,8 +497,9 @@ def build_chat_prompt(
         f"{'Рекрутер' if m['role'] == 'user' else 'AI'}: {m['content']}"
         for m in chat_history[-6:]  # последние 6 сообщений достаточно
     )
+    sys = system_prompt.strip() if system_prompt and system_prompt.strip() else CHAT_SYSTEM_PROMPT
     return (
-        f"{CHAT_SYSTEM_PROMPT}\n\n"
+        f"{sys}\n\n"
         f"---\nТЗ ПРОЕКТА:\n{tz_relevant}\n\n"
         f"---\nУЧЕБНИК:\n{handbook_relevant}\n\n"
         f"---\nИСХОДНОЕ ВОЗРАЖЕНИЕ: {objection}\n\n"

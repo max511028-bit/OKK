@@ -3,3 +3,5 @@ tasks/api/google_credentials.json
 tasks/api/ai_url.json
 tasks/api/ai_prompts.json
 tasks/api/*.db
+tasks/api/auth_secret.bin
+%LOCALAPPDATA%/sth-ai-launcher/

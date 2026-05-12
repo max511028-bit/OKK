@@ -97,14 +97,62 @@ CONFIGS = {
 """,
         'build_ctx': r"""function _aiBuildCtx(){
   var lines=['=== ФИНАНСОВЫЙ ДАШБОРД STH GROUP ==='];
-  // Try to get data from global chart data if available
-  if(typeof window.chartData!=='undefined'){
-    try{lines.push(JSON.stringify(window.chartData).slice(0,2000));}catch(e){}
-  }
-  if(typeof window.dashboardData!=='undefined'){
-    try{lines.push(JSON.stringify(window.dashboardData).slice(0,2000));}catch(e){}
-  }
-  lines.push('(Данные встроены в дашборд — задай конкретный вопрос по видимым графикам)');
+  try{
+    if(typeof D==='undefined'){lines.push('Данные ещё не загружены.');return lines.join('\\n');}
+    // Активная вкладка
+    var act=document.querySelector('.tab-content.active');
+    var tabName=act?act.id.replace('tab-',''):'general';
+    lines.push('Активная вкладка: '+tabName);
+    // Период
+    var typeSel=document.getElementById(tabName+'PeriodType')||document.getElementById('generalPeriodType');
+    var valSel=document.getElementById(tabName+'PeriodVal')||document.getElementById('generalPeriodVal');
+    var typeV=typeSel?typeSel.value:'all',valV=valSel?valSel.value:'';
+    var keys=(typeof getMonthKeys==='function')?getMonthKeys(typeV,valV):[];
+    var label=(typeof getPeriodLabel==='function')?getPeriodLabel(typeV,valV):valV;
+    lines.push('Период: '+label+' ('+keys.length+' мес.)');
+    // Общая статистика
+    lines.push('Всего месяцев данных: '+D.monthly.length+', проектов: '+new Set(Object.values(D.projects_per_month).flat().map(function(p){return p.name;})).size+', клиентов: '+(D.clients||[]).length+', городов: '+(D.cities||[]).length);
+    // P&L агрегат по периоду
+    if(typeof aggregatePlRows==='function'){
+      var rows=aggregatePlRows(keys);
+      var pl={};
+      rows.forEach(function(r){pl[r.label]=r.value;});
+      var rev=pl['Выручка']||pl['Выручка с НДС']||0;
+      var prof=pl['Прибыль']||pl['Чистая прибыль']||pl['Маржинальная прибыль']||0;
+      var marg=rev>0?(prof/rev*100).toFixed(1):'0';
+      lines.push('Выручка: '+Math.round(rev).toLocaleString('ru-RU')+' руб');
+      lines.push('Прибыль: '+Math.round(prof).toLocaleString('ru-RU')+' руб');
+      lines.push('Рентабельность: '+marg+'%');
+    }
+    // Топ-проекты по выручке за период
+    var acc={};
+    keys.forEach(function(k){(D.projects_per_month[k]||[]).forEach(function(p){
+      if(!acc[p.name])acc[p.name]={rev:0,fin:0};
+      acc[p.name].rev+=p.rev||0;acc[p.name].fin+=(p.rev||0)*((p.margin||0)/100);
+    });});
+    var projs=Object.entries(acc).map(function(e){return{n:e[0],rev:e[1].rev,fin:e[1].fin,mar:e[1].rev>0?e[1].fin/e[1].rev*100:0};}).sort(function(a,b){return b.rev-a.rev;});
+    if(projs.length){
+      lines.push('Топ-5 проектов по выручке:');
+      projs.slice(0,5).forEach(function(p,i){lines.push((i+1)+'. '+p.n+': '+Math.round(p.rev).toLocaleString('ru-RU')+'р выр., '+p.mar.toFixed(1)+'% маржа');});
+      var loss=projs.filter(function(p){return p.fin<0;});
+      if(loss.length){lines.push('Убыточных проектов: '+loss.length+' — '+loss.slice(0,5).map(function(p){return p.n+'('+p.mar.toFixed(0)+'%)';}).join(', '));}
+      var byMar=projs.filter(function(p){return p.rev>50000;}).slice().sort(function(a,b){return b.mar-a.mar;});
+      if(byMar.length){lines.push('Топ-3 по марже (среди значимых): '+byMar.slice(0,3).map(function(p){return p.n+'('+p.mar.toFixed(1)+'%)';}).join(', '));}
+    }
+    // Дивизионы
+    if(typeof aggregateDivisions==='function'){
+      var divs=aggregateDivisions(keys);
+      if(divs&&divs.length){
+        lines.push('По дивизионам (выручка/маржа):');
+        divs.slice(0,5).forEach(function(d){lines.push('— '+d.div+': '+Math.round(d.revSum).toLocaleString('ru-RU')+'р, '+d.margin.toFixed(1)+'%');});
+      }
+    }
+    // Динамика по последним месяцам
+    if(D.monthly&&D.monthly.length){
+      var last3=D.monthly.slice(-3);
+      lines.push('Последние месяцы: '+last3.map(function(m){return m.label;}).join(', '));
+    }
+  }catch(e){lines.push('(ошибка сбора контекста: '+e.message+')');}
   return lines.join('\\n');
 }"""
     },

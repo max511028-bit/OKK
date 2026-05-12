@@ -318,7 +318,9 @@ def health():
 
 AI_URL_FILE    = Path(__file__).parent / "ai_url.json"
 PROMPTS_FILE   = Path(__file__).parent / "ai_prompts.json"
-ADMIN_PASSWORD = "028511"
+# Пароли читаются из env. Если не заданы — используем старые значения для обратной совместимости.
+ADMIN_PASSWORD  = os.getenv("ADMIN_PASSWORD",  "028511")
+PORTAL_PASSWORD = os.getenv("PORTAL_PASSWORD", "511028")
 
 DEFAULT_PROMPTS: dict = {
     "okk": (
@@ -424,14 +426,31 @@ def get_ai_url():
     return {"url": None}
 
 
+_ALLOWED_AI_HOST_SUFFIXES = (".ngrok-free.dev", ".ngrok-free.app", ".ngrok.io", ".ngrok.app")
+
+
 @app.post("/ai/url")
 def set_ai_url(payload: AIUrlPayload):
-    """Сохранить новый адрес Ollama (вызывается скриптом start-ai.ps1)."""
+    """Сохранить новый адрес Ollama (вызывается скриптом start-ai.ps1).
+
+    Принимаем только https-туннели ngrok или null (выключить ИИ).
+    """
+    url = payload.url
+    if url is not None:
+        if not isinstance(url, str) or not url.startswith("https://"):
+            raise HTTPException(400, "URL must start with https://")
+        # Извлечь host
+        try:
+            host = url.split("//", 1)[1].split("/", 1)[0].lower()
+        except IndexError:
+            raise HTTPException(400, "Invalid URL")
+        if not any(host.endswith(sfx) for sfx in _ALLOWED_AI_HOST_SUFFIXES):
+            raise HTTPException(400, f"Host not allowed. Must end with one of: {_ALLOWED_AI_HOST_SUFFIXES}")
     AI_URL_FILE.write_text(
-        json.dumps({"url": payload.url}, ensure_ascii=False),
+        json.dumps({"url": url}, ensure_ascii=False),
         encoding="utf-8",
     )
-    return {"ok": True, "url": payload.url}
+    return {"ok": True, "url": url}
 
 
 # ═══════════════════════════════════════════════
@@ -447,18 +466,73 @@ def get_prompt(dashboard: str):
     return {"dashboard": dashboard, "prompt": prompts[dashboard]}
 
 
+# ═══════════════════════════════════════════════
+# AUTH — серверная проверка паролей.
+# Пароли НЕ передаются клиенту, проверяются здесь.
+# Клиент после успешной проверки получает opaque-токен
+# и хранит его в sessionStorage. Без знания пароля
+# токен подобрать нельзя (HMAC от server-secret).
+# ═══════════════════════════════════════════════
+
+import hmac as _hmac
+import hashlib as _hashlib
+import secrets as _secrets
+
+# Серверный секрет — генерируется один раз, хранится рядом с БД.
+_SECRET_FILE = Path(__file__).parent / "auth_secret.bin"
+if _SECRET_FILE.exists():
+    _AUTH_SECRET = _SECRET_FILE.read_bytes()
+else:
+    _AUTH_SECRET = _secrets.token_bytes(32)
+    try:
+        _SECRET_FILE.write_bytes(_AUTH_SECRET)
+    except Exception:
+        pass
+
+def _make_token(kind: str) -> str:
+    """Детерминированный токен от (secret + kind). Один токен на все валидные сессии."""
+    return _hmac.new(_AUTH_SECRET, kind.encode("utf-8"), _hashlib.sha256).hexdigest()
+
+@app.post("/auth/check")
+async def auth_check(request: Request):
+    """Проверить пароль и вернуть opaque-токен."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Bad JSON")
+    pwd  = str(body.get("password", ""))
+    kind = str(body.get("kind", "portal"))
+    if kind == "admin":
+        expected = ADMIN_PASSWORD
+    elif kind == "portal":
+        expected = PORTAL_PASSWORD
+    else:
+        raise HTTPException(400, "Unknown kind")
+    if not _hmac.compare_digest(pwd, expected):
+        raise HTTPException(403, "Wrong password")
+    return {"ok": True, "token": _make_token(kind)}
+
+
+def _verify_token(token: str, kind: str) -> bool:
+    if not token:
+        return False
+    return _hmac.compare_digest(token, _make_token(kind))
+
+
 @app.get("/admin/prompts")
-def admin_get_prompts(password: str = ""):
-    """Вернуть все промпты (требует пароль)."""
-    if password != ADMIN_PASSWORD:
+def admin_get_prompts(password: str = "", request: Request = None):
+    """Вернуть все промпты. Принимает либо ?password=..., либо заголовок X-Auth-Token."""
+    token = request.headers.get("X-Auth-Token", "") if request else ""
+    if not (_hmac.compare_digest(password, ADMIN_PASSWORD) or _verify_token(token, "admin")):
         raise HTTPException(403, "Неверный пароль")
     return _load_prompts()
 
 
 @app.post("/admin/prompts")
 async def admin_save_prompts(request: Request, password: str = ""):
-    """Сохранить все промпты (требует пароль)."""
-    if password != ADMIN_PASSWORD:
+    """Сохранить все промпты (требует пароль или токен)."""
+    token = request.headers.get("X-Auth-Token", "")
+    if not (_hmac.compare_digest(password, ADMIN_PASSWORD) or _verify_token(token, "admin")):
         raise HTTPException(403, "Неверный пароль")
     body = await request.json()
     if not isinstance(body, dict):
@@ -635,7 +709,8 @@ async def recruiter_answer_stream(req: RecruiterAnswerReq):
 
     rl = _recruiter_logic()
     handbook = rl.load_handbook()
-    prompt = rl.build_prompt(req.tz, handbook, req.objection)
+    system_prompt = _load_prompts().get("recruiter", "")
+    prompt = rl.build_prompt(req.tz, handbook, req.objection, system_prompt=system_prompt)
 
     payload = json.dumps({
         "model": req.model,
@@ -692,9 +767,11 @@ async def recruiter_chat_stream(req: RecruiterChatReq):
 
     rl = _recruiter_logic()
     handbook = rl.load_handbook()
+    system_prompt = _load_prompts().get("recruiter", "")
     prompt = rl.build_chat_prompt(
         req.tz, handbook, req.objection,
-        req.first_answer, req.history, req.message
+        req.first_answer, req.history, req.message,
+        system_prompt=system_prompt,
     )
 
     payload = json.dumps({

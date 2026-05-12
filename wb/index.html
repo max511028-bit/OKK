@@ -310,8 +310,8 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
 <body>
 <script>
 (function(){
-  var T='NTExMDI4',K='p_auth';
-  if(sessionStorage.getItem(K)===T)return;
+  var K='p_auth';
+  if(sessionStorage.getItem(K))return;
   document.addEventListener('DOMContentLoaded',function(){
     var o=document.createElement('div');
     o.id='_pov';
@@ -325,15 +325,28 @@ td{padding:12px 14px;font-size:13px;white-space:nowrap}
       +'<button id="_pb" style="width:100%;padding:13px;background:#238636;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Войти</button>'
       +'</div>';
     document.body.appendChild(o);
-    setTimeout(function(){document.getElementById('_pi').focus();},80);
-    document.getElementById('_pi').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('_pb').click();});
-    document.getElementById('_pb').addEventListener('click',function(){
-      var v=document.getElementById('_pi').value;
-      try{
-        if(btoa(v)===T){sessionStorage.setItem(K,T);document.getElementById('_pov').remove();}
-        else{document.getElementById('_pe').textContent='Неверный пароль';document.getElementById('_pi').value='';}
-      }catch(e){document.getElementById('_pe').textContent='Error: '+e.message;}
-    });
+    setTimeout(function(){var pi=document.getElementById('_pi'); if(pi) pi.focus();},80);
+    function submit(){
+      var pi=document.getElementById('_pi'); var pe=document.getElementById('_pe'); var pb=document.getElementById('_pb');
+      var v=pi.value; if(!v) return;
+      pb.disabled=true; pb.textContent='…';
+      fetch('/tasks/api/auth/check',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({password:v,kind:'portal'})
+      }).then(function(r){
+        if(r.ok) return r.json();
+        throw new Error(r.status===403?'Неверный пароль':'Ошибка '+r.status);
+      }).then(function(d){
+        if(d&&d.token){sessionStorage.setItem(K,d.token); var ov=document.getElementById('_pov'); if(ov) ov.remove();}
+        else throw new Error('Нет токена');
+      }).catch(function(e){
+        pe.textContent=e.message||'Ошибка'; pi.value=''; pi.focus();
+        pb.disabled=false; pb.textContent='Войти';
+      });
+    }
+    document.getElementById('_pi').addEventListener('keydown',function(e){if(e.key==='Enter')submit();});
+    document.getElementById('_pb').addEventListener('click',submit);
   });
 })();
 </script>
