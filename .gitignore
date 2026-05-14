@@ -1,7 +1,42 @@
+# Бинари туннелей (большие, скачиваются отдельно)
 cloudflared*.exe
+ngrok.exe
+
+# Секреты и креды
 tasks/api/google_credentials.json
+tasks/api/auth_secret.bin
+recruiter/service_account.json
+scripts/.secrets/
+*.pem
+*.key
+!*.key.example
+.env
+.env.*
+
+# Локальные данные backend (генерируются на сервере)
 tasks/api/ai_url.json
 tasks/api/ai_prompts.json
 tasks/api/*.db
-tasks/api/auth_secret.bin
+
+# Логи и временные файлы валидации/тестов
+*.log
+validation-*.json
+test_parsers.js
+test-ngrok.*
+
+# Node / Vite артефакты (sales/)
+node_modules/
+dist/
+.cache/
+.vite/
+
+# Локальные launcher-папки
 %LOCALAPPDATA%/sth-ai-launcher/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~

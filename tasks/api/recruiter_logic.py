@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Optional
 
 # ── КОНСТАНТЫ ─────────────────────────────────────────────────────────────────
-ROADMAP_SHEET_ID = "1JTn8c7-hQz3zGRjsOLTxNpVmowBLCGYA4GF0wfC26go"
-HANDBOOK_DOC_ID  = "1m7h5FRgra-ZFllYsKUgpV2Frt2rtAKpcTpPcmTPpkhs"
+ROADMAP_SHEET_ID = "1JTn8c7-hQz3zGRjsOLTxNpVmowBLCGYA4GF0wfC26go"  # TODO: переключить на 1yhXUAQ3mY9-ZhFRmvtLGiXJoSRdU1gg6_utCJ_3aBao после настройки Apps Script для столбца I
+HANDBOOK_DOC_ID  = "1dSPa9q_yry1q-v2q3ccuYElPCfRRjAbM7iNKwm_DR7U"
 STATS_SHEET_ID   = "1E_glmHFjFynYZLC5HsZywmOT6uNY4L6BfjRRHTiSm9A"
 
 SCOPES = [

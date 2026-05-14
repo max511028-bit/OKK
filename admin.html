@@ -176,6 +176,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
       <button class="sidebar-tab" onclick="showTab('status')" id="tab-btn-status">
         <span class="tab-icon">📡</span>Статус AI
       </button>
+      <button class="sidebar-tab" onclick="showTab('ai-logs')" id="tab-btn-ai-logs">
+        <span class="tab-icon">📊</span>Логи ИИ
+      </button>
+      <button class="sidebar-tab" onclick="showTab('ai-tests')" id="tab-btn-ai-tests">
+        <span class="tab-icon">🧪</span>Тесты ИИ
+      </button>
     </nav>
 
     <!-- Content -->
@@ -294,6 +300,114 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
         </div>
       </div>
 
+      <!-- ═══ AI LOGS PANEL ═══ -->
+      <div class="admin-panel" id="panel-ai-logs">
+        <div class="panel-title">Логи запросов ИИ</div>
+        <div class="panel-sub">Последние запросы пользователей, токены, латентность. Хранятся в tasks.db, чистятся еженедельно.</div>
+
+        <!-- Stats cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+          <div class="info-card" style="margin:0;padding:18px;">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Всего за всё время</div>
+            <div style="font-size:24px;font-weight:800;" id="lg-total">—</div>
+          </div>
+          <div class="info-card" style="margin:0;padding:18px;">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">За 24 часа</div>
+            <div style="font-size:24px;font-weight:800;" id="lg-24h">—</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:4px;" id="lg-24h-tokens">—</div>
+          </div>
+          <div class="info-card" style="margin:0;padding:18px;">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Cache hits (24h)</div>
+            <div style="font-size:24px;font-weight:800;" id="lg-cache">—</div>
+          </div>
+          <div class="info-card" style="margin:0;padding:18px;">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Средняя латентность</div>
+            <div style="font-size:24px;font-weight:800;" id="lg-latency">—</div>
+          </div>
+        </div>
+
+        <!-- Filter + reload -->
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+          <select id="lg-filter" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text1);padding:8px 12px;font-size:13px;outline:none;font-family:inherit;">
+            <option value="">Все дашборды</option>
+            <option value="okk">OKK</option>
+            <option value="wb">WB</option>
+            <option value="finance">Finance</option>
+            <option value="kp">KP</option>
+            <option value="hr-game">HR-Game</option>
+            <option value="recruiter">Recruiter</option>
+            <option value="tasks">Tasks</option>
+            <option value="unknown">Неопределён</option>
+          </select>
+          <button class="btn-reset" onclick="loadAiLogs()">↻ Обновить</button>
+          <span style="font-size:12px;color:var(--text3);" id="lg-count"></span>
+        </div>
+
+        <!-- Table -->
+        <div class="info-card" style="padding:0;overflow:hidden;">
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;" id="lg-table">
+              <thead>
+                <tr style="background:var(--bg3);">
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Время</th>
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Дашборд</th>
+                  <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Вопрос</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Tokens (in/out)</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Латентность</th>
+                  <th style="text-align:center;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Cache</th>
+                </tr>
+              </thead>
+              <tbody id="lg-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3);">Нажмите «Обновить» для загрузки</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- By dashboard breakdown -->
+        <div style="margin-top:24px;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px;">По дашбордам за 7 дней</div>
+          <div class="info-card" id="lg-by-dashboard">—</div>
+        </div>
+      </div>
+
+      <!-- ═══ AI TESTS PANEL ═══ -->
+      <div class="admin-panel" id="panel-ai-tests">
+        <div class="panel-title">Smoke-тесты ИИ</div>
+        <div class="panel-sub">
+          Автоматически прогоняются 2 раза в день (09:00 и 21:00 МСК) — каждому дашборду задаётся 1 канонический вопрос.<br>
+          Считается «прошёл», если ответ непустой (≥20 символов) и без ошибок.
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;">
+          <button class="btn-save" id="tst-run-btn" onclick="runSmoke()">▶️ Запустить сейчас</button>
+          <button class="btn-reset" onclick="loadTestRuns()">↻ Обновить</button>
+          <span class="save-status" id="tst-status"></span>
+        </div>
+
+        <!-- Latest run -->
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;">Последний прогон</div>
+        <div class="info-card" id="tst-latest" style="margin-bottom:24px;">Загрузка...</div>
+
+        <!-- History -->
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;">История прогонов</div>
+        <div class="info-card" style="padding:0;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:var(--bg3);">
+                <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Время</th>
+                <th style="text-align:left;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Run ID</th>
+                <th style="text-align:right;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Прошло / всего</th>
+                <th style="text-align:right;padding:10px 12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);">Общая латентность</th>
+              </tr>
+            </thead>
+            <tbody id="tst-history-tbody">
+              <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3);">Загрузка...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -361,7 +475,167 @@ function showTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('tab-btn-' + name).classList.add('active');
   if (name === 'status') loadStatus();
+  if (name === 'ai-logs') { loadAiLogsStats(); loadAiLogs(); }
+  if (name === 'ai-tests') { loadTestRuns(); }
 }
+
+// ── AI Smoke Tests ──
+async function loadTestRuns(){
+  const latestEl = document.getElementById('tst-latest');
+  const tbody = document.getElementById('tst-history-tbody');
+  latestEl.textContent = 'Загрузка...';
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3);">Загрузка...</td></tr>';
+  try {
+    const r = await fetch(`${API}/admin/ai-test-runs?limit=200`, {headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    // Latest
+    const items = (d.latest && d.latest.items) || [];
+    if(!items.length){
+      latestEl.textContent = 'Прогонов пока не было. Нажмите «Запустить сейчас».';
+    } else {
+      latestEl.innerHTML = '<div style="padding:0;">' + items.map(it => {
+        const color = it.ok ? 'var(--green)' : 'var(--red)';
+        const icon = it.ok ? '✓' : '✗';
+        const lat = it.latency_ms ? `${it.latency_ms} ms` : '—';
+        const pt = it.prompt_tokens || 0, ct = it.completion_tokens || 0;
+        const err = it.error ? `<div style="color:var(--red);font-size:11px;margin-top:6px;">ERR: ${_escHtml(it.error)}</div>` : '';
+        const snip = (it.response_snippet||'').slice(0, 240);
+        return `<div class="info-row" style="flex-direction:column;align-items:stretch;gap:6px;padding:14px 0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="color:${color};font-weight:700;font-size:14px;">${icon} ${_escHtml(it.dashboard)}</span>
+            <span style="font-size:11px;color:var(--text3);font-family:monospace;">${lat} · ${pt} in / ${ct} out</span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);">${_escHtml(it.question)}</div>
+          <div style="font-size:11px;color:var(--text3);font-style:italic;">${_escHtml(snip)}${(it.response_snippet||'').length>240?'…':''}</div>
+          ${err}
+        </div>`;
+      }).join('') + '</div>';
+    }
+    // History
+    const runs = d.runs || [];
+    if(!runs.length){
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3);">Прогонов нет</td></tr>';
+    } else {
+      tbody.innerHTML = runs.map(run => {
+        const total = run.total||0, okC = run.ok_count||0;
+        const okColor = okC===total ? 'var(--green)' : okC===0 ? 'var(--red)' : 'var(--yellow)';
+        const totalLat = run.total_lat||0;
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:10px 12px;color:var(--text3);font-family:monospace;font-size:11px;">${_fmtTs(run.ts)}</td>
+          <td style="padding:10px 12px;font-family:monospace;font-size:11px;color:var(--text2);">${_escHtml(run.run_id||'')}</td>
+          <td style="padding:10px 12px;text-align:right;color:${okColor};font-weight:600;">${okC} / ${total}</td>
+          <td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:11px;color:var(--text2);">${totalLat} ms</td>
+        </tr>`;
+      }).join('');
+    }
+  } catch(e){
+    latestEl.textContent = 'Ошибка: ' + e.message;
+  }
+}
+
+async function runSmoke(){
+  const btn = document.getElementById('tst-run-btn');
+  const status = document.getElementById('tst-status');
+  btn.disabled = true; btn.textContent = '⏳ Прогоняю (до 5 мин)...';
+  status.className = 'save-status'; status.textContent = '';
+  try {
+    const r = await fetch(`${API}/admin/ai-smoke-run`, {method:'POST', headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    status.textContent = `✓ Прошло ${d.ok} из ${d.total}`;
+    status.className = 'save-status ' + (d.failed ? 'err' : 'ok');
+    await loadTestRuns();
+  } catch(e){
+    status.textContent = '✗ ' + e.message;
+    status.className = 'save-status err';
+  }
+  btn.disabled = false; btn.innerHTML = '▶️ Запустить сейчас';
+}
+
+// ── AI Logs ──
+function _escHtml(s){
+  if(s==null) return '';
+  return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+}
+function _fmtTs(ts){
+  if(!ts) return '—';
+  try { return new Date(ts.replace(' ','T')+'Z').toLocaleString('ru'); } catch(e){ return ts; }
+}
+async function loadAiLogsStats(){
+  try {
+    const r = await fetch(`${API}/admin/ai-logs/stats`, {headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    document.getElementById('lg-total').textContent = d.total ?? 0;
+    const l24 = d.last_24h || {};
+    const total24 = l24.count || 0;
+    document.getElementById('lg-24h').textContent = total24;
+    const pt = l24.prompt_tokens || 0, ct = l24.completion_tokens || 0;
+    document.getElementById('lg-24h-tokens').textContent = `tokens: ${pt} in / ${ct} out`;
+    const hits = l24.cache_hits || 0;
+    const rate = total24 ? Math.round(hits*100/total24) : 0;
+    document.getElementById('lg-cache').textContent = `${hits} (${rate}%)`;
+    const lat = l24.avg_latency_ms;
+    document.getElementById('lg-latency').textContent = (lat && lat > 0) ? `${Math.round(lat)} ms` : '—';
+    const byD = d.by_dashboard_7d || [];
+    if(byD.length){
+      const html = byD.map(row => `
+        <div class="info-row">
+          <span class="info-label">${_escHtml(row.dashboard||'—')}</span>
+          <span class="info-val">${row.n || 0} запросов</span>
+        </div>`).join('');
+      document.getElementById('lg-by-dashboard').innerHTML = html;
+    } else {
+      document.getElementById('lg-by-dashboard').textContent = 'Данных пока нет';
+    }
+  } catch(e){
+    document.getElementById('lg-total').textContent = 'err';
+  }
+}
+async function loadAiLogs(){
+  const tbody = document.getElementById('lg-tbody');
+  const filter = document.getElementById('lg-filter').value;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);">Загружаю...</td></tr>';
+  try {
+    const url = `${API}/admin/ai-logs?limit=200` + (filter ? `&dashboard=${encodeURIComponent(filter)}` : '');
+    const r = await fetch(url, {headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    const items = d.items || [];
+    document.getElementById('lg-count').textContent = `показано: ${items.length}`;
+    if(!items.length){
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3);">Нет записей</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(it => {
+      const q = (it.question||'').slice(0,140);
+      const resp = (it.response||'').slice(0,500);
+      const pt = it.prompt_tokens || 0, ct = it.completion_tokens || 0;
+      const lat = it.latency_ms ? `${it.latency_ms} ms` : '—';
+      const cache = it.cache_hit ? '✓' : '—';
+      const err = it.error ? `<div style="color:var(--red);font-size:11px;margin-top:4px;">ERR: ${_escHtml(it.error)}</div>` : '';
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:10px 12px;color:var(--text3);white-space:nowrap;font-family:monospace;font-size:11px;">${_fmtTs(it.ts)}</td>
+        <td style="padding:10px 12px;"><span style="background:var(--bg3);padding:2px 8px;border-radius:6px;font-size:11px;">${_escHtml(it.dashboard||'—')}</span></td>
+        <td style="padding:10px 12px;max-width:380px;">
+          <div style="font-size:12px;color:var(--text1);" title="${_escHtml(it.question||'')}">${_escHtml(q)}${(it.question||'').length>140?'…':''}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;cursor:pointer;" onclick="this.style.maxHeight=this.style.maxHeight?'':'none';" title="${_escHtml(it.response||'')}">${_escHtml(resp)}${(it.response||'').length>500?'…':''}</div>
+          ${err}
+        </td>
+        <td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:11px;color:var(--text2);white-space:nowrap;">${pt} / ${ct}</td>
+        <td style="padding:10px 12px;text-align:right;font-family:monospace;font-size:11px;color:var(--text2);">${lat}</td>
+        <td style="padding:10px 12px;text-align:center;color:${it.cache_hit?'var(--green)':'var(--text3)'};">${cache}</td>
+      </tr>`;
+    }).join('');
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--red);">Ошибка: ${_escHtml(e.message)}</td></tr>`;
+  }
+}
+document.addEventListener('DOMContentLoaded', function(){
+  var f = document.getElementById('lg-filter');
+  if(f) f.addEventListener('change', loadAiLogs);
+});
 
 // ── Load prompts ──
 async function loadPrompts() {
@@ -464,5 +738,47 @@ async function loadStatus() {
   }
 }
 </script>
+
+<!-- STH_AI_HEALTH_BANNER_START -->
+<style>
+#_sth_ai_offline_banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #b91c1c; color: #fff;
+  padding: 8px 16px; text-align: center;
+  font: 600 13px/1.4 Inter, system-ui, sans-serif;
+  z-index: 99999; display: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#_sth_ai_offline_banner.show { display: block; }
+</style>
+<div id="_sth_ai_offline_banner">⚠️ ИИ временно недоступен — отвечать не сможет. Команда уже видит проблему.</div>
+<script>
+(function() {
+  const URL = '/tasks/api/ai/health';
+  const EL = () => document.getElementById('_sth_ai_offline_banner');
+  let _lastOnline = null;
+  async function _check() {
+    try {
+      const r = await fetch(URL, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const online = !!d.online;
+      const el = EL();
+      if (el) el.classList.toggle('show', !online);
+      _lastOnline = online;
+    } catch (e) {
+      const el = EL();
+      if (el) el.classList.add('show');
+    }
+  }
+  // Первая проверка через 2 сек после загрузки, далее раз в 60 сек
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(_check, 2000);
+    setInterval(_check, 60000);
+  });
+})();
+</script>
+<!-- STH_AI_HEALTH_BANNER_END -->
+
 </body>
 </html>

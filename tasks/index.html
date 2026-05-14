@@ -1124,6 +1124,101 @@ td {
 .focus-banner.show { display: block; }
 
 </style>
+<!-- STH_MOBILE_CSS_START -->
+<style id="_sth_mobile_overrides">
+/* ============ STH GLOBAL MOBILE OVERRIDES ============ */
+@media (max-width: 768px) {
+  html, body { font-size: 14px; }
+  /* Любой grid с >=2 колонками → 1 колонка */
+  [class*="grid"], [class*="-grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  /* Таблицы — горизонтальный скролл через обёртку, либо сама таблица */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  /* Большие падинги/маргины ужать */
+  .container, main, .main, .content, .page-content {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  /* Заголовки тише */
+  h1 { font-size: 22px !important; line-height: 1.25; }
+  h2 { font-size: 18px !important; line-height: 1.3; }
+  h3 { font-size: 16px !important; }
+  /* Сайдбар/навигация — на всю ширину сверху */
+  aside, .sidebar, nav.side, .side-nav {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  /* Кнопки потолще для пальцев */
+  button, .btn, [role="button"] {
+    min-height: 40px;
+  }
+  /* Карточки KPI — на всю ширину */
+  .card, .kpi, .metric, .stat-card, .stat {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* Графики — никогда не вылезают за экран */
+  canvas, svg, .chart, [class*="chart"] {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  html, body { font-size: 13px; }
+  h1 { font-size: 19px !important; }
+  h2 { font-size: 16px !important; }
+  /* AI-панель — почти fullscreen */
+  #_ai_panel, #_tai_panel {
+    width: calc(100vw - 16px) !important;
+    height: calc(100vh - 100px) !important;
+    bottom: 80px !important;
+    right: 8px !important;
+    left: 8px !important;
+    max-width: none !important;
+    max-height: none !important;
+  }
+  #_ai_btn, #_tai_btn {
+    bottom: 16px !important;
+    right: 16px !important;
+    width: 50px !important;
+    height: 50px !important;
+  }
+  /* Плашка «ИИ оффлайн» — мельче чтоб не съедала пол-экрана */
+  #_sth_ai_offline_banner {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+  /* Скрываем длинные subtitle/decoration на самых мелких */
+  .subtitle, .desc-long, .label-decoration { display: none; }
+  /* Padding ещё уменьшаем */
+  .container, main, .main, .content, .page-content,
+  .panel, .section, section {
+    padding: 8px !important;
+  }
+}
+
+/* На любых размерах если viewport узкий — таблицы прокручиваются */
+@media (max-width: 1024px) {
+  .table-wrap, .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+</style>
+<!-- STH_MOBILE_CSS_END -->
+
 </head>
 <body>
 
@@ -3375,6 +3470,77 @@ function initCharts() {
 // ═══════════════════════════════════════════════
 const API_BASE = '/tasks/api';
 
+// ─── Lazy-auth: пароль спрашивается только при первой попытке изменить данные ───
+// Токен живёт в sessionStorage пока вкладка открыта. Возвращает токен или null (если юзер отменил/неверный пароль).
+function _ensurePortalToken(){
+  return new Promise(function(resolve){
+    var existing = sessionStorage.getItem('p_auth');
+    if(existing){ resolve(existing); return; }
+    // Если уже открыта модалка — переиспользуем её Promise
+    if(window.__authPromise){ resolve(window.__authPromise); return; }
+    window.__authPromise = new Promise(function(res){
+      var o = document.createElement('div');
+      o.id = '_lpov';
+      o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:2147483647;font-family:Inter,system-ui,sans-serif';
+      o.innerHTML = '<div style="background:#161b22;border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:36px 32px;width:340px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.6);color:#f0f6fc">'
+        +'<div style="font-size:34px;margin-bottom:14px">🔒</div>'
+        +'<div style="font-size:18px;font-weight:700;margin-bottom:6px">Нужен пароль</div>'
+        +'<div style="font-size:13px;color:#8b949e;margin-bottom:20px">Для изменения задач</div>'
+        +'<input id="_lpi" type="password" placeholder="Пароль" style="width:100%;padding:11px 14px;background:#0d1117;border:1px solid rgba(255,255,255,.15);border-radius:10px;color:#f0f6fc;font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box" />'
+        +'<div id="_lpe" style="color:#f85149;font-size:12px;margin-bottom:10px;min-height:16px"></div>'
+        +'<div style="display:flex;gap:8px"><button id="_lpc" style="flex:1;padding:11px;background:#21262d;border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#f0f6fc;font-size:14px;cursor:pointer">Отмена</button>'
+        +'<button id="_lpb" style="flex:1;padding:11px;background:#238636;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Войти</button></div>'
+        +'</div>';
+      document.body.appendChild(o);
+      var pi = document.getElementById('_lpi');
+      var pe = document.getElementById('_lpe');
+      var pb = document.getElementById('_lpb');
+      var pc = document.getElementById('_lpc');
+      setTimeout(function(){ pi.focus(); }, 60);
+      function done(token){
+        var ov = document.getElementById('_lpov'); if(ov) ov.remove();
+        window.__authPromise = null;
+        res(token);
+      }
+      function submit(){
+        var v = pi.value; if(!v) return;
+        pb.disabled = true; pb.textContent = '…';
+        fetch('/tasks/api/auth/check', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({password:v, kind:'portal'})
+        }).then(function(r){
+          if(r.ok) return r.json();
+          throw new Error(r.status===403 ? 'Неверный пароль' : 'Ошибка '+r.status);
+        }).then(function(d){
+          if(d && d.token){
+            sessionStorage.setItem('p_auth', d.token);
+            done(d.token);
+          } else throw new Error('Нет токена');
+        }).catch(function(e){
+          pe.textContent = e.message || 'Ошибка';
+          pi.value = ''; pi.focus();
+          pb.disabled = false; pb.textContent = 'Войти';
+        });
+      }
+      pi.addEventListener('keydown', function(e){
+        if(e.key === 'Enter') submit();
+        if(e.key === 'Escape') done(null);
+      });
+      pb.addEventListener('click', submit);
+      pc.addEventListener('click', function(){ done(null); });
+    });
+    window.__authPromise.then(resolve);
+  });
+}
+
+async function _authHeaders(extra){
+  var t = await _ensurePortalToken();
+  var h = Object.assign({}, extra||{});
+  if(t) h['X-Auth-Token'] = t;
+  return h;
+}
+
 window.API_ONLINE = false;
 async function apiLoadAll(retries){
   retries = retries==null ? 3 : retries;
@@ -3404,21 +3570,30 @@ async function apiLoadAll(retries){
 }
 async function apiSaveTask(task){
   try{
-    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(task.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
+    const headers = await _authHeaders({'Content-Type':'application/json'});
+    if(!headers['X-Auth-Token']){ showToast('🔒 Изменения отменены','warn'); return null; }
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(task.id),{method:'PUT',headers,body:JSON.stringify(task)});
+    if(r.status===401){ sessionStorage.removeItem('p_auth'); showToast('🔒 Сессия истекла, повторите','warn'); return null; }
     if(!r.ok) throw new Error('HTTP '+r.status);
     return await r.json();
   }catch(e){ showToast('❌ Не сохранено: '+e.message,'err'); return null; }
 }
 async function apiCreateTask(task){
   try{
-    const r = await fetch(API_BASE+'/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(task)});
+    const headers = await _authHeaders({'Content-Type':'application/json'});
+    if(!headers['X-Auth-Token']){ showToast('🔒 Создание отменено','warn'); return null; }
+    const r = await fetch(API_BASE+'/tasks',{method:'POST',headers,body:JSON.stringify(task)});
+    if(r.status===401){ sessionStorage.removeItem('p_auth'); showToast('🔒 Сессия истекла, повторите','warn'); return null; }
     if(!r.ok) throw new Error('HTTP '+r.status);
     return await r.json();
   }catch(e){ showToast('❌ Не создано: '+e.message,'err'); return null; }
 }
 async function apiDeleteTask(id){
   try{
-    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(id),{method:'DELETE'});
+    const headers = await _authHeaders();
+    if(!headers['X-Auth-Token']){ showToast('🔒 Удаление отменено','warn'); return false; }
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(id),{method:'DELETE',headers});
+    if(r.status===401){ sessionStorage.removeItem('p_auth'); showToast('🔒 Сессия истекла, повторите','warn'); return false; }
     if(!r.ok) throw new Error('HTTP '+r.status);
     return true;
   }catch(e){ showToast('❌ Не удалено: '+e.message,'err'); return false; }
@@ -3556,5 +3731,409 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 
+
+
+<!-- STH_AI_HEALTH_BANNER_START -->
+<style>
+#_sth_ai_offline_banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #b91c1c; color: #fff;
+  padding: 8px 16px; text-align: center;
+  font: 600 13px/1.4 Inter, system-ui, sans-serif;
+  z-index: 99999; display: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#_sth_ai_offline_banner.show { display: block; }
+</style>
+<div id="_sth_ai_offline_banner">⚠️ ИИ временно недоступен — отвечать не сможет. Команда уже видит проблему.</div>
+<script>
+(function() {
+  const URL = '/tasks/api/ai/health';
+  const EL = () => document.getElementById('_sth_ai_offline_banner');
+  let _lastOnline = null;
+  async function _check() {
+    try {
+      const r = await fetch(URL, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const online = !!d.online;
+      const el = EL();
+      if (el) el.classList.toggle('show', !online);
+      _lastOnline = online;
+    } catch (e) {
+      const el = EL();
+      if (el) el.classList.add('show');
+    }
+  }
+  // Первая проверка через 2 сек после загрузки, далее раз в 60 сек
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(_check, 2000);
+    setInterval(_check, 60000);
+  });
+})();
+</script>
+<!-- STH_AI_HEALTH_BANNER_END -->
+
+<!-- ═══ TASKS AI ASSISTANT ═══════════════════════════════════════════════════ -->
+<style>
+#_tai_btn{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;color:#fff;font-size:26px;cursor:pointer;z-index:9990;box-shadow:0 4px 22px rgba(59,130,246,.5);display:flex;align-items:center;justify-content:center;}
+#_tai_btn:hover{transform:scale(1.08);}
+#_tai_panel{position:fixed;bottom:92px;right:24px;width:420px;max-width:calc(100vw - 32px);height:620px;max-height:calc(100vh - 120px);background:#161b22;border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.7);z-index:9989;display:none;flex-direction:column;overflow:hidden;font-family:Inter,system-ui,sans-serif;color:#e5e7eb;}
+#_tai_panel.open{display:flex;}
+#_tai_head{padding:12px 16px;background:#0d1117;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;}
+#_tai_head .ttl{font-weight:700;flex:1;font-size:14px;}
+#_tai_msel{background:#161b22;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#94a3b8;font-size:11px;padding:3px 6px;max-width:140px;}
+#_tai_clear,#_tai_close{background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:0 4px;}
+#_tai_msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+._tai_msg{max-width:90%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word;white-space:pre-wrap;}
+._tai_msg.u{align-self:flex-end;background:rgba(59,130,246,.22);border:1px solid rgba(59,130,246,.35);border-bottom-right-radius:3px;}
+._tai_msg.b{align-self:flex-start;background:#1e293b;border:1px solid rgba(255,255,255,.07);border-bottom-left-radius:3px;}
+._tai_card{align-self:stretch;background:#0d1f33;border:1px solid #1e40af;border-radius:10px;padding:11px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px;}
+._tai_card .act{font-weight:700;color:#93c5fd;font-size:11px;text-transform:uppercase;}
+._tai_card .desc{color:#cbd5e1;font-size:13px;line-height:1.4;}
+._tai_card .row{display:flex;gap:8px;justify-content:flex-end;}
+._tai_card button{padding:6px 14px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;}
+._tai_card .ok{background:#16a34a;color:#fff;}
+._tai_card .ok:hover{background:#15803d;}
+._tai_card .no{background:#374151;color:#e5e7eb;}
+._tai_card .danger{background:#dc2626;}
+._tai_card.done{opacity:.65;}
+._tai_card .status{font-size:11px;color:#9ca3af;}
+#_tai_input_row{padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:8px;}
+#_tai_input{flex:1;background:#0d1117;border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#f0f6fc;padding:9px 12px;font-size:13px;outline:none;resize:none;font-family:inherit;}
+#_tai_input:focus{border-color:rgba(59,130,246,.5);}
+#_tai_send{background:#3b82f6;border:none;border-radius:9px;color:#fff;padding:9px 14px;font-size:16px;cursor:pointer;}
+#_tai_send:disabled{background:#334155;cursor:not-allowed;}
+#_tai_chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 0;flex-shrink:0;max-height:120px;overflow-y:auto;}
+._tai_chip{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:18px;padding:5px 11px;font-size:11px;color:#60a5fa;cursor:pointer;white-space:nowrap;transition:background .15s;}
+._tai_chip:hover{background:rgba(59,130,246,.22);}
+</style>
+<button id="_tai_btn" title="ИИ-ассистент Задачника" onclick="_taiToggle()">🤖</button>
+<div id="_tai_panel">
+  <div id="_tai_head">
+    <span>🤖</span>
+    <span class="ttl">ИИ Задачника</span>
+    <select id="_tai_msel"></select>
+    <button id="_tai_clear" title="Очистить чат" onclick="_taiClear()">🗑</button>
+    <button id="_tai_close" title="Закрыть" onclick="_taiToggle()">✕</button>
+  </div>
+  <div id="_tai_msgs"></div>
+  <div id="_tai_chips">
+    <span class="_tai_chip" onclick="_taiChip('Что у меня горит сегодня и завтра?')">🔥 Горит сегодня</span>
+    <span class="_tai_chip" onclick="_taiChip('Какие задачи я не двигаю больше 2 недель?')">🐢 Застряли</span>
+    <span class="_tai_chip" onclick="_taiChip('По каким целям roadmap я отстаю?')">🗺️ Отставание roadmap</span>
+    <span class="_tai_chip" onclick="_taiChip('Покажи задачи без ТЗ — какие закрыть, какие написать.')">📝 Без ТЗ</span>
+    <span class="_tai_chip" onclick="_taiChip('Что было сделано за прошлую неделю — собери weekly.')">📅 Weekly</span>
+    <span class="_tai_chip" onclick="_taiChip('Кто перегружен по нагрузке?')">⚖️ Перегруз</span>
+    <span class="_tai_chip" onclick="_taiChip('Какие задачи можно делегировать и кому?')">↗️ Делегировать</span>
+    <span class="_tai_chip" onclick="_taiChip('Перенеси все мои просрочки на следующую неделю.')">⏭️ Перенос просрочек</span>
+  </div>
+  <div id="_tai_input_row">
+    <textarea id="_tai_input" rows="1" placeholder="Что нужно по задачам?"></textarea>
+    <button id="_tai_send" onclick="_taiSend()">➤</button>
+  </div>
+</div>
+<script>
+(function(){
+  const PROXY = '/tasks/api/ai/proxy';
+  const API   = '/tasks/api';
+  let _hist = [];
+  let _models = [];
+  let _open = false;
+  let _sysPrompt = null;
+
+  async function _loadPrompt() {
+    try { const r = await fetch(API + '/ai/prompt/tasks'); if (r.ok) { const d = await r.json(); _sysPrompt = d.prompt || null; } } catch {}
+  }
+  async function _loadModels() {
+    const sel = document.getElementById('_tai_msel');
+    sel.innerHTML = '<option>⏳...</option>';
+    try {
+      const r = await fetch(PROXY + '/tags', { cache:'no-store' });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      const d = await r.json();
+      _models = (d.models||[]).map(m=>m.name).sort();
+      if (!_models.length) throw new Error('Нет моделей');
+      sel.innerHTML = _models.map(m=>`<option value="${m}">${m}</option>`).join('');
+      const pref = ['qwen3:8b','qwen3:30b','llama3.2:3b'];
+      sel.value = pref.find(p=>_models.includes(p)) || _models[0];
+    } catch(e) {
+      sel.innerHTML = `<option value="">⚠️ ${e.message} — клик для повтора</option>`;
+      sel.onclick = function(){ if(!_models.length){ sel.onclick=null; _loadModels(); } };
+    }
+  }
+
+  function _buildCtx() {
+    const today = new Date().toISOString().slice(0,10);
+    const lines = ['СЕГОДНЯ: ' + today, ''];
+    try {
+      const T = (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) ? TASKS : [];
+      const active = T.filter(t => t.status !== 'Выполнена');
+      lines.push('=== АКТИВНЫЕ ЗАДАЧИ (' + active.length + ' шт) ===');
+      active.slice(0, 50).forEach(t => {
+        const dl = t.deadline ? (' до ' + t.deadline) : '';
+        const pr = t.priority ? (' [' + t.priority + ']') : '';
+        const st = t.status ? (' — ' + t.status) : '';
+        lines.push(`${t.id}: ${t.title}${dl}${pr}${st}`);
+      });
+      const done = T.filter(t => t.status === 'Выполнена');
+      if (done.length) lines.push('', '=== ВЫПОЛНЕНО ЗА ВСЁ ВРЕМЯ: ' + done.length + ' ===');
+      if (typeof ROADMAP_ITEMS !== 'undefined' && Array.isArray(ROADMAP_ITEMS) && ROADMAP_ITEMS.length) {
+        lines.push('', '=== ЦЕЛИ ROADMAP ===');
+        ROADMAP_ITEMS.slice(0, 20).forEach(r => lines.push(`- ${r.title || r.name || JSON.stringify(r).slice(0,80)}`));
+      }
+      if (typeof WEEKLY_PLAN !== 'undefined' && Array.isArray(WEEKLY_PLAN) && WEEKLY_PLAN.length) {
+        lines.push('', '=== ПЛАН НА ЭТУ НЕДЕЛЮ ===');
+        WEEKLY_PLAN.slice(0, 20).forEach(w => lines.push(`- ${w.text || w.title || JSON.stringify(w).slice(0,80)}`));
+      }
+    } catch(e) { lines.push('(ошибка сбора: ' + e.message + ')'); }
+    return lines.join('\n');
+  }
+
+  function _addMsg(role, text) {
+    const box = document.getElementById('_tai_msgs');
+    const d = document.createElement('div');
+    d.className = '_tai_msg ' + role;
+    d.textContent = text;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+    return d;
+  }
+
+  function _parseActions(text) {
+    const re = /<<ACTION:([a-z_]+)([^>]*)>>/g;
+    const actions = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const name = m[1];
+      const args = {};
+      const argRe = /(\w+)="([^"]*)"/g;
+      let am;
+      while ((am = argRe.exec(m[2])) !== null) args[am[1]] = am[2];
+      actions.push({ name, args, raw: m[0] });
+    }
+    const cleanText = text.replace(re, '').trim();
+    return { actions, cleanText };
+  }
+
+  function _nextTaskId() {
+    try {
+      const T = (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) ? TASKS : [];
+      let max = 0;
+      T.forEach(t => {
+        const m = /^T-(\d+)$/.exec(t.id || '');
+        if (m) max = Math.max(max, parseInt(m[1], 10));
+      });
+      return 'T-' + String(max + 1).padStart(3, '0');
+    } catch { return 'T-' + Date.now().toString().slice(-6); }
+  }
+
+  function _findTask(id) {
+    try {
+      const T = (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) ? TASKS : [];
+      return T.find(t => t.id === id);
+    } catch { return null; }
+  }
+
+  async function _runAction(act) {
+    const { name, args } = act;
+    if (name === 'create_task') {
+      const id = _nextTaskId();
+      const body = {
+        id, title: args.title || 'Без названия',
+        desc: args.desc || '', system: '', type: '',
+        priority: args.priority || 'med', risk: 'med',
+        assignee: args.assignee || '', deadline: args.deadline || '',
+        status: 'Не начато', tz: '❌ Нет', metric: '', effect: '',
+        blockers: 'Нет', deps: '—', history: []
+      };
+      const r = await fetch(API + '/tasks', {
+        method: 'POST',
+        headers: await _authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const created = await r.json();
+      if (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) TASKS.push(created);
+      if (typeof rerenderAll === 'function') rerenderAll();
+      return `создана ${id}`;
+    }
+    if (name === 'update_task' || name === 'move_task' || name === 'change_status') {
+      const id = args.id;
+      const existing = _findTask(id);
+      if (!existing) throw new Error('задача ' + id + ' не найдена');
+      const updated = { ...existing };
+      if (name === 'move_task') updated.deadline = args.deadline || '';
+      else if (name === 'change_status') updated.status = args.status || updated.status;
+      else if (args.field && args.value !== undefined) updated[args.field] = args.value;
+      const r = await fetch(API + '/tasks/' + encodeURIComponent(id), {
+        method: 'PUT',
+        headers: await _authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(updated)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const fresh = await r.json();
+      Object.assign(existing, fresh);
+      if (typeof rerenderAll === 'function') rerenderAll();
+      return 'обновлено';
+    }
+    if (name === 'delete_task') {
+      const id = args.id;
+      const r = await fetch(API + '/tasks/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: await _authHeaders()
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) {
+        const i = TASKS.findIndex(t => t.id === id);
+        if (i >= 0) TASKS.splice(i, 1);
+      }
+      if (typeof rerenderAll === 'function') rerenderAll();
+      return 'в корзине (7 дней)';
+    }
+    throw new Error('неизвестное действие ' + name);
+  }
+
+  function _actionDescription(act) {
+    const a = act.args;
+    switch (act.name) {
+      case 'create_task': return `Создать: «${a.title || '?'}»` + (a.deadline ? `, дедлайн ${a.deadline}` : '') + (a.priority ? `, приоритет ${a.priority}` : '') + (a.assignee ? `, ${a.assignee}` : '');
+      case 'update_task': return `Изменить ${a.id}: ${a.field} → ${a.value}`;
+      case 'move_task': return `Перенести ${a.id} на ${a.deadline}`;
+      case 'change_status': return `Статус ${a.id} → «${a.status}»`;
+      case 'delete_task': return `🗑 Удалить ${a.id} (в корзину на 7 дней)`;
+      default: return JSON.stringify(act);
+    }
+  }
+
+  function _showCard(act) {
+    const box = document.getElementById('_tai_msgs');
+    const card = document.createElement('div');
+    card.className = '_tai_msg _tai_card';
+    const danger = act.name === 'delete_task';
+    card.innerHTML = `
+      <div class="act">${danger ? '⚠️ ' : ''}Подтвердить действие</div>
+      <div class="desc"></div>
+      <div class="row">
+        <button class="no">Отмена</button>
+        <button class="ok ${danger ? 'danger' : ''}">${danger ? 'Удалить' : 'OK'}</button>
+      </div>
+      <div class="status"></div>`;
+    card.querySelector('.desc').textContent = _actionDescription(act);
+    const status = card.querySelector('.status');
+    card.querySelector('.no').onclick = () => {
+      card.classList.add('done');
+      status.textContent = '✗ отменено';
+      card.querySelectorAll('button').forEach(b => b.disabled = true);
+    };
+    card.querySelector('.ok').onclick = async () => {
+      // Двойное подтверждение на удаление
+      if (danger && !confirm('Удалить задачу ' + (act.args.id || '?') + ' в корзину?\nВосстановить можно 7 дней.')) return;
+      card.querySelectorAll('button').forEach(b => b.disabled = true);
+      status.textContent = '⏳ выполняю...';
+      try {
+        const res = await _runAction(act);
+        status.textContent = '✓ ' + res;
+        card.classList.add('done');
+      } catch(e) {
+        status.textContent = '✗ ошибка: ' + e.message;
+        card.querySelectorAll('button').forEach(b => b.disabled = false);
+      }
+    };
+    box.appendChild(card);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function _send() {
+    const inp = document.getElementById('_tai_input');
+    const btn = document.getElementById('_tai_send');
+    const q = inp.value.trim();
+    if (!q) return;
+    inp.value = '';
+    btn.disabled = true;
+    _addMsg('u', q);
+    const respDiv = _addMsg('b', '…');
+    try {
+      const model = document.getElementById('_tai_msel').value;
+      if (!model) throw new Error('Выберите модель');
+      const sys = (_sysPrompt || 'Ты — AI-ассистент Задачника STH.') + '\n\nКОНТЕКСТ:\n' + _buildCtx();
+      const messages = [{ role:'system', content: sys }, ..._hist, { role:'user', content: q }];
+      const res = await fetch(PROXY + '/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, messages, stream:true, think:false, options:{ num_ctx:8192, num_predict:1500, temperature:0.2 }})
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({}));
+        throw new Error(err.error || ('HTTP ' + res.status));
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = '', buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const c = JSON.parse(line);
+            if (c.error) throw new Error(c.error);
+            const p = c.message?.content || '';
+            if (p) { full += p; respDiv.textContent = full; }
+          } catch(e2) { if (e2.message && !e2.message.includes('JSON')) throw e2; }
+        }
+      }
+      const { actions, cleanText } = _parseActions(full);
+      respDiv.textContent = cleanText || full;
+      _hist.push({ role:'user', content: q });
+      _hist.push({ role:'assistant', content: full });
+      if (_hist.length > 16) _hist.splice(0, 2);
+      actions.forEach(_showCard);
+    } catch(e) {
+      respDiv.textContent = '⚠️ ' + e.message;
+    } finally {
+      btn.disabled = false;
+      inp.focus();
+    }
+  }
+
+  function _toggle() {
+    _open = !_open;
+    document.getElementById('_tai_panel').classList.toggle('open', _open);
+    if (_open) {
+      if (!_models.length) _loadModels();
+      if (!_sysPrompt) _loadPrompt();
+      if (!document.getElementById('_tai_msgs').children.length) {
+        _addMsg('b', 'Привет! Помогу с задачами. Могу создавать, переносить, менять статус, разбивать и удалять (мягко).');
+      }
+      setTimeout(() => document.getElementById('_tai_input').focus(), 50);
+    }
+  }
+  function _clear() {
+    _hist = [];
+    document.getElementById('_tai_msgs').innerHTML = '';
+    _addMsg('b', 'Чат очищен. Что нужно по задачам?');
+    const c = document.getElementById('_tai_chips'); if (c) c.style.display='flex';
+  }
+  function _chip(txt) {
+    const inp = document.getElementById('_tai_input'); if (!inp) return;
+    inp.value = txt;
+    const c = document.getElementById('_tai_chips'); if (c) c.style.display='none';
+    _send();
+  }
+  window._taiToggle = _toggle;
+  window._taiSend = _send;
+  window._taiClear = _clear;
+  window._taiChip = _chip;
+  document.addEventListener('DOMContentLoaded', function() {
+    const inp = document.getElementById('_tai_input');
+    if (inp) inp.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _send(); }
+    });
+  });
+})();
+</script>
 
 </body></html>

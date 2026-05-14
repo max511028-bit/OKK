@@ -279,6 +279,101 @@ select option{background:#1e293b}
 .ai-input::placeholder{color:var(--text3)}
 .ai-badge{display:inline-block;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25);border-radius:20px;padding:2px 10px;font-size:11px;margin-left:8px;vertical-align:middle}
 </style>
+<!-- STH_MOBILE_CSS_START -->
+<style id="_sth_mobile_overrides">
+/* ============ STH GLOBAL MOBILE OVERRIDES ============ */
+@media (max-width: 768px) {
+  html, body { font-size: 14px; }
+  /* Любой grid с >=2 колонками → 1 колонка */
+  [class*="grid"], [class*="-grid"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  /* Таблицы — горизонтальный скролл через обёртку, либо сама таблица */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  /* Большие падинги/маргины ужать */
+  .container, main, .main, .content, .page-content {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  /* Заголовки тише */
+  h1 { font-size: 22px !important; line-height: 1.25; }
+  h2 { font-size: 18px !important; line-height: 1.3; }
+  h3 { font-size: 16px !important; }
+  /* Сайдбар/навигация — на всю ширину сверху */
+  aside, .sidebar, nav.side, .side-nav {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  /* Кнопки потолще для пальцев */
+  button, .btn, [role="button"] {
+    min-height: 40px;
+  }
+  /* Карточки KPI — на всю ширину */
+  .card, .kpi, .metric, .stat-card, .stat {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* Графики — никогда не вылезают за экран */
+  canvas, svg, .chart, [class*="chart"] {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
+
+@media (max-width: 480px) {
+  html, body { font-size: 13px; }
+  h1 { font-size: 19px !important; }
+  h2 { font-size: 16px !important; }
+  /* AI-панель — почти fullscreen */
+  #_ai_panel, #_tai_panel {
+    width: calc(100vw - 16px) !important;
+    height: calc(100vh - 100px) !important;
+    bottom: 80px !important;
+    right: 8px !important;
+    left: 8px !important;
+    max-width: none !important;
+    max-height: none !important;
+  }
+  #_ai_btn, #_tai_btn {
+    bottom: 16px !important;
+    right: 16px !important;
+    width: 50px !important;
+    height: 50px !important;
+  }
+  /* Плашка «ИИ оффлайн» — мельче чтоб не съедала пол-экрана */
+  #_sth_ai_offline_banner {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+  /* Скрываем длинные subtitle/decoration на самых мелких */
+  .subtitle, .desc-long, .label-decoration { display: none; }
+  /* Padding ещё уменьшаем */
+  .container, main, .main, .content, .page-content,
+  .panel, .section, section {
+    padding: 8px !important;
+  }
+}
+
+/* На любых размерах если viewport узкий — таблицы прокручиваются */
+@media (max-width: 1024px) {
+  .table-wrap, .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+</style>
+<!-- STH_MOBILE_CSS_END -->
+
 </head>
 <body>
 
@@ -307,8 +402,20 @@ select option{background:#1e293b}
     <button class="tab-btn" data-tab="survey">📋 Опросы</button>
     <button class="tab-btn" data-tab="ai">🤖 AI Ассистент</button>
     <button class="nav-refresh" id="nav-refresh-btn" onclick="refreshDashboard()" title="Обновить данные">↻ Обновить</button>
+    <button id="validation-badge" onclick="showValidationModal()" title="Сверка данных с источниками" style="margin-left:8px;background:transparent;border:1px solid #444;border-radius:8px;padding:4px 10px;cursor:pointer;color:#888;font-size:13px;">⏳</button>
   </div>
 </nav>
+
+<!-- VALIDATION MODAL -->
+<div id="validation-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#1a1a1a;border:1px solid #333;border-radius:12px;max-width:720px;width:90%;max-height:85vh;overflow:auto;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="margin:0;color:#eee;">Сверка с Google-таблицами</h3>
+      <button onclick="document.getElementById('validation-modal').style.display='none'" style="background:none;border:none;color:#888;font-size:24px;cursor:pointer;">×</button>
+    </div>
+    <div id="validation-modal-body" style="color:#ccc;font-size:13px;line-height:1.6;">Загрузка...</div>
+  </div>
+</div>
 
 <!-- MAIN -->
 <main>
@@ -317,7 +424,10 @@ select option{background:#1e293b}
   <div class="section active" id="tab-overview">
     <div class="section-header">
       <div><div class="section-title">Сводка КЦ</div><div class="section-sub">Общие показатели качества</div></div>
-      <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('overview', this)" title="Обновить данные раздела">↻</button>
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="window.print()" title="Печать / PDF">🖨️ PDF</button>
+      </div>
     </div>
     <div id="overview-insight" style="display:none" class="insight-banner">
       <div class="insight-banner-title">🤖 AI Авто-инсайт</div>
@@ -337,7 +447,10 @@ select option{background:#1e293b}
   <!-- CALLS -->
   <div class="section" id="tab-calls">
     <div class="section-header">
-      <div><div class="section-title">🎧 Прослушка звонков</div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="section-title">🎧 Прослушка звонков</div>
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('calls', this)" title="Обновить раздел">↻</button>
+      </div>
       <div class="filters">
         <span class="filter-label">Месяц:</span>
         <select id="filter-month"><option value="all">Все месяцы</option></select>
@@ -392,8 +505,11 @@ select option{background:#1e293b}
 
   <!-- TRAINING -->
   <div class="section" id="tab-training">
-    <div class="section-header"><div class="section-title">📈 Динамика обучения</div></div>
-    <div class="unavailable" id="training-unavail" style="display:none">⚠️ &nbsp;Лист «КЦ замеры динамика после обучений» недоступен. Проверьте название листа в таблице.</div>
+    <div class="section-header">
+      <div class="section-title">📈 Динамика обучения</div>
+      <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('training', this)" title="Обновить раздел">↻</button>
+    </div>
+    <div class="unavailable" id="training-unavail" style="display:none">⚠️ &nbsp;Нет данных обучения. Проверьте вкладки «Обучение …» / «Метрики 2025» в файле «2. Статистика КЦ».</div>
     <div id="training-content">
       <div class="sub-tabs">
         <button class="sub-tab active" data-subtab="squeeze">Обучение по дожиму</button>
@@ -416,7 +532,10 @@ select option{background:#1e293b}
   <!-- MPP -->
   <div class="section" id="tab-mpp">
     <div class="section-header">
-      <div class="section-title">👤 МПП — Менеджеры по подбору</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="section-title">👤 МПП — Менеджеры по подбору</div>
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('mpp', this)" title="Обновить раздел">↻</button>
+      </div>
       <div class="filters">
         <span class="filter-label">Месяц:</span><select id="filter-mpp-month"><option value="all">Все</option></select>
         <input id="filter-mpp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderMPPCheckList(filteredMPP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
@@ -451,7 +570,10 @@ select option{background:#1e293b}
   <!-- ORP -->
   <div class="section" id="tab-orp">
     <div class="section-header">
-      <div class="section-title">👥 ОРП — Супервайзеры / Бригадиры</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="section-title">👥 ОРП — Супервайзеры / Бригадиры</div>
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('orp', this)" title="Обновить раздел">↻</button>
+      </div>
       <div class="filters">
         <span class="filter-label">Месяц:</span><select id="filter-orp-month"><option value="all">Все</option></select>
         <input id="filter-orp-name" type="text" placeholder="Поиск по ФИО..." oninput="renderORPCheckList(filteredORP())" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:13px;padding:8px 12px;outline:none;min-width:200px">
@@ -486,8 +608,20 @@ select option{background:#1e293b}
   <!-- SURVEY -->
   <div class="section" id="tab-survey">
     <div class="section-header">
-      <div class="section-title">📋 Опросы новичков</div>
-      <div class="filters"><span class="filter-label">Период:</span><select id="filter-survey-period"><option value="all">Все</option></select></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="section-title">📋 Опросы новичков</div>
+        <button class="btn btn-sm btn-ghost btn-icon" onclick="refreshSection('survey', this)" title="Обновить раздел">↻</button>
+      </div>
+      <div class="filters" style="gap:12px">
+        <div>
+          <span class="filter-label">Формат опроса:</span>
+          <select id="filter-rp-mode" onchange="(async function(){ setRpMode(this.value); document.getElementById('loading-overlay').style.display='flex'; const s = await loadAllSurvey(true); state.data.survey = s; document.getElementById('loading-overlay').style.display='none'; renderSurvey(); }.call(document.getElementById('filter-rp-mode')))">
+            <option value="new">Новый РП</option>
+            <option value="old">Старый РП</option>
+          </select>
+        </div>
+        <div><span class="filter-label">Период:</span><select id="filter-survey-period"><option value="all">Все</option></select></div>
+      </div>
     </div>
     <div class="kpi-grid" id="survey-kpis"></div>
     <div class="sub-tabs" id="survey-subtabs">
@@ -556,14 +690,16 @@ select option{background:#1e293b}
           </div>
         </div>
         <div class="ai-suggestions">
-          <div class="ai-chip" onclick="aiAsk('Кто лучший рекрутер за последний месяц по прослушке?')">🏆 Лучший рекрутер</div>
-          <div class="ai-chip" onclick="aiAsk('Какие критерии прослушки самые проблемные и почему?')">⚠️ Проблемные критерии</div>
-          <div class="ai-chip" onclick="aiAsk('Как изменилось среднее качество прослушки по месяцам?')">📈 Динамика по месяцам</div>
-          <div class="ai-chip" onclick="aiAsk('Сравни показатели дивизионов между собой')">🗺️ Сравнение дивизионов</div>
-          <div class="ai-chip" onclick="aiAsk('Кто из рекрутеров нуждается в дополнительном обучении?')">📚 Нуждаются в обучении</div>
-          <div class="ai-chip" onclick="aiAsk('Каковы средние показатели МПП и ОРП по всем месяцам?')">👥 МПП и ОРП</div>
-          <div class="ai-chip" onclick="aiAsk('Какой CSAT и NPS по складам в опросах новичков?')">⭐ Опросы CSAT/NPS</div>
-          <div class="ai-chip" onclick="aiAsk('Дай общую сводку всех показателей качества КЦ')">📋 Общая сводка</div>
+          <div class="ai-chip" onclick="aiAsk('Кто из рекрутёров стабильно ниже 80 баллов?')">⚠️ Ниже 80</div>
+          <div class="ai-chip" onclick="aiAsk('Какие критерии прослушки чаще всего проваливают?')">📉 Слабые критерии</div>
+          <div class="ai-chip" onclick="aiAsk('Сделай тепловую карту: дивизион × критерий — где хуже?')">🗺️ Тепловая карта</div>
+          <div class="ai-chip" onclick="aiAsk('Кто деградировал между прошлым и этим месяцем?')">📉 Деградация</div>
+          <div class="ai-chip" onclick="aiAsk('Сравни ЛП/ЮГ и УРАЛ по качеству звонков.')">🆚 Дивизионы</div>
+          <div class="ai-chip" onclick="aiAsk('Топ-5 рекрутёров, кому срочно обучение по «Работе с возражениями».')">📚 Кому обучение</div>
+          <div class="ai-chip" onclick="aiAsk('На каком этапе разговора чаще всего сливаются — Программирование, Презентация, Оформление?')">🎯 Слабый этап</div>
+          <div class="ai-chip" onclick="aiAsk('Какие склады с худшим CSAT/NPS — что общего?')">⭐ Худший CSAT</div>
+          <div class="ai-chip" onclick="aiAsk('Кто из новичков (≤3 мес) уже в зеленой зоне?')">🌱 Сильные новички</div>
+          <div class="ai-chip" onclick="aiAsk('Дай план обучения на ближайшие 2 недели по слабым.')">📋 План обучения</div>
         </div>
         <div class="ai-input-row">
           <textarea class="ai-input" id="ai-input" placeholder="Задайте вопрос по данным... (Enter — отправить, Shift+Enter — новая строка)" rows="1"
@@ -593,36 +729,50 @@ select option{background:#1e293b}
 
 <script>
 // ========== CONFIGURATION ==========
-const SHEET_ID = '1axGhkihjyjxi99ThPhzD91vbIWwEjMUGlkdV8CzqqWI';
-const SHEETS = {
-  calls:    'КЦ прослушка',
-  training: 'КЦ замеры динамика после обучений',
-  mpp:      'ТП МПП',
-  orp:      'ТП ОРП',
-  survey:   'Опрос нового РП',
+// 5 google-таблиц-источников. Бэкенд /okk/files отдаёт тот же мап.
+// Каждый раздел дашборда привязан к одному файлу (см. OKK_SECTIONS ниже).
+const OKK_FILES = {
+  kc:    '1vxEUq2m92T3oPl25vuxKUxTDDZO5hZJHZlC_88xR-8w',  // 1.Прослушка КЦ
+  stats: '1i94OV_2e9B5CGIYBFkWN3W8SLfT8R93598dyoYEoe08',  // 2.Статистика КЦ
+  mpp:   '1wI_MIdxs77znU54lasXdInj2Wf6KyYoMXvakdTlNyAg',  // 3.Тайные МПП
+  orp:   '1dV5tAXBbs7DLSTw1PBUaW800NvUm9W7TvLe4O4yogy0',  // 4.Тайные ОРП
+  rp:    '13eIDsffRUYRyW6Df6-W4dpUzxMehM-yqInOTTnIfZnE',  // 5.Опросы РП
 };
-const MONTHS_ORDER = ['ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ'];
-const CRITERIA_NAMES = [
-  'Приветствие','Цель/актуальность','Живая речь','Обращение по имени',
-  'Программирование','Город Проживания','Возраст','Судимости',
-  'Медицинские ограничения','Гражданство','Необходимые документы',
-  'Презентация условий работы','Презентация специфики должности',
-  'Выделение преимуществ вакансии','Оформление','Попытка продажи вакансии',
-  'Работа с возражениями','Технические моменты','Резюмирование',
-  'Прощание благодарность','Оформление Б24'
-];
-const DIV_COLORS = {
-  'ЛП/ЮГ':'av-south','КЦ Юг':'av-south','Юг':'av-south',
-  'УРАЛ':'av-ural','КЦ Урал':'av-ural','Урал':'av-ural',
-  'КЦ Локальные':'av-local','Локальные':'av-local',
-};
+
+// Месяцы. Полный календарный год — больше не режем январь-июнь.
+const ALL_MONTHS = ['ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ',
+                    'ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
+
+// Палитра дивизионов — выдаётся динамически на основе данных.
+// Был хардкод {Юг, Урал, Локальные}, но реально дивизионов больше: Пятый, МСК, Центр, Юг/Центр и т.д.
+const DIV_PALETTE = ['av-south','av-ural','av-local','av-msk','av-fifth','av-center','av-other'];
+let DIV_COLORS = {};  // build dynamically: { 'Юг': 'av-south', 'Урал': 'av-ural', ... }
+function assignDivColor(div) {
+  if (!div) return 'av-other';
+  if (DIV_COLORS[div]) return DIV_COLORS[div];
+  const idx = Object.keys(DIV_COLORS).length;
+  DIV_COLORS[div] = DIV_PALETTE[idx % DIV_PALETTE.length];
+  return DIV_COLORS[div];
+}
+
 const CHART_COLORS = {
   blue:'rgba(59,130,246,',green:'rgba(16,185,129,',yellow:'rgba(245,158,11,',red:'rgba(239,68,68,'
 };
 
-function sheetUrl(name) {
-  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
+// Критерии прослушки — теперь определяются на лету по шапке Сводной/Тех. листа.
+let CRITERIA_NAMES = [];
+
+// Помесячные периоды — авто-собираются из имён вкладок (см. discoverMonths)
+let MONTHS_ORDER = [];
+
+// gviz CSV URL по ключу файла + имени вкладки
+function gvizUrl(fileKey, sheetName) {
+  const sid = OKK_FILES[fileKey];
+  if (!sid) throw new Error(`Unknown OKK file: ${fileKey}`);
+  return `https://docs.google.com/spreadsheets/d/${sid}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
 }
+// Совместимость со старым кодом: sheetUrl(name) использует kc-таблицу по умолчанию.
+function sheetUrl(name) { return gvizUrl('kc', name); }
 
 // ========== DATA FETCHING & PARSING ==========
 function parseNum(v) {
@@ -664,20 +814,71 @@ function parseCSV(text) {
   return rows.map(r => r.map(c => c.trim()));
 }
 
-const CACHE_TTL = 30 * 60 * 1000;
-async function fetchSheet(name, bustCache) {
-  const cacheKey = `okk_v2_${name}`;
+const CACHE_TTL = 10 * 60 * 1000;  // 10 минут (было 30) — данные часто обновляются в Google
+// fetchSheet поддерживает 2 формы вызова:
+//   fetchSheet('Имя листа', bustCache)         — обратная совместимость, fileKey=kc
+//   fetchSheet('kc', 'Сводная 2026', bustCache) — явный fileKey
+async function fetchSheet(arg1, arg2, arg3) {
+  let fileKey, sheetName, bustCache;
+  if (OKK_FILES[arg1]) {
+    fileKey = arg1; sheetName = arg2; bustCache = arg3;
+  } else {
+    fileKey = 'kc'; sheetName = arg1; bustCache = arg2;
+  }
+  const cacheKey = `okk_v3_${fileKey}_${sheetName}`;
   if (!bustCache) {
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
       if (cached && (Date.now() - cached.ts) < CACHE_TTL) return parseCSV(cached.text);
     } catch(e) {}
   }
-  const res = await fetch(sheetUrl(name));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const res = await fetch(gvizUrl(fileKey, sheetName));
+  if (!res.ok) throw new Error(`HTTP ${res.status} on ${fileKey}/${sheetName}`);
   const text = await res.text();
   try { localStorage.setItem(cacheKey, JSON.stringify({text, ts: Date.now()})); } catch(e) {}
   return parseCSV(text);
+}
+
+// Список вкладок в файле через наш бэкенд (он парсит xlsx-экспорт).
+async function fetchTabs(fileKey) {
+  try {
+    const res = await fetch(`/tasks/api/okk/tabs/${fileKey}`);
+    if (!res.ok) return [];
+    const d = await res.json();
+    return d.tabs || [];
+  } catch(e) { return []; }
+}
+
+// Найти помесячные вкладки и отсортировать по дате.
+// Маски: 'Тех. лист 03.26', 'Чек-лист 05.26'.
+function filterMonthlyTabs(tabs, prefixRegex) {
+  // prefixRegex применяется к началу: например /^Тех\. лист/ или /^Чек-лист/
+  const matched = [];
+  for (const name of tabs) {
+    if (!prefixRegex.test(name)) continue;
+    const m = name.match(/(\d{2})\.(\d{2,4})$/);
+    if (!m) continue;
+    const mm = parseInt(m[1]);
+    let yy = parseInt(m[2]);
+    if (yy < 100) yy += 2000;
+    if (mm < 1 || mm > 12) continue;
+    matched.push({name, year: yy, month: mm, key: yy*100+mm});
+  }
+  matched.sort((a,b) => a.key - b.key);
+  return matched;
+}
+
+// Авто-собрать MONTHS_ORDER из набора (год, месяц).
+function buildMonthsOrder(monthsList) {
+  // monthsList = [{year, month}, ...] — сделаем уникальный отсортированный массив строк 'МАРТ 2026'
+  const set = new Map();
+  for (const x of monthsList) {
+    const label = `${ALL_MONTHS[x.month-1]} ${x.year}`;
+    set.set(x.year*100+x.month, label);
+  }
+  const sorted = [...set.entries()].sort((a,b)=>a[0]-b[0]).map(e=>e[1]);
+  MONTHS_ORDER = sorted;
+  return sorted;
 }
 
 function findMonthInCells(cells) {
@@ -695,235 +896,224 @@ function cleanCriteriaName(raw) {
     .replace(/\s+/g,' ').trim();
 }
 
-function parseCallsSheet(rows) {
+// Парсер ОДНОГО месячного «Тех. лист MM.YY» из файла 1.Прослушка КЦ.
+// Структура: блоки по дивизионам. Заголовок блока: col[0]=имя дивизиона
+// (может содержать перевод строки), col[1]="Итого", col[2]="Звонков проверено",
+// col[3..]=названия критериев (могут быть с мусором "МАРТ ", "Период: ...").
+// Затем строки сотрудников: col[0]=ФИО, col[1]=%, col[2]=число, col[3..]=%.
+// Строки "Итого" и "Рекрутеры" (как подзаголовок) пропускаем.
+// monthLabel передаётся снаружи (например "МАРТ 2026") по имени таба.
+function parseCallsSheetMonthly(rows, monthLabel) {
   const records = [];
-  let currentMonth = null;
+  if (!rows || !rows.length) return records;
   let currentDivision = null;
-  let skipSummary = false;
-  let analyticsCount = 0;
-  // gviz output order: МАРТ first, then ФЕВРАЛЬ, then ЯНВАРЬ
-  const MONTH_SEQUENCE = ['МАРТ', 'ФЕВРАЛЬ', 'ЯНВАРЬ'];
+  let critNames = null;
+
+  const stripPrefix = (s) => {
+    return (s||'')
+      .replace(/^(ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ|ИЮЛЬ|АВГУСТ|СЕНТЯБРЬ|ОКТЯБРЬ|НОЯБРЬ|ДЕКАБРЬ)\s+/i, '')
+      .replace(/Период:\s*[\d.\-]+\s*-\s*[\d.\-]+\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
 
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || !row.length) continue;
-    const a = (row[0] || '').trim();
+    const row = rows[i] || [];
+    const c0 = (row[0]||'').trim();
+    const c1 = (row[1]||'').trim();
+    const c2 = (row[2]||'').trim();
 
-    // Empty col[0]: check for bare month row (e.g. local CSV export)
-    if (!a) {
-      const mFound = findMonthInCells(row);
-      if (mFound) { currentMonth = mFound; skipSummary = false; }
-      continue;
-    }
-
-    // Total rows — always skip
-    if (a === 'Итого') continue;
-
-    // "Рекрутеры" sub-header with empty col[1] — skip, don't touch division
-    if (a === 'Рекрутеры' && !(row[1]||'').trim()) continue;
-
-    // Main header row: col1="Итого", col2="Звонков проверено"
-    if ((row[1]||'').trim() === 'Итого' && (row[2]||'').trim() === 'Звонков проверено') {
-      const divRaw = a.split('\n')[0].trim();
+    // Заголовок блока: col1=Итого, col2=Звонков...
+    if (c1 === 'Итого' && /Звонков/i.test(c2)) {
+      const divRaw = c0.split('\n')[0].trim();
       if (divRaw && divRaw !== 'Рекрутеры') currentDivision = divRaw;
-      // Month is embedded in col[10] header: e.g. "МАРТ  Судимости"
-      const m = findMonthInCells(row);
-      if (m) currentMonth = m;
-      skipSummary = false;
-      continue;
-    }
-
-    // "Аналитика по всему КЦ" marks end of one month's data block
-    if (a.startsWith('Аналитика по всему КЦ')) { skipSummary = true; continue; }
-
-    // Division row: col0 filled, col1 empty
-    if (!(row[1]||'').trim()) {
-      const divName = a.replace(/\n[\s\S]*$/, '').trim();
-      // Rare: month word directly in division cell
-      const mInCell = findMonthInCells([divName]);
-      if (mInCell) { currentMonth = mInCell; skipSummary = false; continue; }
-      if (divName) {
-        // Coming out of a summary block → this division belongs to the next month
-        if (skipSummary) {
-          analyticsCount++;
-          currentMonth = MONTH_SEQUENCE[analyticsCount] || null;
-          skipSummary = false;
+      // Извлекаем имена критериев один раз — из первого встреченного заголовка
+      if (!critNames) {
+        critNames = [];
+        for (let k = 3; k < row.length; k++) {
+          const name = stripPrefix(row[k]);
+          if (name && !/^Аналитика|^Период:|^Звонков/i.test(name)) critNames.push(name);
         }
-        currentDivision = divName;
+        // Глобальные имена критериев — для UI. Берём первый непустой набор.
+        if (!CRITERIA_NAMES.length && critNames.length) CRITERIA_NAMES = critNames.slice();
       }
       continue;
     }
 
-    if (skipSummary) continue;
-
-    // Data row
-    if (a && currentMonth && currentDivision) {
-      const total = parsePercent(row[1]);
-      if (isNaN(total)) continue;
-      const calls = parseInt(row[2]) || 0;
-      const criteria = {};
-      CRITERIA_NAMES.forEach((name, idx) => {
-        const val = parsePercent(row[3 + idx]);
-        if (!isNaN(val)) criteria[name] = val;
-      });
-      records.push({ month: currentMonth, division: currentDivision, name: a, total, calls, criteria });
+    // Строка-заголовок дивизиона (col[0] есть, col[1]/col[2] пусты)
+    if (c0 && !c1 && !c2) {
+      const divName = c0.split('\n')[0].trim();
+      if (divName && divName !== 'Рекрутеры') currentDivision = divName;
+      continue;
     }
+
+    // Служебные строки
+    if (c0 === 'Итого') continue;
+    if (c0 === 'Рекрутеры') continue;
+    if (/^Аналитика/i.test(c0)) continue;
+    if (!c0 || !currentDivision) continue;
+    if (!c1 || !c1.includes('%')) continue;
+
+    const total = parsePercent(c1);
+    if (isNaN(total)) continue;
+    const calls = parseInt(c2) || 0;
+    // Аналитики/наблюдатели и нулевые звонки не должны попадать в рейтинг рекрутёров
+    if (calls <= 0) continue;
+    if (/Аналитик/i.test(currentDivision || '')) continue;
+    const criteria = {};
+    const list = critNames || CRITERIA_NAMES;
+    list.forEach((name, idx) => {
+      const val = parsePercent(row[3 + idx]);
+      if (!isNaN(val)) criteria[name] = val;
+    });
+    assignDivColor(currentDivision);
+    records.push({ month: monthLabel, division: currentDivision, name: c0, total, calls, criteria });
   }
   return records;
 }
 
+// Backwards-compat shim: старая функция, не используется, но оставлена на всякий случай.
+function parseCallsSheet(rows) {
+  return parseCallsSheetMonthly(rows, 'МАРТ 2026');
+}
+
+// Парсер «Сводная 2025/2026» в файле 3.Тайные МПП.
+// Формат (стабильный):
+//   «Сводная 2025»: № / Дата / Проверяющий / Проверяемый МПП / Дивизион / Итоговый балл
+//   «Сводная 2026»: то же, но первая строка с merged-cells «Январь 2026 Проверяющий».
+// Дивизион в Сводной 2026 может быть пустым — записи без дивизиона тоже сохраняем,
+// чтобы они попадали в рейтинг МПП. Месяц вытаскиваем из даты.
 function parseMPPSheet(rows) {
   const records = [];
-  let currentMonth = null;
-  const MONTH_RX = /ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ/i;
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (const row of rows) {
     if (!row || !row.length) continue;
     const c0 = (row[0]||'').trim();
-    const c2 = (row[2]||'').trim();
-    const c3 = (row[3]||'').trim();
-
-    // Month transition: col2 or col3 contains month+year
-    if ((c2.match(MONTH_RX) || c3.match(MONTH_RX)) && (c2.includes('202') || c3.includes('202'))) {
-      const src = c2.match(MONTH_RX) ? c2 : c3;
-      const m = src.match(MONTH_RX);
-      if (m) currentMonth = m[0].toUpperCase();
-      continue;
-    }
-    // Also detect month in col3 alone (Апрель 2026)
-    const allCells = row.join(' ');
-    if (!c0 && allCells.match(MONTH_RX) && allCells.includes('202')) {
-      const m = allCells.match(MONTH_RX);
-      if (m) { currentMonth = m[0].toUpperCase(); continue; }
-    }
-
-    // Skip header/total rows
-    if (c0 === '№' || c0 === '№ проверки') continue;
-    if (!c0 && !isNaN(parseNum(row[5])) && isNaN(parseNum(row[1]))) continue; // avg row
-
-    // Check if row has проверяемый info
     const num = parseInt(c0);
-    if (!isNaN(num) && num > 0) {
-      const date = (row[1]||'').trim();
-      // Fallback: extract month from date if not set from header
-      const mDate = monthFromDate(date);
-      if (mDate) currentMonth = mDate;
-      if (!currentMonth) continue;
-      const checker = (row[2]||'').trim();
-      const checked = (row[3]||'').trim();
-      const div = (row[4]||'').trim();
-
-      // Determine if March+ (has 4 competencies) or Jan/Feb (just total)
-      const hasCompetencies = !isNaN(parseNum(row[4])) && !isNaN(parseNum(row[5]));
-
-      let score, competencies = null;
-      if (hasCompetencies) {
-        // Mar+: col4=comm, col5=sales, col6=obj, col7=general, col8=total
-        const comm  = parseNum(row[4]);
-        const sales = parseNum(row[5]);
-        const obj   = parseNum(row[6]);
-        const gen   = parseNum(row[7]);
-        score = parseNum(row[8]);
-        if (isNaN(score)) score = parseNum(row[5]); // fallback
-        if (!isNaN(comm)) competencies = { comm, sales, obj, gen };
-        // In march+ layout: col0=№, col1=date, col2=checked, col3=div, col4..8=scores
-        records.push({
-          month: currentMonth, date,
-          checker: '',
-          checked: row[2]||'',
-          division: row[3]||'',
-          score: parseNum(row[8]),
-          competencies: { comm: parseNum(row[4]), sales: parseNum(row[5]), obj: parseNum(row[6]), gen: parseNum(row[7]) }
-        });
-      } else {
-        score = parseNum(row[5]);
-        records.push({ month: currentMonth, date, checker, checked, division: div, score, competencies: null });
-      }
+    if (isNaN(num) || num < 1) continue;
+    const date = (row[1]||'').trim();
+    const checker = (row[2]||'').trim();
+    const checked = (row[3]||'').trim();
+    // В разных годах дивизион/балл могут быть в разных позициях.
+    // Логика: ищем балл (число от 0 до 100) в позициях 4 или 5; всё до балла — дивизион.
+    let division = '';
+    let score = NaN;
+    const r4 = (row[4]||'').trim();
+    const r5 = (row[5]||'').trim();
+    const n5 = parseNum(r5);
+    const n4 = parseNum(r4);
+    if (!isNaN(n5) && r5) {
+      // 4=дивизион, 5=балл
+      division = r4;
+      score = n5;
+    } else if (!isNaN(n4) && r4) {
+      // 4=балл, дивизион отсутствует
+      score = n4;
     }
+    if (isNaN(score) || score < 0 || score > 100) continue;
+    const month = monthFromDate(date);
+    if (!month) continue;
+    if (division) assignDivColor(division);
+    records.push({
+      month, date, checker, checked, division, score, competencies: null
+    });
   }
   return records;
 }
 
-// Извлечь месяц из даты формата "05.02.2026" → "ФЕВРАЛЬ"
+// Извлечь месяц+год из даты "05.02.2026" → "ФЕВРАЛЬ 2026"
 function monthFromDate(dateStr) {
-  const m = (dateStr||'').match(/[\.\-\/](\d{2})[\.\-\/]/);
+  const s = (dateStr||'').trim();
+  // Принимаем dd.mm.yyyy, dd/mm/yyyy, dd-mm-yyyy, dd.mm.yy
+  const m = s.match(/^(\d{1,2})[\.\-\/](\d{1,2})[\.\-\/](\d{2,4})/);
   if (!m) return null;
-  const monthNames = ['','ЯНВАРЬ','ФЕВРАЛЬ','МАРТ','АПРЕЛЬ','МАЙ','ИЮНЬ','ИЮЛЬ','АВГУСТ','СЕНТЯБРЬ','ОКТЯБРЬ','НОЯБРЬ','ДЕКАБРЬ'];
-  return monthNames[parseInt(m[1])] || null;
+  const mm = parseInt(m[2]);
+  let yy = parseInt(m[3]);
+  if (yy < 100) yy += 2000;
+  if (mm < 1 || mm > 12) return null;
+  if (yy < 2020 || yy > 2035) return null;
+  const name = ALL_MONTHS[mm-1];
+  return name ? `${name} ${yy}` : null;
 }
 
 function parseORPSheet(rows) {
+  // Поддерживаем 3 варианта раскладки в Сводных ОРП:
+  //  A) 2025 без №:  Дата | Проверяющий | Сотрудник | Дивизион | Сильные | Слабые | Балл
+  //  B) 2026 январь: № | Дата | Проверяющий | Сотрудник | Дивизион(пусто) | Сильные | Слабые | Балл
+  //  C) 2026 фев+ (новый):  № | Дата | Сотрудник | Дивизион | comp1 | comp2 | comp3 | % | comp4 | Балл
+  // Определяем форму по содержимому строк.
   const records = [];
-  let currentMonth = null;
-  const MONTH_RX = /ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ/i;
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (const row of rows) {
     if (!row || !row.length) continue;
     const c0 = (row[0]||'').trim();
-    const allCells = row.join(' ');
+    if (!c0) continue;
+    if (/^Дата|Проверя|Балл|Сотрудник|Дивизион|итого|средн|ПРОВЕРКИ/i.test(c0)) continue;
 
-    // Обнаружение месяца по тексту в любой ячейке (для заголовков блоков)
-    const mText = allCells.match(MONTH_RX);
-    if (mText && allCells.includes('202') && !c0.match(/^\d+$/)) {
-      currentMonth = mText[0].toUpperCase();
+    const num = parseInt(c0);
+    const isNumLead = !isNaN(num) && num >= 1 && num < 10000 && !c0.includes('.');
+    const isDateLead = /^\d{1,2}[.\/]\d{1,2}/.test(c0);
+
+    let date, checker, checked, division, strong='', weak='', scoreRaw, competencies=null;
+
+    if (isNumLead) {
+      date = (row[1]||'').trim();
+      // Различаем B vs C: в C столбец 7 содержит '%' (общий процент)
+      const c7 = (row[7]||'').trim();
+      const c4 = (row[4]||'').trim();
+      const c3 = (row[3]||'').trim();
+      const c4Num = parseNum(c4);
+      const isFebPlus = c7.includes('%') || (!isNaN(c4Num) && c4Num > 0 && c4Num < 50);
+      if (isFebPlus) {
+        // Форма C
+        checker = '';
+        checked = (row[2]||'').trim();
+        division = c3;
+        scoreRaw = row[9] !== undefined && row[9] !== '' ? row[9] : row[8];
+        competencies = {
+          comm: parseNum(row[4]),
+          sales: parseNum(row[5]),
+          obj: parseNum(row[6]),
+          gen: parseNum(row[8])
+        };
+      } else {
+        // Форма B
+        checker = (row[2]||'').trim();
+        checked = (row[3]||'').trim();
+        division = (row[4]||'').trim();
+        strong = (row[5]||'').trim();
+        weak = (row[6]||'').trim();
+        scoreRaw = row[7];
+      }
+    } else if (isDateLead) {
+      // Форма A
+      date = c0;
+      checker = (row[1]||'').trim();
+      checked = (row[2]||'').trim();
+      division = (row[3]||'').trim();
+      strong = (row[4]||'').trim();
+      weak = (row[5]||'').trim();
+      scoreRaw = row[6];
+    } else {
       continue;
     }
 
-    const num = parseInt(c0);
-    if (isNaN(num) || num <= 0) continue;
-
-    const date = (row[1]||'').trim();
-
-    // Извлекаем месяц из даты (основной метод для Feb+)
-    const mDate = monthFromDate(date);
-    if (mDate) currentMonth = mDate;
-
-    if (!currentMonth) continue;
-
-    // Реальная структура ORP (из CSV):
-    // Январь: col[2]=Проверяющий, col[3]=Проверяемый, col[4]=Дивизион(пусто), col[7]=Балл
-    // Feb+:   col[2]=Проверяемый, col[3]=Дивизион, col[4..8]=компетенции, col[9]=Балл
-    const c4 = (row[4]||'').trim();
-    const c7 = (row[7]||'').trim();
-    const isFebPlus = c7.includes('%') || (!isNaN(parseNum(c4)) && parseNum(c4) < 20 && parseNum(c4) > 0);
-
-    let record;
-    if (isFebPlus) {
-      record = {
-        month: currentMonth, date,
-        checker: '',
-        checked: (row[2]||'').trim(),  // Проверяемый сотрудник
-        division: (row[3]||'').trim(), // Дивизион
-        strong: '', weak: '',
-        score: parseNum(row[9]),
-        competencies: {
-          comm: parseNum(row[4]), sales: parseNum(row[5]),
-          obj: parseNum(row[6]), gen: parseNum(row[8])
-        }
-      };
-    } else {
-      record = {
-        month: currentMonth, date,
-        checker: (row[2]||'').trim(),  // Проверяющий
-        checked: (row[3]||'').trim(),  // Проверяемый
-        division: (row[4]||'').trim(), // Дивизион (пустой в январе)
-        strong: (row[5]||'').trim(),
-        weak: (row[6]||'').trim(),
-        score: parseNum(row[7]),
-        competencies: null
-      };
-    }
-    if (!isNaN(record.score) && record.score > 0) records.push(record);
+    const score = parseNum(scoreRaw);
+    if (isNaN(score) || score < 0 || score > 100) continue;
+    const month = monthFromDate(date);
+    if (!month) continue;
+    if (division) assignDivColor(division);
+    records.push({month, date, checker, checked, division, strong, weak, score, competencies});
   }
   return records;
 }
 
-function parseSurveySheet(rows) {
+// parseSurveySheet(rows, yearLabel?)
+//   yearLabel — например '2026'. Если задан, добавляется в конец period для уникальности
+//   (иначе «Январь» из 2025 и 2026 склеятся).
+function parseSurveySheet(rows, yearLabel) {
   const records = []; // { period, label, count, csat, nps, type:'warehouse'|'city'|'job' }
   const responseRates = []; // { period, label, total, done, pct }
   let currentPeriod = null;
+  const finalize = (p) => yearLabel && p && !p.includes(yearLabel) ? `${p} ${yearLabel}` : p;
 
   function tryParseGroup(row, offset, type) {
     const label = (row[offset]||'').trim();
@@ -935,7 +1125,7 @@ function parseSurveySheet(rows) {
     const csat = parseNum(row[offset+2]);
     const nps = parseNum(row[offset+3]);
     if (isNaN(csat) || isNaN(count)) return null;
-    return { period: currentPeriod, label, count, csat, nps, type };
+    return { period: finalize(currentPeriod), label, count, csat, nps, type };
   }
 
   for (let i = 0; i < rows.length; i++) {
@@ -965,15 +1155,15 @@ function parseSurveySheet(rows) {
       const total = parseInt(row[1]);
       const done = parseInt(row[2]);
       if (!isNaN(pct)) {
-        responseRates.push({ period: currentPeriod, label: c0, total: total||0, done: done||0, pct });
+        responseRates.push({ period: finalize(currentPeriod), label: c0, total: total||0, done: done||0, pct });
       }
       // Try col 5 and col 10 offsets
       const l5 = (row[5]||'').trim(), l10 = (row[10]||'').trim();
       if (l5 && (row[8]||'').includes('%')) {
-        responseRates.push({ period: currentPeriod, label: l5, total: parseInt(row[6])||0, done: parseInt(row[7])||0, pct: parsePercent(row[8]) });
+        responseRates.push({ period: finalize(currentPeriod), label: l5, total: parseInt(row[6])||0, done: parseInt(row[7])||0, pct: parsePercent(row[8]) });
       }
       if (l10 && (row[13]||'').includes('%')) {
-        responseRates.push({ period: currentPeriod, label: l10, total: parseInt(row[11])||0, done: parseInt(row[12])||0, pct: parsePercent(row[13]) });
+        responseRates.push({ period: finalize(currentPeriod), label: l10, total: parseInt(row[11])||0, done: parseInt(row[12])||0, pct: parsePercent(row[13]) });
       }
       continue;
     }
@@ -999,51 +1189,111 @@ function parseSurveySheet(rows) {
   return { records: records.filter(r => (r.label||'').toLowerCase() !== 'итого'), responseRates, totals };
 }
 
+// Парсер обучения. Авто-детект формата по шапке:
+//   A) Старый «КЦ замеры …» (ДОЖИМ + ФИО-разделитель).
+//   B) «Обучение по выгодам 2025»: col[1]=ФИО, col[4]=Точка А, col[6]=Точка Б 2нед, col[7]=Точка Б 1мес.
+//   C) «Обучение возражение ЛМК 2026»: col[0]=ФИО, col[1..]=точка А и далее точки Б через 3 интервала.
+//   D) «Обучение Тревожный звоночек 2026»: тот же шаблон что C.
+//   E) «Метрики 2025»: col[1]=ФИО, col[5]=Точка А, col[10]=Точка B, col[14..16]=рост.
 function parseTrainingSheet(rows) {
-  // Реальная структура CSV (из анализа):
-  // Строка 1: шапка, ДОЖИМ в col[3], ФИО в col[0]
-  // Строки 2-14: данные по дожиму
-  // Строка с col[0]="ФИО": разделитель → переход к LMK
-  // Строки после: данные по LMK
-  //
-  // Squeeze cols: col[3]=Точка А%, col[8]=Точка Б1%, col[14]=Точка Б2%, col[20]=Точка Б3%
-  // LMK cols: col[1]=старт%, col[3]=1нед%, col[7]=2нед%, col[10]=Δ FCR 2нед
   const squeeze = [], lmk = [];
-  let mode = null;
+  if (!rows || !rows.length) return { squeeze, lmk };
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row) continue;
-    const c0 = (row[0]||'').trim();
-    const rowText = row.join(' ').toUpperCase();
+  // Сшиваем первые 2 строки чтобы поймать многострочные заголовки.
+  const headerText = ((rows[0]||[]).concat(rows[1]||[])).join(' ').toUpperCase();
+  const has = (s) => headerText.includes(s);
 
-    // Detect squeeze section: ДОЖИМ может быть в любом столбце шапки
-    if (!mode && rowText.includes('ДОЖИМ')) { mode = 'squeeze'; continue; }
-
-    // Переход к LMK: строка ФИО после данных дожима
-    if (mode === 'squeeze' && c0.toUpperCase() === 'ФИО') { mode = 'lmk'; continue; }
-
-    if (!mode || !c0 || c0.toUpperCase() === 'ФИО') continue;
-    if (c0 === 'Итого' || c0 === 'Среднее') continue;
-
-    if (mode === 'squeeze') {
-      const ptA  = parsePercent(row[3]);
-      const ptB1 = parsePercent(row[8]);
-      const ptB2 = parsePercent(row[14]);
-      const ptB3 = parsePercent(row[20]);
-      if (!isNaN(ptA)) {
-        const lastB = !isNaN(ptB3) ? ptB3 : !isNaN(ptB2) ? ptB2 : ptB1;
-        squeeze.push({ name: c0, pointA: ptA, pointB: lastB, allPoints: [ptA, ptB1, ptB2, ptB3] });
+  // Формат A — старый «КЦ замеры …»
+  if (has('ДОЖИМ')) {
+    let mode = null;
+    for (const row of rows) {
+      if (!row) continue;
+      const c0 = (row[0]||'').trim();
+      const rt = row.join(' ').toUpperCase();
+      if (!mode && rt.includes('ДОЖИМ')) { mode = 'squeeze'; continue; }
+      if (mode === 'squeeze' && c0.toUpperCase() === 'ФИО') { mode = 'lmk'; continue; }
+      if (!mode || !c0 || c0.toUpperCase() === 'ФИО' || c0 === 'Итого' || c0 === 'Среднее') continue;
+      if (mode === 'squeeze') {
+        const ptA = parsePercent(row[3]), ptB1 = parsePercent(row[8]), ptB2 = parsePercent(row[14]), ptB3 = parsePercent(row[20]);
+        if (!isNaN(ptA)) squeeze.push({ name: c0, pointA: ptA, pointB: !isNaN(ptB3) ? ptB3 : !isNaN(ptB2) ? ptB2 : ptB1, allPoints: [ptA,ptB1,ptB2,ptB3] });
+      } else {
+        const start = parsePercent(row[1]), w1 = parsePercent(row[3]), w2 = parsePercent(row[7]), fcr = parsePercent(row[10]);
+        if (!isNaN(start)) lmk.push({ name: c0, start, week1: w1, week2: w2, fcr });
       }
     }
-    if (mode === 'lmk') {
-      const start = parsePercent(row[1]);
-      const w1    = parsePercent(row[3]);
-      const w2    = parsePercent(row[7]);
-      const fcr   = parsePercent(row[10]);
-      if (!isNaN(start)) lmk.push({ name: c0, start, week1: w1, week2: w2, fcr });
+    return { squeeze, lmk };
+  }
+
+  // Формат B — «Обучение по выгодам 2025»: ФИО в col[1], Точка А в col[4], Точка Б через 2нед/1мес.
+  if (has('ТОЧКА А') && has('ТОЧКА Б') && (rows[0]||[])[1] && /Участник/i.test(rows[0][1]||'')) {
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]; if (!row) continue;
+      const name = (row[1]||'').trim();
+      if (!name || /^Итого|Среднее|Стартовый/i.test(name)) continue;
+      const ptA = parsePercent(row[4]);
+      const ptB2w = parsePercent(row[6]);
+      const ptB1m = parsePercent(row[7]);
+      if (isNaN(ptA)) continue;
+      const lastB = !isNaN(ptB1m) ? ptB1m : ptB2w;
+      squeeze.push({ name, pointA: ptA, pointB: lastB, allPoints: [ptA, ptB2w, ptB1m] });
+    }
+    return { squeeze, lmk };
+  }
+
+  // Формат C/D — «Обучение … 202X»: col[0]=ФИО, точки А и Б идут блоками по 5-6 колонок.
+  // Заголовок содержит «ТОЧКА А» и несколько «ТОЧКА Б».
+  if (has('ТОЧКА А') && (headerText.match(/ТОЧКА Б/g)||[]).length >= 1) {
+    // Находим стартовые колонки каждого блока по слову «ТОЧКА» в шапке (concat первые 2 строки).
+    const h0 = rows[0]||[];
+    const h1 = rows[1]||[];
+    const merged = []; const maxLen = Math.max(h0.length, h1.length);
+    for (let k = 0; k < maxLen; k++) merged[k] = ((h0[k]||'') + ' ' + (h1[k]||'')).toUpperCase();
+    const blockStarts = [];
+    for (let k = 0; k < merged.length; k++) {
+      if (/ТОЧКА [АБ]/.test(merged[k])) blockStarts.push(k);
+    }
+    if (blockStarts.length >= 2) {
+      // В каждом блоке колонка «приглашены в %» обычно через 2 от блока (Всего ЖП/Из них приглашены/приглашены %).
+      const pctCol = (start) => start + 2;
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]; if (!row) continue;
+        const name = (row[0]||'').trim();
+        if (!name || /^Итого|Среднее/i.test(name)) continue;
+        const values = blockStarts.map(s => parsePercent(row[pctCol(s)]));
+        if (values.every(isNaN)) continue;
+        const start = values[0];
+        const week1 = values[1];
+        const week2 = values[2];
+        const fcr = values[3];
+        if (!isNaN(start)) {
+          lmk.push({ name, start, week1: !isNaN(week1)?week1:NaN, week2: !isNaN(week2)?week2:NaN, fcr: !isNaN(fcr)?fcr:NaN });
+        }
+      }
+      return { squeeze, lmk };
     }
   }
+
+  // Формат E — «Метрики 2025»: участники в col[1], точка А col[5], точка B col[10], рост col[14..16].
+  if ((rows[0]||[])[1] && /Участник/i.test(rows[0][1]||'') && has('ТОЧКА')) {
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]; if (!row) continue;
+      const name = (row[1]||'').trim();
+      if (!name || /^Итого|Среднее|Группа/i.test(name)) continue;
+      const ptA = parsePercent(row[5]);
+      const ptB = parsePercent(row[10]);
+      if (!isNaN(ptA) && !isNaN(ptB)) {
+        squeeze.push({ name, pointA: ptA, pointB: ptB, allPoints: [ptA, ptB] });
+      }
+      // Также добавим в lmk самооценку ДО→ПОСЛЕ если есть.
+      const selfBefore = parsePercent(row[8]);
+      const selfAfter = parsePercent(row[13]);
+      if (!isNaN(selfBefore) && !isNaN(selfAfter)) {
+        lmk.push({ name, start: selfBefore, week1: NaN, week2: selfAfter, fcr: parsePercent(row[16]) });
+      }
+    }
+    return { squeeze, lmk };
+  }
+
   return { squeeze, lmk };
 }
 
@@ -1076,12 +1326,46 @@ function prepareBarWrap(canvas, itemCount, minH) {
 
 function filteredCalls() {
   const q = state.filters.search.toLowerCase();
-  return state.data.calls.filter(r => {
+  const raw = state.data.calls.filter(r => {
     const okM = state.filters.month === 'all' || r.month === state.filters.month;
     const okD = state.filters.division === 'all' || r.division === state.filters.division;
     const okS = !q || r.name.toLowerCase().includes(q);
-    return okM && okD && okS;
+    // Защита от мусорных строк (аналитики, нулевые звонки)
+    const okC = (r.calls|0) > 0 && !/Аналитик/i.test(r.division||'');
+    return okM && okD && okS && okC;
   });
+  // Если месяц = «Все», один рекрутёр может встречаться в нескольких записях
+  // (по одной на каждую Сводную / месяц). Агрегируем — берём среднее % качества,
+  // сумму звонков и средние по критериям.
+  if (state.filters.month !== 'all') return raw;
+  const byKey = new Map();
+  for (const r of raw) {
+    const key = `${r.name}|${r.division||''}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, { name: r.name, division: r.division, totals: [], calls: 0, criteria: {}, _months: new Set() });
+    }
+    const agg = byKey.get(key);
+    agg.totals.push(r.total);
+    agg.calls += r.calls || 0;
+    agg._months.add(r.month);
+    for (const [cn, cv] of Object.entries(r.criteria||{})) {
+      if (!agg.criteria[cn]) agg.criteria[cn] = [];
+      if (!isNaN(cv)) agg.criteria[cn].push(cv);
+    }
+  }
+  const out = [];
+  for (const agg of byKey.values()) {
+    const criteria = {};
+    for (const [cn, arr] of Object.entries(agg.criteria)) criteria[cn] = avg(arr);
+    out.push({
+      name: agg.name, division: agg.division,
+      total: avg(agg.totals),
+      calls: agg.calls,
+      criteria,
+      month: agg._months.size > 1 ? `${agg._months.size} мес.` : [...agg._months][0]
+    });
+  }
+  return out;
 }
 function onSearchInput() {
   state.filters.search = document.getElementById('search-fio').value;
@@ -1284,6 +1568,90 @@ function updateTabBadges() {
     if (btn) { const b = document.createElement('span'); b.className = 'tab-badge'; b.textContent = below; btn.appendChild(b); }
   }
 }
+
+// ========== PER-SECTION REFRESH ==========
+async function refreshSection(name, btn) {
+  if (btn) { btn.disabled = true; btn.dataset.orig = btn.innerHTML; btn.innerHTML = '⏳'; }
+  try {
+    if (name === 'calls' || name === 'overview') {
+      state.data.calls = await loadAllCalls(true);
+    }
+    if (name === 'mpp' || name === 'overview') {
+      state.data.mpp = await loadAllMPP(true);
+    }
+    if (name === 'orp' || name === 'overview') {
+      state.data.orp = await loadAllORP(true);
+    }
+    if (name === 'survey') {
+      state.data.survey = await loadAllSurvey(true);
+    }
+    if (name === 'training') {
+      state.data.training = await loadAllTraining(true);
+    }
+    // Перерисовка
+    populateFilters && populateFilters();
+    if (name === 'calls' || name === 'overview') { renderCalls(); renderOverview(); }
+    if (name === 'mpp')      { renderMPP(); renderOverview(); }
+    if (name === 'orp')      { renderORP(); renderOverview(); }
+    if (name === 'survey')   renderSurvey();
+    if (name === 'training') renderTraining();
+    if (btn) { btn.innerHTML = '✓'; setTimeout(()=>{ btn.innerHTML = btn.dataset.orig || '↻'; btn.disabled=false; }, 1200); }
+  } catch (e) {
+    console.error('refreshSection failed', name, e);
+    if (btn) { btn.innerHTML = '✗'; setTimeout(()=>{ btn.innerHTML = btn.dataset.orig || '↻'; btn.disabled=false; }, 1500); }
+  }
+}
+
+// ========== VALIDATION BADGE ==========
+let __validationData = null;
+async function loadValidationStatus() {
+  const badge = document.getElementById('validation-badge');
+  if (!badge) return;
+  try {
+    const r = await fetch('/okk/validation-latest.json?_=' + Date.now());
+    if (!r.ok) throw new Error('no report');
+    const data = await r.json();
+    __validationData = data;
+    const {ok=0, warn=0, err=0} = data.summary || {};
+    if (err > 0) {
+      badge.innerHTML = `<span style="color:#ef4444">✗ ${err}</span>`;
+      badge.style.borderColor = '#7f1d1d'; badge.title = `Сверка: ${err} ошибок`;
+    } else if (warn > 0) {
+      badge.innerHTML = `<span style="color:#f59e0b">⚠ ${warn}</span>`;
+      badge.style.borderColor = '#78350f'; badge.title = `Сверка: ${warn} предупреждений`;
+    } else {
+      badge.innerHTML = `<span style="color:#10b981">✓</span>`;
+      badge.style.borderColor = '#064e3b'; badge.title = 'Сверка: всё совпадает';
+    }
+  } catch (e) {
+    badge.innerHTML = '<span style="color:#666">— нет</span>';
+    badge.title = 'Сверка ещё не запускалась';
+    __validationData = null;
+  }
+}
+function showValidationModal() {
+  const body = document.getElementById('validation-modal-body');
+  const modal = document.getElementById('validation-modal');
+  if (!__validationData) {
+    body.innerHTML = '<p>Автоматическая сверка ещё не выполнялась.</p><p style="color:#888">Скрипт запускается на сервере каждый день в 06:00. Отчёт появится после первого запуска.</p>';
+  } else {
+    const d = __validationData;
+    const ts = new Date(d.timestamp).toLocaleString('ru-RU');
+    const {ok=0, warn=0, err=0} = d.summary || {};
+    let html = `<div style="margin-bottom:14px;color:#888">Последняя сверка: ${ts}</div>`;
+    html += `<div style="margin-bottom:14px"><span style="color:#10b981">✓ ${ok}</span> &nbsp; <span style="color:#f59e0b">⚠ ${warn}</span> &nbsp; <span style="color:#ef4444">✗ ${err}</span></div>`;
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid #333;color:#888;text-align:left"><th style="padding:6px 4px">Файл/Вкладка</th><th style="padding:6px 4px">Проверка</th><th style="padding:6px 4px">CSV</th><th style="padding:6px 4px">Парсер</th><th></th></tr></thead><tbody>';
+    for (const c of (d.checks || [])) {
+      const icon = c.status==='ok'?'<span style="color:#10b981">✓</span>':c.status==='warn'?'<span style="color:#f59e0b">⚠</span>':'<span style="color:#ef4444">✗</span>';
+      html += `<tr style="border-bottom:1px solid #222"><td style="padding:6px 4px">${c.file}/${c.tab}</td><td style="padding:6px 4px;color:#aaa">${c.check}</td><td style="padding:6px 4px">${c.expected}</td><td style="padding:6px 4px">${c.actual}</td><td style="padding:6px 4px">${icon}</td></tr>`;
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  }
+  modal.style.display = 'flex';
+}
+// загружаем статус при старте — после initDashboard
+window.addEventListener('load', () => setTimeout(loadValidationStatus, 1500));
 
 // ========== REFRESH ==========
 async function refreshDashboard() {
@@ -2329,47 +2697,243 @@ document.querySelectorAll('#survey-subtabs .sub-tab').forEach(btn=>{
 });
 
 // ========== INITIALIZATION ==========
+// Тоггл вариантов опроса РП: 'new' (по умолчанию) или 'old'.
+// Хранится в localStorage для устойчивости между загрузками.
+let RP_MODE = (function() {
+  try { return localStorage.getItem('okk_rp_mode') || 'new'; } catch(e) { return 'new'; }
+})();
+function setRpMode(mode) {
+  RP_MODE = (mode === 'old') ? 'old' : 'new';
+  try { localStorage.setItem('okk_rp_mode', RP_MODE); } catch(e) {}
+}
+
+// Парсер ОДНОЙ raw-вкладки «Тех. лист MM.YY» — сырые поштучные звонки.
+// Группирует по ФИО рекрутёра, считает avg по 21 критерию и средний %.
+function parseRawCallsTab(rows, monthLabel) {
+  if (!rows || rows.length < 2) return [];
+  const header = rows[0] || [];
+  // Критерии в колонках 5..25 (21 шт), col[26]=Результат(итого), col[27]=Комментарии
+  const critNames = [];
+  for (let k = 5; k <= 25; k++) {
+    let name = String(header[k]||'').trim();
+    // Чистим: убираем перевод строки внутри ячейки и группы-префиксы
+    name = name.split('\n')[0].trim();
+    name = name.replace(/^(Установление контакта|Квалификация|Презентация|Продажа|Резюмирование|Прощание с благодарностью|Соответствие стадии)\s+/i, '');
+    // Очень длинные урезаем
+    if (name.length > 38) name = name.slice(0, 36) + '…';
+    critNames.push(name || `col${k}`);
+  }
+  // Глобальный список критериев (для графика) — заполняем при первом валидном вызове
+  if (typeof CRITERIA_NAMES !== 'undefined' && CRITERIA_NAMES.length === 0 && critNames.some(n => n && !/^col\d+$/.test(n))) {
+    CRITERIA_NAMES.push(...critNames);
+  }
+  const byName = new Map();
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]; if (!row) continue;
+    const name = (row[0]||'').trim();
+    if (!name || /^Итого|Среднее|Аналитика/i.test(name)) continue;
+    if (!byName.has(name)) byName.set(name, { totals: [], crit: critNames.map(()=>[]) });
+    const agg = byName.get(name);
+    const totalNum = parsePercent(row[26]);
+    if (!isNaN(totalNum)) agg.totals.push(totalNum);
+    for (let k = 0; k < critNames.length; k++) {
+      const v = parseNum(row[5+k]);
+      if (!isNaN(v) && v >= 0 && v <= 1) agg.crit[k].push(v * 100);
+      else if (!isNaN(v) && v > 1 && v <= 100) agg.crit[k].push(v); // на случай если %
+    }
+  }
+  const out = [];
+  for (const [name, agg] of byName) {
+    if (!agg.totals.length && !agg.crit.some(a=>a.length)) continue;
+    const criteria = {};
+    for (let k = 0; k < critNames.length; k++) {
+      if (agg.crit[k].length) criteria[critNames[k]] = avg(agg.crit[k]);
+    }
+    let total = agg.totals.length ? avg(agg.totals) : avg(Object.values(criteria));
+    if (isNaN(total)) continue;
+    out.push({ month: monthLabel, division: '', name, total, calls: agg.totals.length, criteria });
+  }
+  // Глобальные имена критериев — устанавливаем один раз
+  if (!CRITERIA_NAMES.length && critNames.length) CRITERIA_NAMES = critNames.slice();
+  return out;
+}
+
+// Прослушка: основной источник = помесячные «Тех. лист MM.YY» (сырые звонки),
+// агрегируем сами; Сводные используются только для маппинга «ФИО → дивизион».
+async function loadAllCalls(bustCache) {
+  const tabs = await fetchTabs('kc');
+  const monthly = filterMonthlyTabs(tabs, /^Тех\.?\s*лист\s+\d/i);
+  buildMonthsOrder(monthly);
+
+  // 1) Загружаем все Тех. листы.
+  const all = [];
+  for (const t of monthly) {
+    try {
+      const rows = await fetchSheet('kc', t.name, bustCache);
+      const label = `${ALL_MONTHS[t.month-1]} ${t.year}`;
+      all.push(...parseRawCallsTab(rows, label));
+    } catch(e) { console.warn('Тех. лист failed', t.name, e); }
+  }
+
+  // 2) Загружаем Сводные ради дивизионов и (если Тех. листов нет) ради данных.
+  const summaryTabs = tabs.filter(n => /^Сводная\s+\d{4}$/i.test(n));
+  const divMap = new Map();
+  for (const name of summaryTabs) {
+    try {
+      const yy = (name.match(/(\d{4})/)||[])[1] || '';
+      const rows = await fetchSheet('kc', name, bustCache);
+      let monthName = null;
+      for (let r = 0; r < Math.min(2, rows.length); r++) {
+        for (const cell of (rows[r]||[])) {
+          const m = String(cell||'').match(/(ЯНВАРЬ|ФЕВРАЛЬ|МАРТ|АПРЕЛЬ|МАЙ|ИЮНЬ|ИЮЛЬ|АВГУСТ|СЕНТЯБРЬ|ОКТЯБРЬ|НОЯБРЬ|ДЕКАБРЬ)/i);
+          if (m) { monthName = m[1].toUpperCase(); break; }
+        }
+        if (monthName) break;
+      }
+      const label = monthName ? `${monthName} ${yy}` : `Сводная ${yy}`;
+      const recs = parseCallsSheetMonthly(rows, label);
+      for (const r of recs) {
+        if (r.name && r.division) divMap.set(r.name.trim(), r.division);
+      }
+      // Если за этот месяц Тех. лист пустой/отсутствовал — берём из Сводной
+      if (monthName && !all.some(x => x.month === label)) all.push(...recs);
+    } catch(e) { console.warn('Сводная failed', name, e); }
+  }
+
+  // 3) Применяем дивизион из карты ко всем записям без него.
+  for (const r of all) {
+    if (!r.division) r.division = divMap.get(r.name.trim()) || 'Без дивизиона';
+    assignDivColor(r.division);
+  }
+  return all;
+}
+
+// Загрузить Сводные МПП (2025 + 2026 если есть).
+async function loadAllMPP(bustCache) {
+  const tabs = await fetchTabs('mpp');
+  const targets = tabs.filter(n => /^Сводная\s+\d{4}$/i.test(n));
+  const all = [];
+  for (const name of targets) {
+    try {
+      const rows = await fetchSheet('mpp', name, bustCache);
+      all.push(...parseMPPSheet(rows));
+    } catch(e) { console.warn('mpp tab failed', name, e); }
+  }
+  return all;
+}
+
+// Загрузить Сводные ОРП (2025 + 2026).
+async function loadAllORP(bustCache) {
+  const tabs = await fetchTabs('orp');
+  const targets = tabs.filter(n => /^Сводная\s+\d{4}$/i.test(n));
+  const all = [];
+  for (const name of targets) {
+    try {
+      const rows = await fetchSheet('orp', name, bustCache);
+      all.push(...parseORPSheet(rows));
+    } catch(e) { console.warn('orp tab failed', name, e); }
+  }
+  return all;
+}
+
+// Загрузить опросы РП согласно RP_MODE.
+async function loadAllSurvey(bustCache) {
+  const tabs = await fetchTabs('rp');
+  let targets = [];
+  if (RP_MODE === 'new') {
+    targets = tabs.filter(n => /^Сводные новый РП\s+\d{4}$/i.test(n))
+                  .map(n => ({name: n, year: (n.match(/(\d{4})$/)||[])[1] || ''}));
+  } else {
+    // старый формат: «Сводные MM.YY» либо «Сводные ZZ.YY» — берём вкладки начинающиеся со «Сводные» без «новый»
+    targets = tabs.filter(n => /^Сводные\s+\d{2}\.\d{2}$/i.test(n))
+                  .map(n => {
+                    const m = n.match(/(\d{2})\.(\d{2})$/);
+                    return {name: n, year: m ? `20${m[2]}` : ''};
+                  });
+  }
+  const recordsAll = []; const ratesAll = []; const totalsAll = {};
+  for (const t of targets) {
+    try {
+      const rows = await fetchSheet('rp', t.name, bustCache);
+      const parsed = parseSurveySheet(rows, t.year);
+      recordsAll.push(...parsed.records);
+      ratesAll.push(...parsed.responseRates);
+      Object.assign(totalsAll, parsed.totals);
+    } catch(e) { console.warn('survey tab failed', t.name, e); }
+  }
+  return { records: recordsAll, responseRates: ratesAll, totals: totalsAll };
+}
+
+// Загрузить обучение из файла Статистики (несколько вкладок).
+async function loadAllTraining(bustCache) {
+  const tabs = await fetchTabs('stats');
+  // Исключаем служебные
+  const targets = tabs.filter(n => /^(Обучение|Метрики)/i.test(n) && !/Лист\d+$/i.test(n));
+  const squeeze = []; const lmk = [];
+  for (const name of targets) {
+    try {
+      const rows = await fetchSheet('stats', name, bustCache);
+      const r = parseTrainingSheet(rows);
+      if (r && Array.isArray(r.squeeze)) squeeze.push(...r.squeeze);
+      if (r && Array.isArray(r.lmk)) lmk.push(...r.lmk);
+    } catch(e) { console.warn('training tab failed', name, e); }
+  }
+  return { squeeze, lmk };
+}
+
 async function initDashboard(bustCache) {
   document.getElementById('loading-overlay').style.display='flex';
   document.getElementById('error-overlay').style.display='none';
 
   try {
-    const [callsRows, mppRows, orpRows, surveyRows] = await Promise.all([
-      fetchSheet(SHEETS.calls, bustCache),
-      fetchSheet(SHEETS.mpp, bustCache),
-      fetchSheet(SHEETS.orp, bustCache),
-      fetchSheet(SHEETS.survey, bustCache),
+    const [calls, mpp, orp, survey] = await Promise.all([
+      loadAllCalls(bustCache),
+      loadAllMPP(bustCache),
+      loadAllORP(bustCache),
+      loadAllSurvey(bustCache),
     ]);
 
-    state.data.calls = parseCallsSheet(callsRows);
-    state.data.mpp = parseMPPSheet(mppRows);
-    state.data.orp = parseORPSheet(orpRows);
-    state.data.survey = parseSurveySheet(surveyRows);
+    state.data.calls = calls;
+    state.data.mpp = mpp;
+    state.data.orp = orp;
+    state.data.survey = survey;
 
-    // Training sheet — may have wrong name, so try separately
+    // Если buildMonthsOrder ещё не задал MONTHS_ORDER (KC пуст) — собрать из всех источников
+    if (!MONTHS_ORDER.length) {
+      const seen = new Map();
+      const eat = (label) => {
+        if (!label) return;
+        const m = label.match(/^([А-ЯЁ]+)\s+(\d{4})/);
+        if (!m) return;
+        const idx = ALL_MONTHS.indexOf(m[1]);
+        if (idx < 0) return;
+        const yy = parseInt(m[2]);
+        seen.set(yy*100+(idx+1), `${m[1]} ${yy}`);
+      };
+      calls.forEach(r=>eat(r.month));
+      mpp.forEach(r=>eat(r.month));
+      orp.forEach(r=>eat(r.month));
+      MONTHS_ORDER = [...seen.entries()].sort((a,b)=>a[0]-b[0]).map(e=>e[1]);
+    }
+
+    // Обучение — отдельно, без падения остального дашборда при ошибке
     try {
-      const trainingRows = await fetchSheet(SHEETS.training, bustCache);
-      // Verify it's not the same as calls (fallback to default sheet)
-      const isActualTraining = trainingRows[0] && !(trainingRows[0][1]==='Итого' && trainingRows[0][2]==='Звонков проверено');
-      if (isActualTraining) {
-        state.data.training = parseTrainingSheet(trainingRows);
-        state.data.trainingAvail = true;
-      } else {
-        state.data.training = null;
-        state.data.trainingAvail = false;
-      }
+      const training = await loadAllTraining(bustCache);
+      const hasData = (training.squeeze && training.squeeze.length) || (training.lmk && training.lmk.length);
+      state.data.training = hasData ? training : null;
+      state.data.trainingAvail = !!hasData;
     } catch(e) {
       state.data.training = null;
       state.data.trainingAvail = false;
     }
 
     document.getElementById('loading-overlay').style.display='none';
+    const rpSel = document.getElementById('filter-rp-mode');
+    if (rpSel) rpSel.value = RP_MODE;
     updateTabBadges();
     renderOverview();
-    // Загрузить системный промпт и модели Ollama в фоне
     _loadOkkPrompt();
     loadOllamaModels().then(() => {
-      // Auto-insight после загрузки моделей
       setTimeout(generateAutoInsight, 500);
     });
 
@@ -2377,7 +2941,7 @@ async function initDashboard(bustCache) {
     console.error(err);
     document.getElementById('loading-overlay').style.display='none';
     document.getElementById('error-overlay').style.display='flex';
-    document.getElementById('error-msg').textContent = `Ошибка загрузки: ${err.message}. Убедитесь, что таблица опубликована через Файл → Поделиться → Опубликовать в интернете.`;
+    document.getElementById('error-msg').textContent = `Ошибка загрузки: ${err.message}. Убедитесь, что таблицы опубликованы для чтения по ссылке.`;
   }
 }
 
@@ -2501,7 +3065,7 @@ function buildOllamaMessages(userMsg) {
 - Прослушка: норма ≥85%, ниже 75% — критично
 - МПП/ОРП: норма ≥80 баллов, ниже 60 — зона риска
 - Опросы: CSAT норма ≥4.5, NPS норма ≥4.0
-- Всегда указывай период (месяц) анализируемых данных`) + '\n\nАКТУАЛЬНЫЕ ДАННЫЕ:\n' + buildDataContext()`
+- Всегда указывай период (месяц) анализируемых данных`) + '\n\nАКТУАЛЬНЫЕ ДАННЫЕ:\n' + buildDataContext()
   };
   const history = aiHistory.map(h => ({ role: h.role === 'model' ? 'assistant' : h.role, content: h.content }));
   return [systemMsg, ...history, { role: 'user', content: userMsg }];
@@ -2537,7 +3101,17 @@ async function loadOllamaModels() {
 async function sendToOllamaStream(userMsg, onChunk) {
   const model = getSelectedModel();
   if (!model) throw new Error('Выберите модель из списка');
-  const payload = { model, messages: buildOllamaMessages(userMsg), stream: true, think: false };
+  const payload = {
+    model,
+    messages: buildOllamaMessages(userMsg),
+    stream: true,
+    think: false,
+    options: {
+      num_ctx: 8192,       // контекстное окно для запроса+ответа
+      num_predict: 1500,   // максимум токенов в ответе (хватит на длинный анализ)
+      temperature: 0.3
+    }
+  };
   const res = await fetch(_OLLAMA_PROXY + '/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2585,7 +3159,8 @@ async function generateAutoInsight() {
         { role: 'user', content: 'Дай 2-3 предложения — самый главный вывод: кто лидер, что требует срочного внимания. Очень кратко.' }
       ],
       stream: true,
-      think: false
+      think: false,
+      options: { num_ctx: 8192, num_predict: 300, temperature: 0.3 }
     };
     const res = await fetch(_OLLAMA_PROXY + '/chat/stream', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -2672,7 +3247,12 @@ async function aiAsk(message) {
     if (aiHistory.length > 24) aiHistory.splice(0, 2);
   } catch(e) {
     thinking.className = 'ai-msg assistant';
-    thinking.innerHTML = `<span style="color:var(--red)">⚠️ Ошибка: ${e.message}</span>`;
+    let msg = e.message || 'неизвестная ошибка';
+    // Понятное сообщение для частых сетевых обрывов
+    if (/network|failed to fetch|load failed/i.test(msg)) {
+      msg = 'Соединение с ИИ оборвалось. Проверьте на компе: окно start-ai.bat открыто, ngrok-туннель жив. Если всё ок — перезапустите start-ai.bat.';
+    }
+    thinking.innerHTML = `<span style="color:var(--red)">⚠️ Ошибка: ${msg}</span>`;
   }
 
   if (btn) btn.disabled = false;
@@ -2688,5 +3268,47 @@ function clearAIChat() {
 
 initDashboard();
 </script>
+
+<!-- STH_AI_HEALTH_BANNER_START -->
+<style>
+#_sth_ai_offline_banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #b91c1c; color: #fff;
+  padding: 8px 16px; text-align: center;
+  font: 600 13px/1.4 Inter, system-ui, sans-serif;
+  z-index: 99999; display: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#_sth_ai_offline_banner.show { display: block; }
+</style>
+<div id="_sth_ai_offline_banner">⚠️ ИИ временно недоступен — отвечать не сможет. Команда уже видит проблему.</div>
+<script>
+(function() {
+  const URL = '/tasks/api/ai/health';
+  const EL = () => document.getElementById('_sth_ai_offline_banner');
+  let _lastOnline = null;
+  async function _check() {
+    try {
+      const r = await fetch(URL, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const online = !!d.online;
+      const el = EL();
+      if (el) el.classList.toggle('show', !online);
+      _lastOnline = online;
+    } catch (e) {
+      const el = EL();
+      if (el) el.classList.add('show');
+    }
+  }
+  // Первая проверка через 2 сек после загрузки, далее раз в 60 сек
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(_check, 2000);
+    setInterval(_check, 60000);
+  });
+})();
+</script>
+<!-- STH_AI_HEALTH_BANNER_END -->
+
 </body>
 </html>
