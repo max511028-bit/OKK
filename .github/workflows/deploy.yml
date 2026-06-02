@@ -10,6 +10,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build sales dashboard
+        run: |
+          cd sales
+          npm ci
+          npm run build
+
       - name: Deploy all files to VPS
         run: |
           echo "${{ secrets.VPS_SSH_KEY }}" > /tmp/vps_key
@@ -22,8 +33,17 @@ jobs:
             --exclude='tasks/api/ai_url.json' \
             --exclude='tasks/api/.venv' \
             --exclude='**/__pycache__' \
+            --exclude='sales/node_modules' \
+            --exclude='sales/src' \
+            --exclude='sales/dist' \
             -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \
             . root@195.208.119.67:/var/www/okk/
+
+          # Перекрываем sales/ собранным prod-бандлом (dist/index.html + assets/ + data/).
+          # Без --delete: оставляем on-the-fly загруженные CSV в sales/public/data/.
+          rsync -avz \
+            -e "ssh -i /tmp/vps_key -o StrictHostKeyChecking=no" \
+            sales/dist/ root@195.208.119.67:/var/www/okk/sales/
           rm /tmp/vps_key
 
       - name: Upload Google service account credentials
