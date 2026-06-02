@@ -3310,5 +3310,79 @@ initDashboard();
 </script>
 <!-- STH_AI_HEALTH_BANNER_END -->
 
+<!-- STH_HELP_BTN_START -->
+<style>
+#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+  background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_help_btn:hover{background:#374151;transform:scale(1.08)}
+#_sth_help_modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99998;display:none;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#_sth_help_modal.show{display:flex}
+#_sth_help_box{background:#161b22;color:#e6edf3;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow:auto;
+  padding:24px 28px;box-shadow:0 24px 80px rgba(0,0,0,.7);font:14px/1.6 Inter,system-ui,sans-serif}
+#_sth_help_box h1{font-size:22px;margin:0 0 14px;color:#fff}
+#_sth_help_box h2{font-size:16px;margin:18px 0 8px;color:#fff}
+#_sth_help_box h3{font-size:14px;margin:14px 0 6px;color:#fff}
+#_sth_help_box p{margin:0 0 10px;color:#cbd5e1}
+#_sth_help_box ul,#_sth_help_box ol{margin:0 0 10px;padding-left:22px;color:#cbd5e1}
+#_sth_help_box li{margin-bottom:4px}
+#_sth_help_box code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px}
+#_sth_help_box strong{color:#fff}
+#_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
+  margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
+#_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+</style>
+<button id="_sth_help_btn" title="Помощь по дашборду">?</button>
+<div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
+<script>
+(function(){
+  const SLUG='okk';
+  const btn=document.getElementById('_sth_help_btn');
+  const modal=document.getElementById('_sth_help_modal');
+  const close=document.getElementById('_sth_help_close');
+  const box=document.getElementById('_sth_help_box');
+  const content=document.getElementById('_sth_help_content');
+  let _loaded=false;
+  function mdToHtml(md){
+    // Минимальный markdown → HTML рендер. Без зависимостей.
+    md=md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    md=md.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+    md=md.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+    md=md.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+    md=md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md=md.replace(/`([^`]+)`/g,'<code>$1</code>');
+    // списки
+    md=md.replace(/(^|\n)((?:- .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
+      return p+'<ul>'+items+'</ul>';
+    });
+    md=md.replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^\d+\. /,'')+'</li>').join('');
+      return p+'<ol>'+items+'</ol>';
+    });
+    // параграфы
+    return md.split(/\n\n+/).map(b=>b.match(/^<(h\d|ul|ol|li|p)/) ? b : ('<p>'+b.replace(/\n/g,'<br>')+'</p>')).join('\n');
+  }
+  async function loadHelp(){
+    if(_loaded)return;
+    try{
+      const r=await fetch('/docs/'+SLUG+'/help.md?_='+Date.now());
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const md=await r.text();
+      content.innerHTML=mdToHtml(md);
+      _loaded=true;
+    }catch(e){content.innerHTML='<p style="color:#f87171">Не удалось загрузить help.md: '+e.message+'</p>';}
+  }
+  btn.addEventListener('click',function(){modal.classList.add('show');loadHelp();});
+  close.addEventListener('click',function(){modal.classList.remove('show');});
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')modal.classList.remove('show');});
+})();
+</script>
+<!-- STH_HELP_BTN_END -->
 </body>
 </html>

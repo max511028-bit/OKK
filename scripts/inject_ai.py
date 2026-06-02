@@ -107,18 +107,17 @@ CONFIGS = {
   var lines=['=== ФИНАНСОВЫЙ ДАШБОРД STH GROUP ==='];
   try{
     if(typeof D==='undefined'){lines.push('Данные ещё не загружены.');return lines.join('\\n');}
-    // Активная вкладка
+    var fmtN=function(x){return Math.round(x||0).toLocaleString('ru-RU');};
+    // Активная вкладка + период
     var act=document.querySelector('.tab-content.active');
     var tabName=act?act.id.replace('tab-',''):'general';
     lines.push('Активная вкладка: '+tabName);
-    // Период
     var typeSel=document.getElementById(tabName+'PeriodType')||document.getElementById('generalPeriodType');
     var valSel=document.getElementById(tabName+'PeriodVal')||document.getElementById('generalPeriodVal');
     var typeV=typeSel?typeSel.value:'all',valV=valSel?valSel.value:'';
     var keys=(typeof getMonthKeys==='function')?getMonthKeys(typeV,valV):[];
     var label=(typeof getPeriodLabel==='function')?getPeriodLabel(typeV,valV):valV;
     lines.push('Период: '+label+' ('+keys.length+' мес.)');
-    // Общая статистика
     lines.push('Всего месяцев данных: '+D.monthly.length+', проектов: '+new Set(Object.values(D.projects_per_month).flat().map(function(p){return p.name;})).size+', клиентов: '+(D.clients||[]).length+', городов: '+(D.cities||[]).length);
     // P&L агрегат по периоду
     if(typeof aggregatePlRows==='function'){
@@ -128,37 +127,80 @@ CONFIGS = {
       var rev=pl['Выручка']||pl['Выручка с НДС']||0;
       var prof=pl['Прибыль']||pl['Чистая прибыль']||pl['Маржинальная прибыль']||0;
       var marg=rev>0?(prof/rev*100).toFixed(1):'0';
-      lines.push('Выручка: '+Math.round(rev).toLocaleString('ru-RU')+' руб');
-      lines.push('Прибыль: '+Math.round(prof).toLocaleString('ru-RU')+' руб');
-      lines.push('Рентабельность: '+marg+'%');
+      lines.push('Выручка: '+fmtN(rev)+' руб; Прибыль: '+fmtN(prof)+' руб; Рентабельность: '+marg+'%');
     }
-    // Топ-проекты по выручке за период
+    // ── Помесячная динамика (последний месяц + 2 предыдущих) ──
+    if(D.monthly&&D.monthly.length){
+      var last3=D.monthly.slice(-3);
+      lines.push('── Помесячно (последние 3): ──');
+      last3.forEach(function(m){
+        var mRev=m.rev||0, mFin=m.fin||0, mMar=mRev>0?(mFin/mRev*100):0;
+        lines.push('  '+m.label+': выручка '+fmtN(mRev)+'р, прибыль '+fmtN(mFin)+'р, рент '+mMar.toFixed(1)+'%');
+      });
+    }
+    // ── Топ проектов: по выручке + по марже + убыточные ──
     var acc={};
     keys.forEach(function(k){(D.projects_per_month[k]||[]).forEach(function(p){
       if(!acc[p.name])acc[p.name]={rev:0,fin:0};
       acc[p.name].rev+=p.rev||0;acc[p.name].fin+=(p.rev||0)*((p.margin||0)/100);
     });});
-    var projs=Object.entries(acc).map(function(e){return{n:e[0],rev:e[1].rev,fin:e[1].fin,mar:e[1].rev>0?e[1].fin/e[1].rev*100:0};}).sort(function(a,b){return b.rev-a.rev;});
+    var projs=Object.entries(acc).map(function(e){return{n:e[0],rev:e[1].rev,fin:e[1].fin,mar:e[1].rev>0?e[1].fin/e[1].rev*100:0};}).filter(function(p){return p.rev>0;});
     if(projs.length){
-      lines.push('Топ-5 проектов по выручке:');
-      projs.slice(0,5).forEach(function(p,i){lines.push((i+1)+'. '+p.n+': '+Math.round(p.rev).toLocaleString('ru-RU')+'р выр., '+p.mar.toFixed(1)+'% маржа');});
-      var loss=projs.filter(function(p){return p.fin<0;});
-      if(loss.length){lines.push('Убыточных проектов: '+loss.length+' — '+loss.slice(0,5).map(function(p){return p.n+'('+p.mar.toFixed(0)+'%)';}).join(', '));}
+      var byRev=projs.slice().sort(function(a,b){return b.rev-a.rev;});
+      lines.push('── Топ-5 проектов по выручке: ──');
+      byRev.slice(0,5).forEach(function(p,i){lines.push('  '+(i+1)+'. '+p.n+': '+fmtN(p.rev)+'р выр., '+p.mar.toFixed(1)+'% маржа');});
+      // Топ-10 по марже (среди значимых rev>50k)
       var byMar=projs.filter(function(p){return p.rev>50000;}).slice().sort(function(a,b){return b.mar-a.mar;});
-      if(byMar.length){lines.push('Топ-3 по марже (среди значимых): '+byMar.slice(0,3).map(function(p){return p.n+'('+p.mar.toFixed(1)+'%)';}).join(', '));}
+      if(byMar.length){
+        lines.push('── Топ-10 по марже (rev>50k): ──');
+        byMar.slice(0,10).forEach(function(p,i){lines.push('  '+(i+1)+'. '+p.n+': '+p.mar.toFixed(1)+'% ('+fmtN(p.rev)+'р)');});
+      }
+      // Топ-3 проблемных (маржа <8% или отрицательная, среди значимых)
+      var prob=projs.filter(function(p){return p.rev>50000&&p.mar<8;}).slice().sort(function(a,b){return a.mar-b.mar;});
+      if(prob.length){
+        lines.push('── Топ-3 проблемных (маржа <8%): ──');
+        prob.slice(0,3).forEach(function(p){lines.push('  '+p.n+': '+p.mar.toFixed(1)+'% ('+fmtN(p.rev)+'р)');});
+      }
     }
-    // Дивизионы
+    // ── Разбивка по городам: выручка + средняя маржа ──
+    if(typeof aggByField==='function'){
+      try{
+        var cityArr=aggByField(keys,true,'rev');
+        if(cityArr&&cityArr.length){
+          lines.push('── По городам (топ-7): ──');
+          cityArr.slice(0,7).forEach(function(c){lines.push('  '+c.name+': '+fmtN(c.rev)+'р, маржа '+c.margin.toFixed(1)+'%');});
+        }
+      }catch(e3){}
+    }
+    // ── Дивизионы ──
     if(typeof aggregateDivisions==='function'){
       var divs=aggregateDivisions(keys);
       if(divs&&divs.length){
-        lines.push('По дивизионам (выручка/маржа):');
-        divs.slice(0,5).forEach(function(d){lines.push('— '+d.div+': '+Math.round(d.revSum).toLocaleString('ru-RU')+'р, '+d.margin.toFixed(1)+'%');});
+        lines.push('── По дивизионам: ──');
+        divs.slice(0,5).forEach(function(d){lines.push('  '+d.div+': '+fmtN(d.revSum)+'р, '+d.margin.toFixed(1)+'%');});
       }
     }
-    // Динамика по последним месяцам
-    if(D.monthly&&D.monthly.length){
-      var last3=D.monthly.slice(-3);
-      lines.push('Последние месяцы: '+last3.map(function(m){return m.label;}).join(', '));
+    // ── MoM-динамика для топ-5 клиентов (последний vs предыдущий месяц) ──
+    if(typeof aggByField==='function'&&D.monthly&&D.monthly.length>=2){
+      try{
+        var lastK=D.monthly[D.monthly.length-1].key;
+        var prevK=D.monthly[D.monthly.length-2].key;
+        var topClients=aggByField(keys,false,'rev').slice(0,5);
+        if(topClients.length){
+          var lastByName={},prevByName={};
+          aggByField([lastK],false,'rev').forEach(function(c){lastByName[c.name]=c;});
+          aggByField([prevK],false,'rev').forEach(function(c){prevByName[c.name]=c;});
+          lines.push('── MoM-динамика топ-5 клиентов ('+prevK+' → '+lastK+'): ──');
+          topClients.forEach(function(c){
+            var l=lastByName[c.name]||{rev:0,margin:0};
+            var p=prevByName[c.name]||{rev:0,margin:0};
+            var dRev=l.rev-p.rev;
+            var pct=p.rev>0?(dRev/p.rev*100):(l.rev>0?100:0);
+            var arrow=dRev>0?'↑':(dRev<0?'↓':'=');
+            lines.push('  '+c.name+': '+fmtN(p.rev)+'→'+fmtN(l.rev)+'р '+arrow+pct.toFixed(0)+'%, маржа '+p.margin.toFixed(1)+'%→'+l.margin.toFixed(1)+'%');
+          });
+        }
+      }catch(e4){}
     }
   }catch(e){lines.push('(ошибка сбора контекста: '+e.message+')');}
   return lines.join('\\n');
@@ -534,6 +576,9 @@ function _clear(){{
   const chips=document.getElementById('_ai_chips');
   if(chips)chips.style.display='flex';
 }}
+
+// Health-check плашка живёт в STH_AI_HEALTH_BANNER (см. index.html и инжект на всех
+// страницах) — здесь свою больше не ставим, чтобы не было двух красных баров.
 
 document.addEventListener('DOMContentLoaded',function(){{
   // CSS

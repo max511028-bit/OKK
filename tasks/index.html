@@ -2810,6 +2810,21 @@ td {
   <div class="panel-body" id="panelBody"></div>
 </div>
 
+<!-- AI-SPLIT MODAL (QW4) -->
+<div id="splitModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#0d1117;border:1px solid rgba(255,255,255,.12);border-radius:14px;max-width:560px;width:100%;max-height:90vh;display:flex;flex-direction:column;color:#e5e7eb;font-family:Inter,system-ui,sans-serif;overflow:hidden;">
+    <div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;">
+      <div style="font-weight:700;font-size:14px;flex:1;">🔀 Разбить задачу с ИИ</div>
+      <button onclick="closeSplit()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div id="splitBody" style="padding:14px 18px;overflow-y:auto;flex:1;font-size:13px;line-height:1.5;"></div>
+    <div style="padding:12px 18px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:10px;justify-content:flex-end;">
+      <button id="splitCancelBtn" onclick="closeSplit()" style="background:#374151;border:none;color:#e5e7eb;padding:8px 16px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;">Отмена</button>
+      <button id="splitApplyBtn" onclick="applySplit()" style="background:#16a34a;border:none;color:#fff;padding:8px 16px;border-radius:7px;font-weight:600;font-size:12px;cursor:pointer;display:none;">Создать подзадачи</button>
+    </div>
+  </div>
+</div>
+
 <!-- COMMAND PALETTE -->
 <div class="cmd-overlay" id="cmdOverlay" onclick="e=&gt;e.target===this&amp;&amp;closeCmd()">
   <div class="cmd-modal">
@@ -3222,8 +3237,10 @@ function renderWeeklyList(id, items) {
 // SIDE PANEL
 // ═══════════════════════════════════════════════
 
+window._currentPanelTask = null;
 function openPanel(task) {
   if (!task) return;
+  window._currentPanelTask = task;
   document.getElementById('panelId').textContent = task.id;
   document.getElementById('panelTitle').textContent = task.title;
 
@@ -3236,6 +3253,9 @@ function openPanel(task) {
 
   const body = document.getElementById('panelBody');
   body.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <button onclick="openSplitWithAI()" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;color:#fff;padding:8px 14px;border-radius:8px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔀 Разбить с ИИ</button>
+    </div>
     <div class="panel-field">
       <div class="panel-field-label">Описание</div>
       <div class="panel-field-value" style="line-height:1.6;color:var(--text-secondary);">${task.desc}</div>
@@ -3300,6 +3320,135 @@ function openPanel(task) {
 function closePanel() {
   document.getElementById('sidePanel').classList.remove('open');
   document.getElementById('overlayBlocker').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════
+// AI-SPLIT (QW4): разбить задачу на подзадачи через ИИ
+// ═══════════════════════════════════════════════
+window._splitParent = null;
+window._splitProposed = [];
+
+function closeSplit(){
+  document.getElementById('splitModal').style.display = 'none';
+  document.getElementById('splitApplyBtn').style.display = 'none';
+  window._splitParent = null;
+  window._splitProposed = [];
+}
+
+function _escSplit(s){ return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+async function openSplitWithAI(){
+  const t = window._currentPanelTask;
+  if(!t){ showToast('Откройте задачу','warn'); return; }
+  window._splitParent = t;
+  const modal = document.getElementById('splitModal');
+  modal.style.display = 'flex';
+  const body = document.getElementById('splitBody');
+  document.getElementById('splitApplyBtn').style.display = 'none';
+  body.innerHTML = `<div style="display:flex;align-items:center;gap:10px;color:#94a3b8;">
+    <div style="width:14px;height:14px;border:2px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+    Думаю над декомпозицией задачи «${_escSplit(t.title)}»…
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+
+  const prompt = `У меня есть задача:\nНазвание: ${t.title}\nОписание: ${t.desc||'—'}\nОтветственный: ${t.assignee||'—'}\nДедлайн: ${t.deadline||'—'}\n\nРазбей её на 2-5 логичных, последовательных подзадач. Каждая — конкретный исполнимый шаг.\n\nВерни СТРОГО JSON-массив без пояснений, без markdown, без кодовых блоков. Формат:\n[{"title":"...","est_days":N},{"title":"...","est_days":N}]\n\nГде title — короткое название подзадачи (до 80 символов), est_days — оценка в днях (целое число 1-14).`;
+
+  try{
+    const headers = await _authHeaders({'Content-Type':'application/json'});
+    const r = await fetch(API_BASE+'/ai/proxy/chat',{
+      method:'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'qwen3:8b',
+        stream: false,
+        messages: [
+          {role:'system', content:'Ты помощник по декомпозиции задач. Отвечаешь ТОЛЬКО валидным JSON-массивом, без markdown и пояснений.'},
+          {role:'user', content: prompt}
+        ]
+      })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    const raw = (j && j.message && j.message.content) || j.response || '';
+    // Достаём JSON
+    let arr = null;
+    const m = raw.match(/\[[\s\S]*\]/);
+    if(m){ try{ arr = JSON.parse(m[0]); }catch(e){} }
+    if(!Array.isArray(arr) || !arr.length) throw new Error('ИИ не вернул валидный JSON. Ответ: '+raw.slice(0,200));
+    arr = arr.slice(0,5).map(x=>({
+      title: String(x.title||'').slice(0,200).trim(),
+      est_days: Math.max(1, Math.min(30, parseInt(x.est_days)||3)),
+      keep: true
+    })).filter(x=>x.title);
+    if(!arr.length) throw new Error('Пустой список подзадач');
+    window._splitProposed = arr;
+    renderSplitPreview();
+  }catch(e){
+    body.innerHTML = `<div style="color:#fca5a5;">❌ ${_escSplit(e.message)}</div>`;
+  }
+}
+
+function renderSplitPreview(){
+  const t = window._splitParent;
+  const arr = window._splitProposed;
+  const body = document.getElementById('splitBody');
+  body.innerHTML = `
+    <div style="color:#94a3b8;margin-bottom:10px;font-size:12px;">Родительская задача: <b style="color:#e5e7eb;">${_escSplit(t.id)} — ${_escSplit(t.title)}</b></div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${arr.map((s,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;background:#161b22;border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px 10px;">
+          <input type="checkbox" ${s.keep?'checked':''} onchange="window._splitProposed[${i}].keep=this.checked" style="accent-color:#3b82f6;">
+          <input type="text" value="${_escSplit(s.title)}" oninput="window._splitProposed[${i}].title=this.value"
+            style="flex:1;background:#0d1117;border:1px solid rgba(255,255,255,.08);border-radius:6px;color:#e5e7eb;padding:6px 8px;font-size:12.5px;font-family:inherit;">
+          <input type="number" min="1" max="30" value="${s.est_days}" oninput="window._splitProposed[${i}].est_days=parseInt(this.value)||3"
+            title="Оценка в днях" style="width:56px;background:#0d1117;border:1px solid rgba(255,255,255,.08);border-radius:6px;color:#e5e7eb;padding:6px 6px;font-size:12px;text-align:center;">
+          <span style="color:#64748b;font-size:11px;">дн.</span>
+        </div>
+      `).join('')}
+    </div>
+    <div style="margin-top:12px;font-size:11px;color:#64748b;">Подзадачи получат ID вида <code style="color:#94a3b8;">${_escSplit(t.id)}.1</code>, <code style="color:#94a3b8;">${_escSplit(t.id)}.2</code> … и в поле «Зависимости» будет указана родительская задача.</div>
+  `;
+  document.getElementById('splitApplyBtn').style.display = 'inline-block';
+}
+
+async function applySplit(){
+  const t = window._splitParent;
+  const arr = (window._splitProposed||[]).filter(s=>s.keep && s.title && s.title.trim());
+  if(!t || !arr.length){ showToast('Нет подзадач для создания','warn'); return; }
+  const btn = document.getElementById('splitApplyBtn');
+  btn.disabled = true; btn.textContent = 'Создаю…';
+  let ok = 0, fail = 0;
+  const now = new Date();
+  const today = String(now.getDate()).padStart(2,'0')+'.'+String(now.getMonth()+1).padStart(2,'0');
+  for(let i=0;i<arr.length;i++){
+    const s = arr[i];
+    const sub = {
+      id: `${t.id}.${i+1}`,
+      title: s.title.trim(),
+      desc: `Подзадача от ${t.id} «${t.title}». Оценка: ${s.est_days} дн.`,
+      system: t.system||'',
+      type: t.type||'Фича',
+      priority: t.priority||'med',
+      risk: 'low',
+      assignee: t.assignee||'',
+      deadline: t.deadline||'',
+      status: 'Не начато',
+      tz: t.tz||'❌ Нет',
+      metric: '',
+      effect: '',
+      blockers: 'Нет',
+      deps: t.id,
+      history: [`${today}: Создано автоматически через ИИ-декомпозицию ${t.id}`]
+    };
+    const res = await apiCreateTask(sub);
+    if(res){ ok++; TASKS.push(sub); } else { fail++; }
+  }
+  closeSplit();
+  if(ok) showToast(`✅ Создано подзадач: ${ok}${fail?', ошибок: '+fail:''}`,'ok');
+  else showToast('❌ Не удалось создать подзадачи','err');
+  btn.disabled = false; btn.textContent = 'Создать подзадачи';
+  // Перерисуем доску если есть рендерер
+  try{ if(typeof renderAll==='function') renderAll(); else if(typeof renderKanban==='function') renderKanban(); }catch(e){}
 }
 
 // ═══════════════════════════════════════════════
@@ -3799,6 +3948,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 ._tai_card .danger{background:#dc2626;}
 ._tai_card.done{opacity:.65;}
 ._tai_card .status{font-size:11px;color:#9ca3af;}
+._tai_batch{align-self:stretch;background:#0d1f33;border:1px solid #1e40af;border-radius:10px;padding:11px 14px;display:flex;flex-direction:column;gap:10px;font-size:13px;}
+._tai_batch .hdr{font-weight:700;color:#93c5fd;font-size:11px;text-transform:uppercase;}
+._tai_batch .lst{display:flex;flex-direction:column;gap:6px;}
+._tai_batch .it{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;background:rgba(255,255,255,.03);border-radius:7px;border:1px solid rgba(255,255,255,.05);}
+._tai_batch .it input[type=checkbox]{width:14px;height:14px;margin-top:2px;accent-color:#3b82f6;cursor:pointer;flex-shrink:0;}
+._tai_batch .it .txt{flex:1;color:#cbd5e1;font-size:12.5px;line-height:1.35;}
+._tai_batch .it.danger .txt{color:#fca5a5;}
+._tai_batch .row{display:flex;gap:8px;justify-content:flex-end;align-items:center;}
+._tai_batch .row .cnt{flex:1;color:#94a3b8;font-size:11px;}
+._tai_batch button{padding:6px 14px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;}
+._tai_batch .ok{background:#16a34a;color:#fff;}
+._tai_batch .ok:hover{background:#15803d;}
+._tai_batch .no{background:#374151;color:#e5e7eb;}
+._tai_batch.done{opacity:.65;}
+._tai_batch .status{font-size:11px;color:#9ca3af;}
+#_tai_undo_bar{position:fixed;bottom:96px;right:24px;width:380px;max-width:calc(100vw - 48px);background:#1e293b;border:1px solid #f59e0b;border-radius:10px;padding:11px 14px;display:none;align-items:center;gap:10px;z-index:9991;box-shadow:0 10px 30px rgba(0,0,0,.5);color:#e5e7eb;font-size:13px;font-family:Inter,system-ui,sans-serif;}
+#_tai_undo_bar.show{display:flex;}
+#_tai_undo_bar .txt{flex:1;}
+#_tai_undo_bar .cnt{color:#f59e0b;font-weight:700;}
+#_tai_undo_bar button{background:#f59e0b;border:none;color:#0d1117;padding:6px 14px;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;}
+#_tai_undo_bar button:hover{background:#fbbf24;}
+#_tai_undo_bar button:disabled{background:#475569;color:#94a3b8;cursor:not-allowed;}
 #_tai_input_row{padding:10px 12px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:8px;}
 #_tai_input{flex:1;background:#0d1117;border:1px solid rgba(255,255,255,.12);border-radius:9px;color:#f0f6fc;padding:9px 12px;font-size:13px;outline:none;resize:none;font-family:inherit;}
 #_tai_input:focus{border-color:rgba(59,130,246,.5);}
@@ -3809,6 +3980,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 ._tai_chip:hover{background:rgba(59,130,246,.22);}
 </style>
 <button id="_tai_btn" title="ИИ-ассистент Задачника" onclick="_taiToggle()">🤖</button>
+<div id="_tai_undo_bar">
+  <span class="txt">Применено <span id="_tai_undo_n">0</span> действий · отменить через <span class="cnt" id="_tai_undo_sec">30</span>с</span>
+  <button id="_tai_undo_go" onclick="_taiUndoGo()">Отменить всё</button>
+</div>
 <div id="_tai_panel">
   <div id="_tai_head">
     <span>🤖</span>
@@ -3935,6 +4110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch { return null; }
   }
 
+  // Возвращает {result, undo} где undo — async fn (или null если откат невозможен)
   async function _runAction(act) {
     const { name, args } = act;
     if (name === 'create_task') {
@@ -3956,12 +4132,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       const created = await r.json();
       if (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) TASKS.push(created);
       if (typeof rerenderAll === 'function') rerenderAll();
-      return `создана ${id}`;
+      const undo = async () => {
+        await fetch(API + '/tasks/' + encodeURIComponent(id), {
+          method: 'DELETE',
+          headers: await _authHeaders()
+        });
+        if (typeof TASKS !== 'undefined' && Array.isArray(TASKS)) {
+          const i = TASKS.findIndex(t => t.id === id);
+          if (i >= 0) TASKS.splice(i, 1);
+        }
+        if (typeof rerenderAll === 'function') rerenderAll();
+      };
+      return { result: `создана ${id}`, undo };
     }
     if (name === 'update_task' || name === 'move_task' || name === 'change_status') {
       const id = args.id;
       const existing = _findTask(id);
       if (!existing) throw new Error('задача ' + id + ' не найдена');
+      const before = JSON.parse(JSON.stringify(existing));
       const updated = { ...existing };
       if (name === 'move_task') updated.deadline = args.deadline || '';
       else if (name === 'change_status') updated.status = args.status || updated.status;
@@ -3975,10 +4163,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       const fresh = await r.json();
       Object.assign(existing, fresh);
       if (typeof rerenderAll === 'function') rerenderAll();
-      return 'обновлено';
+      const undo = async () => {
+        await fetch(API + '/tasks/' + encodeURIComponent(id), {
+          method: 'PUT',
+          headers: await _authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify(before)
+        });
+        const e2 = _findTask(id);
+        if (e2) Object.assign(e2, before);
+        if (typeof rerenderAll === 'function') rerenderAll();
+      };
+      return { result: 'обновлено', undo };
     }
     if (name === 'delete_task') {
       const id = args.id;
+      const existing = _findTask(id);
+      const before = existing ? JSON.parse(JSON.stringify(existing)) : null;
       const r = await fetch(API + '/tasks/' + encodeURIComponent(id), {
         method: 'DELETE',
         headers: await _authHeaders()
@@ -3989,7 +4189,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (i >= 0) TASKS.splice(i, 1);
       }
       if (typeof rerenderAll === 'function') rerenderAll();
-      return 'в корзине (7 дней)';
+      const undo = async () => {
+        // Сначала пробуем restore, иначе пересоздаём из snapshot
+        let ok = false;
+        try {
+          const rr = await fetch(API + '/tasks/' + encodeURIComponent(id) + '/restore', {
+            method: 'POST',
+            headers: await _authHeaders()
+          });
+          ok = rr.ok;
+        } catch(_){}
+        if (!ok && before) {
+          await fetch(API + '/tasks', {
+            method: 'POST',
+            headers: await _authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(before)
+          });
+        }
+        if (before && typeof TASKS !== 'undefined' && Array.isArray(TASKS)) {
+          if (!TASKS.find(t=>t.id===id)) TASKS.push(before);
+        }
+        if (typeof rerenderAll === 'function') rerenderAll();
+      };
+      return { result: 'в корзине (7 дней)', undo };
     }
     throw new Error('неизвестное действие ' + name);
   }
@@ -4032,9 +4254,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       card.querySelectorAll('button').forEach(b => b.disabled = true);
       status.textContent = '⏳ выполняю...';
       try {
-        const res = await _runAction(act);
-        status.textContent = '✓ ' + res;
+        const out = await _runAction(act);
+        status.textContent = '✓ ' + out.result;
         card.classList.add('done');
+        if (out.undo) _taiShowUndoBar([{ desc: _actionDescription(act), undo: out.undo }]);
       } catch(e) {
         status.textContent = '✗ ошибка: ' + e.message;
         card.querySelectorAll('button').forEach(b => b.disabled = false);
@@ -4043,6 +4266,126 @@ document.addEventListener('DOMContentLoaded', async () => {
     box.appendChild(card);
     box.scrollTop = box.scrollHeight;
   }
+
+  // BATCH-карточка: одна для пачки действий с галочками
+  function _showBatchCard(acts) {
+    const box = document.getElementById('_tai_msgs');
+    const card = document.createElement('div');
+    card.className = '_tai_msg _tai_batch';
+    const hasDanger = acts.some(a => a.name === 'delete_task');
+    card.innerHTML = `
+      <div class="hdr">${hasDanger ? '⚠️ ' : ''}ИИ предлагает ${acts.length} действий — выберите какие применять</div>
+      <div class="lst"></div>
+      <div class="row">
+        <span class="cnt"></span>
+        <button class="no">Отмена</button>
+        <button class="ok">Применить выбранные</button>
+      </div>
+      <div class="status"></div>`;
+    const lst = card.querySelector('.lst');
+    const cnt = card.querySelector('.cnt');
+    const status = card.querySelector('.status');
+    acts.forEach((a, i) => {
+      const it = document.createElement('label');
+      it.className = 'it' + (a.name === 'delete_task' ? ' danger' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = true; cb.dataset.i = i;
+      const tx = document.createElement('div');
+      tx.className = 'txt'; tx.textContent = _actionDescription(a);
+      it.appendChild(cb); it.appendChild(tx);
+      lst.appendChild(it);
+      cb.addEventListener('change', updCnt);
+    });
+    function updCnt() {
+      const n = card.querySelectorAll('input[type=checkbox]:checked').length;
+      cnt.textContent = n + ' из ' + acts.length;
+    }
+    updCnt();
+    card.querySelector('.no').onclick = () => {
+      card.classList.add('done');
+      status.textContent = '✗ отменено';
+      card.querySelectorAll('button,input').forEach(b => b.disabled = true);
+    };
+    card.querySelector('.ok').onclick = async () => {
+      const picked = Array.from(card.querySelectorAll('input[type=checkbox]:checked')).map(cb => acts[+cb.dataset.i]);
+      if (!picked.length) { status.textContent = 'ничего не выбрано'; return; }
+      const dangers = picked.filter(a => a.name === 'delete_task');
+      if (dangers.length && !confirm('Удалить ' + dangers.length + ' задач(и) в корзину?\nВосстановить можно 7 дней.')) return;
+      card.querySelectorAll('button,input').forEach(b => b.disabled = true);
+      status.textContent = '⏳ выполняю 0/' + picked.length + '...';
+      const undos = [];
+      let ok = 0, fail = 0;
+      for (let i = 0; i < picked.length; i++) {
+        const a = picked[i];
+        try {
+          const out = await _runAction(a);
+          ok++;
+          if (out && out.undo) undos.push({ desc: _actionDescription(a), undo: out.undo });
+        } catch(e) {
+          fail++;
+        }
+        status.textContent = '⏳ выполняю ' + (i + 1) + '/' + picked.length + '...';
+      }
+      status.textContent = '✓ применено ' + ok + (fail ? ', ошибок ' + fail : '');
+      card.classList.add('done');
+      if (undos.length) _taiShowUndoBar(undos);
+    };
+    box.appendChild(card);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // UNDO BAR: 30 сек, одна кнопка «Отменить всё»
+  let _taiUndoState = null; // {undos, timer, secLeft}
+  function _taiShowUndoBar(undos) {
+    if (!undos || !undos.length) return;
+    // Если предыдущий undo bar ещё активен — игнорируем (юзер должен решить с предыдущим)
+    if (_taiUndoState) {
+      // Объединяем со старым, продлеваем
+      _taiUndoState.undos = _taiUndoState.undos.concat(undos);
+      _taiUndoState.secLeft = 30;
+      document.getElementById('_tai_undo_n').textContent = _taiUndoState.undos.length;
+      document.getElementById('_tai_undo_sec').textContent = '30';
+      return;
+    }
+    _taiUndoState = { undos: undos.slice(), secLeft: 30, timer: null };
+    const bar = document.getElementById('_tai_undo_bar');
+    document.getElementById('_tai_undo_n').textContent = undos.length;
+    document.getElementById('_tai_undo_sec').textContent = '30';
+    document.getElementById('_tai_undo_go').disabled = false;
+    bar.classList.add('show');
+    _taiUndoState.timer = setInterval(() => {
+      if (!_taiUndoState) return;
+      _taiUndoState.secLeft--;
+      document.getElementById('_tai_undo_sec').textContent = _taiUndoState.secLeft;
+      if (_taiUndoState.secLeft <= 0) _taiHideUndoBar();
+    }, 1000);
+  }
+  function _taiHideUndoBar() {
+    if (_taiUndoState && _taiUndoState.timer) clearInterval(_taiUndoState.timer);
+    _taiUndoState = null;
+    document.getElementById('_tai_undo_bar').classList.remove('show');
+  }
+  window._taiUndoGo = async function() {
+    if (!_taiUndoState) return;
+    const btn = document.getElementById('_tai_undo_go');
+    btn.disabled = true;
+    btn.textContent = 'Отменяю…';
+    const undos = _taiUndoState.undos.slice().reverse();
+    let ok = 0, fail = 0;
+    for (const u of undos) {
+      try { await u.undo(); ok++; } catch(e) { fail++; }
+    }
+    _taiHideUndoBar();
+    try {
+      const box = document.getElementById('_tai_msgs');
+      const note = document.createElement('div');
+      note.className = '_tai_msg b';
+      note.textContent = '↩ Откатил ' + ok + ' действий' + (fail ? ' (ошибок ' + fail + ')' : '');
+      box.appendChild(note);
+      box.scrollTop = box.scrollHeight;
+    } catch(_) {}
+    btn.textContent = 'Отменить всё';
+  };
 
   async function _send() {
     const inp = document.getElementById('_tai_input');
@@ -4090,7 +4433,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       _hist.push({ role:'user', content: q });
       _hist.push({ role:'assistant', content: full });
       if (_hist.length > 16) _hist.splice(0, 2);
-      actions.forEach(_showCard);
+      if (actions.length >= 2) _showBatchCard(actions);
+      else actions.forEach(_showCard);
     } catch(e) {
       respDiv.textContent = '⚠️ ' + e.message;
     } finally {
@@ -4136,4 +4480,78 @@ document.addEventListener('DOMContentLoaded', async () => {
 })();
 </script>
 
+<!-- STH_HELP_BTN_START -->
+<style>
+#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+  background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_help_btn:hover{background:#374151;transform:scale(1.08)}
+#_sth_help_modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99998;display:none;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#_sth_help_modal.show{display:flex}
+#_sth_help_box{background:#161b22;color:#e6edf3;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow:auto;
+  padding:24px 28px;box-shadow:0 24px 80px rgba(0,0,0,.7);font:14px/1.6 Inter,system-ui,sans-serif}
+#_sth_help_box h1{font-size:22px;margin:0 0 14px;color:#fff}
+#_sth_help_box h2{font-size:16px;margin:18px 0 8px;color:#fff}
+#_sth_help_box h3{font-size:14px;margin:14px 0 6px;color:#fff}
+#_sth_help_box p{margin:0 0 10px;color:#cbd5e1}
+#_sth_help_box ul,#_sth_help_box ol{margin:0 0 10px;padding-left:22px;color:#cbd5e1}
+#_sth_help_box li{margin-bottom:4px}
+#_sth_help_box code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px}
+#_sth_help_box strong{color:#fff}
+#_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
+  margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
+#_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+</style>
+<button id="_sth_help_btn" title="Помощь по дашборду">?</button>
+<div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
+<script>
+(function(){
+  const SLUG='tasks';
+  const btn=document.getElementById('_sth_help_btn');
+  const modal=document.getElementById('_sth_help_modal');
+  const close=document.getElementById('_sth_help_close');
+  const box=document.getElementById('_sth_help_box');
+  const content=document.getElementById('_sth_help_content');
+  let _loaded=false;
+  function mdToHtml(md){
+    // Минимальный markdown → HTML рендер. Без зависимостей.
+    md=md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    md=md.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+    md=md.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+    md=md.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+    md=md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md=md.replace(/`([^`]+)`/g,'<code>$1</code>');
+    // списки
+    md=md.replace(/(^|\n)((?:- .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
+      return p+'<ul>'+items+'</ul>';
+    });
+    md=md.replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^\d+\. /,'')+'</li>').join('');
+      return p+'<ol>'+items+'</ol>';
+    });
+    // параграфы
+    return md.split(/\n\n+/).map(b=>b.match(/^<(h\d|ul|ol|li|p)/) ? b : ('<p>'+b.replace(/\n/g,'<br>')+'</p>')).join('\n');
+  }
+  async function loadHelp(){
+    if(_loaded)return;
+    try{
+      const r=await fetch('/docs/'+SLUG+'/help.md?_='+Date.now());
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const md=await r.text();
+      content.innerHTML=mdToHtml(md);
+      _loaded=true;
+    }catch(e){content.innerHTML='<p style="color:#f87171">Не удалось загрузить help.md: '+e.message+'</p>';}
+  }
+  btn.addEventListener('click',function(){modal.classList.add('show');loadHelp();});
+  close.addEventListener('click',function(){modal.classList.remove('show');});
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')modal.classList.remove('show');});
+})();
+</script>
+<!-- STH_HELP_BTN_END -->
 </body></html>

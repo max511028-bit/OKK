@@ -1,0 +1,94 @@
+{
+  "scopeOrder": [
+    "project",
+    "division",
+    "company"
+  ],
+  "company": {
+    "requestCloseRate": {
+      "target": 0.95,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 16
+    },
+    "secretCheck": {
+      "target": 80,
+      "direction": "gte",
+      "unit": "score",
+      "weight": 8
+    },
+    "penaltyShare": {
+      "target": 0.03,
+      "direction": "lte",
+      "unit": "%",
+      "weight": 10
+    },
+    "targetLeadRate": {
+      "target": 0.22,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 9
+    },
+    "responseCost": {
+      "target": 200,
+      "direction": "lte",
+      "unit": "rub",
+      "weight": 8
+    },
+    "targetLeadCost": {
+      "target": 900,
+      "direction": "lte",
+      "unit": "rub",
+      "weight": 9
+    },
+    "registeredToInvitedRate": {
+      "target": 0.55,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 8
+    },
+    "warehouseToRegisteredRate": {
+      "target": 0.65,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 8
+    },
+    "firstShiftToWarehouseRate": {
+      "target": 0.75,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 8
+    },
+    "tenShiftsToFirstShiftRate": {
+      "target": 0.45,
+      "direction": "gte",
+      "unit": "%",
+      "weight": 8
+    },
+    "revenueVat": {
+      "target": null,
+      "direction": "gte",
+      "unit": "rub",
+      "weight": 8
+    },
+    "penalties": {
+      "target": null,
+      "direction": "lte",
+      "unit": "rub",
+      "weight": 4
+    },
+    "productivity": {
+      "target": null,
+      "direction": "gte",
+      "unit": "number",
+      "weight": 4
+    }
+  },
+  "division": {},
+  "project": {},
+  "month": {},
+  "notes": [
+    "Нормативы изменяемые: компания, дивизион, проект и месяц.",
+    "Если у проекта нет своего норматива, используется норматив дивизиона, затем компании."
+  ]
+}

@@ -420,6 +420,19 @@ select[multiple] option{padding:5px 8px}
   <button class="tab-btn" onclick="showTab('clients',this)">&#127962;&nbsp;&#1050;&#1083;&#1080;&#1077;&#1085;&#1090;&#1099;&nbsp;&amp;&nbsp;&#1043;&#1086;&#1088;&#1086;&#1076;&#1072;</button>
 </nav>
 
+<!-- ═══ MASTER PERIOD BAR (общий фильтр для всех вкладок отчёта) ═══════════════════ -->
+<div id="master-period-bar" style="display:none;position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--grid);padding:8px 24px;align-items:center;gap:10px;font-size:13px;">
+  <span style="color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;">📅 Период (общий)</span>
+  <select id="masterPeriodType" style="padding:5px 8px;border-radius:6px;background:var(--bg);color:var(--text);border:1px solid var(--grid);font-size:12px;">
+    <option value="month">Месяц</option>
+    <option value="quarter">Квартал</option>
+    <option value="year">Год</option>
+    <option value="all">Всё время</option>
+  </select>
+  <select id="masterPeriodVal" style="padding:5px 8px;border-radius:6px;background:var(--bg);color:var(--text);border:1px solid var(--grid);font-size:12px;min-width:140px;"></select>
+  <span id="masterPeriodHint" style="color:var(--muted);font-size:11px;margin-left:6px;">влияет на все вкладки кроме «Тренды» и «Сравнение»</span>
+</div>
+
 <!-- ═══ PAGE: ГЛАВНАЯ (лендинг) ════════════════════════════════════════════════ -->
 <div id="page-home">
   <div class="home-wrap">
@@ -3285,6 +3298,132 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 <script>
 
+</script>
+
+<script>
+
+</script>
+
+<script>
+
+</script>
+<!-- STH_HELP_BTN_START -->
+<style>
+#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+  background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_help_btn:hover{background:#374151;transform:scale(1.08)}
+#_sth_help_modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99998;display:none;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#_sth_help_modal.show{display:flex}
+#_sth_help_box{background:#161b22;color:#e6edf3;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow:auto;
+  padding:24px 28px;box-shadow:0 24px 80px rgba(0,0,0,.7);font:14px/1.6 Inter,system-ui,sans-serif}
+#_sth_help_box h1{font-size:22px;margin:0 0 14px;color:#fff}
+#_sth_help_box h2{font-size:16px;margin:18px 0 8px;color:#fff}
+#_sth_help_box h3{font-size:14px;margin:14px 0 6px;color:#fff}
+#_sth_help_box p{margin:0 0 10px;color:#cbd5e1}
+#_sth_help_box ul,#_sth_help_box ol{margin:0 0 10px;padding-left:22px;color:#cbd5e1}
+#_sth_help_box li{margin-bottom:4px}
+#_sth_help_box code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px}
+#_sth_help_box strong{color:#fff}
+#_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
+  margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
+#_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+</style>
+<button id="_sth_help_btn" title="Помощь по дашборду">?</button>
+<div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
+<script>
+(function(){
+  const SLUG='finance';
+  const btn=document.getElementById('_sth_help_btn');
+  const modal=document.getElementById('_sth_help_modal');
+  const close=document.getElementById('_sth_help_close');
+  const box=document.getElementById('_sth_help_box');
+  const content=document.getElementById('_sth_help_content');
+  let _loaded=false;
+  function mdToHtml(md){
+    // Минимальный markdown → HTML рендер. Без зависимостей.
+    md=md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    md=md.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+    md=md.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+    md=md.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+    md=md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md=md.replace(/`([^`]+)`/g,'<code>$1</code>');
+    // списки
+    md=md.replace(/(^|\n)((?:- .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
+      return p+'<ul>'+items+'</ul>';
+    });
+    md=md.replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^\d+\. /,'')+'</li>').join('');
+      return p+'<ol>'+items+'</ol>';
+    });
+    // параграфы
+    return md.split(/\n\n+/).map(b=>b.match(/^<(h\d|ul|ol|li|p)/) ? b : ('<p>'+b.replace(/\n/g,'<br>')+'</p>')).join('\n');
+  }
+  async function loadHelp(){
+    if(_loaded)return;
+    try{
+      const r=await fetch('/docs/'+SLUG+'/help.md?_='+Date.now());
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const md=await r.text();
+      content.innerHTML=mdToHtml(md);
+      _loaded=true;
+    }catch(e){content.innerHTML='<p style="color:#f87171">Не удалось загрузить help.md: '+e.message+'</p>';}
+  }
+  btn.addEventListener('click',function(){modal.classList.add('show');loadHelp();});
+  close.addEventListener('click',function(){modal.classList.remove('show');});
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')modal.classList.remove('show');});
+})();
+</script>
+<!-- STH_HELP_BTN_END -->
+<!-- STH_EXCEL_BTN_START -->
+<style>
+#_sth_xlsx_btn{position:fixed;bottom:24px;right:150px;width:44px;height:44px;border-radius:50%;
+  background:#0d6e3f;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:18px;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_xlsx_btn:hover{background:#0fa44d;transform:scale(1.08)}
+@media(max-width:640px){#_sth_xlsx_btn{bottom:18px;right:138px;width:40px;height:40px}}
+</style>
+<button id="_sth_xlsx_btn" title="Выгрузить текущую вкладку в Excel">📥</button>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function(){
+  const btn=document.getElementById('_sth_xlsx_btn');
+  btn.addEventListener('click',function(){
+    if(typeof XLSX==='undefined'){alert('SheetJS не загрузился');return;}
+    const tab=document.querySelector('.tab-content.active');
+    if(!tab){alert('Нет активной вкладки');return;}
+    const tables=tab.querySelectorAll('table');
+    if(!tables.length){alert('На этой вкладке нет таблиц для выгрузки');return;}
+    const wb=XLSX.utils.book_new();
+    let i=0;
+    tables.forEach(function(tbl){
+      try{
+        const ws=XLSX.utils.table_to_sheet(tbl,{raw:false});
+        let name=(tbl.getAttribute('data-name')||tbl.closest('[data-sheet]')?.getAttribute('data-sheet')||'Sheet'+(++i)).slice(0,28);
+        // SheetJS требует уникальные имена листов
+        let uniq=name,k=2;
+        while(wb.SheetNames.includes(uniq)){uniq=(name+'_'+(k++)).slice(0,31);}
+        XLSX.utils.book_append_sheet(wb,ws,uniq);
+      }catch(e){console.warn('skip table',e);}
+    });
+    if(!wb.SheetNames.length){alert('Не удалось преобразовать таблицы');return;}
+    const tabName=(document.querySelector('.tab-btn.active')?.textContent||'finance').trim().replace(/[^\wа-яА-Я]+/g,'_');
+    const ts=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb,'STH_'+tabName+'_'+ts+'.xlsx');
+  });
+})();
+</script>
+<!-- STH_EXCEL_BTN_END -->
+
+<script>
+
 // ===== AI FLOATING PANEL (FINANCE) =====
 (function(){
 const _SUGGS = ["Топ-3 убыточных проекта в этом периоде.","Где маржа упала больше всего месяц-к-месяцу?","Какие РРП-направления просели?","По каким клиентам пора повышать цену?","Что общего у проектов с рентабельностью >20%?","Где расходы растут быстрее выручки?","Сравни Москву и Краснодар по марже.","Прогноз кассового разрыва на следующий месяц.","Какие проекты съедают всю административку?","Какие клиенты под угрозой ухода?"];
@@ -3303,18 +3442,17 @@ function _aiBuildCtx(){
   var lines=['=== ФИНАНСОВЫЙ ДАШБОРД STH GROUP ==='];
   try{
     if(typeof D==='undefined'){lines.push('Данные ещё не загружены.');return lines.join('\\n');}
-    // Активная вкладка
+    var fmtN=function(x){return Math.round(x||0).toLocaleString('ru-RU');};
+    // Активная вкладка + период
     var act=document.querySelector('.tab-content.active');
     var tabName=act?act.id.replace('tab-',''):'general';
     lines.push('Активная вкладка: '+tabName);
-    // Период
     var typeSel=document.getElementById(tabName+'PeriodType')||document.getElementById('generalPeriodType');
     var valSel=document.getElementById(tabName+'PeriodVal')||document.getElementById('generalPeriodVal');
     var typeV=typeSel?typeSel.value:'all',valV=valSel?valSel.value:'';
     var keys=(typeof getMonthKeys==='function')?getMonthKeys(typeV,valV):[];
     var label=(typeof getPeriodLabel==='function')?getPeriodLabel(typeV,valV):valV;
     lines.push('Период: '+label+' ('+keys.length+' мес.)');
-    // Общая статистика
     lines.push('Всего месяцев данных: '+D.monthly.length+', проектов: '+new Set(Object.values(D.projects_per_month).flat().map(function(p){return p.name;})).size+', клиентов: '+(D.clients||[]).length+', городов: '+(D.cities||[]).length);
     // P&L агрегат по периоду
     if(typeof aggregatePlRows==='function'){
@@ -3324,37 +3462,80 @@ function _aiBuildCtx(){
       var rev=pl['Выручка']||pl['Выручка с НДС']||0;
       var prof=pl['Прибыль']||pl['Чистая прибыль']||pl['Маржинальная прибыль']||0;
       var marg=rev>0?(prof/rev*100).toFixed(1):'0';
-      lines.push('Выручка: '+Math.round(rev).toLocaleString('ru-RU')+' руб');
-      lines.push('Прибыль: '+Math.round(prof).toLocaleString('ru-RU')+' руб');
-      lines.push('Рентабельность: '+marg+'%');
+      lines.push('Выручка: '+fmtN(rev)+' руб; Прибыль: '+fmtN(prof)+' руб; Рентабельность: '+marg+'%');
     }
-    // Топ-проекты по выручке за период
+    // ── Помесячная динамика (последний месяц + 2 предыдущих) ──
+    if(D.monthly&&D.monthly.length){
+      var last3=D.monthly.slice(-3);
+      lines.push('── Помесячно (последние 3): ──');
+      last3.forEach(function(m){
+        var mRev=m.rev||0, mFin=m.fin||0, mMar=mRev>0?(mFin/mRev*100):0;
+        lines.push('  '+m.label+': выручка '+fmtN(mRev)+'р, прибыль '+fmtN(mFin)+'р, рент '+mMar.toFixed(1)+'%');
+      });
+    }
+    // ── Топ проектов: по выручке + по марже + убыточные ──
     var acc={};
     keys.forEach(function(k){(D.projects_per_month[k]||[]).forEach(function(p){
       if(!acc[p.name])acc[p.name]={rev:0,fin:0};
       acc[p.name].rev+=p.rev||0;acc[p.name].fin+=(p.rev||0)*((p.margin||0)/100);
     });});
-    var projs=Object.entries(acc).map(function(e){return{n:e[0],rev:e[1].rev,fin:e[1].fin,mar:e[1].rev>0?e[1].fin/e[1].rev*100:0};}).sort(function(a,b){return b.rev-a.rev;});
+    var projs=Object.entries(acc).map(function(e){return{n:e[0],rev:e[1].rev,fin:e[1].fin,mar:e[1].rev>0?e[1].fin/e[1].rev*100:0};}).filter(function(p){return p.rev>0;});
     if(projs.length){
-      lines.push('Топ-5 проектов по выручке:');
-      projs.slice(0,5).forEach(function(p,i){lines.push((i+1)+'. '+p.n+': '+Math.round(p.rev).toLocaleString('ru-RU')+'р выр., '+p.mar.toFixed(1)+'% маржа');});
-      var loss=projs.filter(function(p){return p.fin<0;});
-      if(loss.length){lines.push('Убыточных проектов: '+loss.length+' — '+loss.slice(0,5).map(function(p){return p.n+'('+p.mar.toFixed(0)+'%)';}).join(', '));}
+      var byRev=projs.slice().sort(function(a,b){return b.rev-a.rev;});
+      lines.push('── Топ-5 проектов по выручке: ──');
+      byRev.slice(0,5).forEach(function(p,i){lines.push('  '+(i+1)+'. '+p.n+': '+fmtN(p.rev)+'р выр., '+p.mar.toFixed(1)+'% маржа');});
+      // Топ-10 по марже (среди значимых rev>50k)
       var byMar=projs.filter(function(p){return p.rev>50000;}).slice().sort(function(a,b){return b.mar-a.mar;});
-      if(byMar.length){lines.push('Топ-3 по марже (среди значимых): '+byMar.slice(0,3).map(function(p){return p.n+'('+p.mar.toFixed(1)+'%)';}).join(', '));}
+      if(byMar.length){
+        lines.push('── Топ-10 по марже (rev>50k): ──');
+        byMar.slice(0,10).forEach(function(p,i){lines.push('  '+(i+1)+'. '+p.n+': '+p.mar.toFixed(1)+'% ('+fmtN(p.rev)+'р)');});
+      }
+      // Топ-3 проблемных (маржа <8% или отрицательная, среди значимых)
+      var prob=projs.filter(function(p){return p.rev>50000&&p.mar<8;}).slice().sort(function(a,b){return a.mar-b.mar;});
+      if(prob.length){
+        lines.push('── Топ-3 проблемных (маржа <8%): ──');
+        prob.slice(0,3).forEach(function(p){lines.push('  '+p.n+': '+p.mar.toFixed(1)+'% ('+fmtN(p.rev)+'р)');});
+      }
     }
-    // Дивизионы
+    // ── Разбивка по городам: выручка + средняя маржа ──
+    if(typeof aggByField==='function'){
+      try{
+        var cityArr=aggByField(keys,true,'rev');
+        if(cityArr&&cityArr.length){
+          lines.push('── По городам (топ-7): ──');
+          cityArr.slice(0,7).forEach(function(c){lines.push('  '+c.name+': '+fmtN(c.rev)+'р, маржа '+c.margin.toFixed(1)+'%');});
+        }
+      }catch(e3){}
+    }
+    // ── Дивизионы ──
     if(typeof aggregateDivisions==='function'){
       var divs=aggregateDivisions(keys);
       if(divs&&divs.length){
-        lines.push('По дивизионам (выручка/маржа):');
-        divs.slice(0,5).forEach(function(d){lines.push('— '+d.div+': '+Math.round(d.revSum).toLocaleString('ru-RU')+'р, '+d.margin.toFixed(1)+'%');});
+        lines.push('── По дивизионам: ──');
+        divs.slice(0,5).forEach(function(d){lines.push('  '+d.div+': '+fmtN(d.revSum)+'р, '+d.margin.toFixed(1)+'%');});
       }
     }
-    // Динамика по последним месяцам
-    if(D.monthly&&D.monthly.length){
-      var last3=D.monthly.slice(-3);
-      lines.push('Последние месяцы: '+last3.map(function(m){return m.label;}).join(', '));
+    // ── MoM-динамика для топ-5 клиентов (последний vs предыдущий месяц) ──
+    if(typeof aggByField==='function'&&D.monthly&&D.monthly.length>=2){
+      try{
+        var lastK=D.monthly[D.monthly.length-1].key;
+        var prevK=D.monthly[D.monthly.length-2].key;
+        var topClients=aggByField(keys,false,'rev').slice(0,5);
+        if(topClients.length){
+          var lastByName={},prevByName={};
+          aggByField([lastK],false,'rev').forEach(function(c){lastByName[c.name]=c;});
+          aggByField([prevK],false,'rev').forEach(function(c){prevByName[c.name]=c;});
+          lines.push('── MoM-динамика топ-5 клиентов ('+prevK+' → '+lastK+'): ──');
+          topClients.forEach(function(c){
+            var l=lastByName[c.name]||{rev:0,margin:0};
+            var p=prevByName[c.name]||{rev:0,margin:0};
+            var dRev=l.rev-p.rev;
+            var pct=p.rev>0?(dRev/p.rev*100):(l.rev>0?100:0);
+            var arrow=dRev>0?'↑':(dRev<0?'↓':'=');
+            lines.push('  '+c.name+': '+fmtN(p.rev)+'→'+fmtN(l.rev)+'р '+arrow+pct.toFixed(0)+'%, маржа '+p.margin.toFixed(1)+'%→'+l.margin.toFixed(1)+'%');
+          });
+        }
+      }catch(e4){}
     }
   }catch(e){lines.push('(ошибка сбора контекста: '+e.message+')');}
   return lines.join('\\n');
@@ -3417,6 +3598,8 @@ async function _ask(msg){
   try{
     const model=document.getElementById('_ai_model_sel')?.value||'';
     if(!model)throw new Error('Выберите модель');
+    const _ctxRaw=_aiBuildCtx();
+    const _ctx=(_ctxRaw&&typeof _ctxRaw.then==='function')?(await _ctxRaw):_ctxRaw;
     const sysContent=(_dynPrompt||`Ты — AI-аналитик финансового дашборда STH Group. Анализируешь рентабельность, P&L, тренды по проектам, городам и клиентам.
 
 Правила:
@@ -3427,7 +3610,7 @@ async function _ask(msg){
 - Используй **жирный** для названий проектов и ключевых цифр
 
 КОНТЕКСТ:
-`)+_aiBuildCtx();
+`)+_ctx;
     const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
     messages.push({role:'user',content:msg});
     const payload={model,messages,stream:true,think:false};
@@ -3493,6 +3676,9 @@ function _clear(){
   const chips=document.getElementById('_ai_chips');
   if(chips)chips.style.display='flex';
 }
+
+// Health-check плашка живёт в STH_AI_HEALTH_BANNER (см. index.html и инжект на всех
+// страницах) — здесь свою больше не ставим, чтобы не было двух красных баров.
 
 document.addEventListener('DOMContentLoaded',function(){
   // CSS

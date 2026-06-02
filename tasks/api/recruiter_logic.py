@@ -12,7 +12,13 @@ from datetime import datetime
 from typing import Optional
 
 # ── КОНСТАНТЫ ─────────────────────────────────────────────────────────────────
-ROADMAP_SHEET_ID = "1JTn8c7-hQz3zGRjsOLTxNpVmowBLCGYA4GF0wfC26go"  # TODO: переключить на 1yhXUAQ3mY9-ZhFRmvtLGiXJoSRdU1gg6_utCJ_3aBao после настройки Apps Script для столбца I
+ROADMAP_SHEET_ID = "1yhXUAQ3mY9-ZhFRmvtLGiXJoSRdU1gg6_utCJ_3aBao"  # актуальная "живая" дорожная карта
+ROADMAP_TAB      = "Шаблон"
+ROADMAP_COL_LINK = "Ссылка на ТЗ"          # колонка I, hyperlinked cells
+ROADMAP_COL_NAME = "Наименование проекта"  # колонка K, человеческое имя проекта
+ROADMAP_COL_CLIENT = "Клиент"
+ROADMAP_COL_PROJECT = "Проект"
+ROADMAP_COL_STATUS = "Текущий статус"
 HANDBOOK_DOC_ID  = "1dSPa9q_yry1q-v2q3ccuYElPCfRRjAbM7iNKwm_DR7U"
 STATS_SHEET_ID   = "1E_glmHFjFynYZLC5HsZywmOT6uNY4L6BfjRRHTiSm9A"
 
@@ -103,11 +109,12 @@ TZ_TTL        = 14400  # 4 ч
 # ── КЛИЕНТЫ GOOGLE ────────────────────────────────────────────────────────────
 _gs_client = None
 _docs_service = None
+_sheets_service = None  # Sheets API v4 — нужен для чтения hyperlinks (gspread их не отдаёт)
 _clients_error: Optional[str] = None
 
 
 def _init_clients():
-    global _gs_client, _docs_service, _clients_error
+    global _gs_client, _docs_service, _sheets_service, _clients_error
     try:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -128,11 +135,13 @@ def _init_clients():
 
         modern_creds = Credentials.from_service_account_info(info, scopes=SCOPES)
         _docs_service = build("docs", "v1", credentials=modern_creds, cache_discovery=False)
+        _sheets_service = build("sheets", "v4", credentials=modern_creds, cache_discovery=False)
         _clients_error = None
     except Exception as e:
         _clients_error = str(e)
         _gs_client = None
         _docs_service = None
+        _sheets_service = None
 
 
 def get_clients():
@@ -140,6 +149,12 @@ def get_clients():
     if _gs_client is None and _clients_error is None:
         _init_clients()
     return _gs_client, _docs_service
+
+
+def get_sheets_service():
+    if _sheets_service is None and _clients_error is None:
+        _init_clients()
+    return _sheets_service
 
 
 def clients_ready() -> bool:
@@ -181,73 +196,216 @@ def load_handbook() -> str:
 
 
 # ── ЗАГРУЗКА СПИСКА ПРОЕКТОВ ──────────────────────────────────────────────────
+def _extract_hyperlink(cell: dict) -> str:
+    """Из ячейки Sheets API достать URL: либо явный hyperlink, либо из формулы =HYPERLINK(...),
+    либо из textFormatRuns, либо из Smart Chip (chipRuns[].chip.richLinkProperties.uri).
+    Возвращает пустую строку если не нашли."""
+    if not cell:
+        return ""
+    url = (cell.get("hyperlink") or "").strip()
+    if url:
+        return url
+    formula = cell.get("userEnteredValue", {}).get("formulaValue", "") or ""
+    if formula and "HYPERLINK" in formula.upper():
+        m = re.search(r'HYPERLINK\(\s*"([^"]+)"', formula, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    for run in cell.get("textFormatRuns", []) or []:
+        ln = (run.get("format", {}) or {}).get("link", {}).get("uri", "")
+        if ln:
+            return ln.strip()
+    # Smart Chip — "кнопка"-ссылка на Google-документ внутри ячейки
+    for run in cell.get("chipRuns", []) or []:
+        chip = run.get("chip", {}) or {}
+        rich = chip.get("richLinkProperties", {}) or {}
+        ln = (rich.get("uri") or "").strip()
+        if ln:
+            return ln
+    return ""
+
+
 def load_projects_list() -> dict:
+    """Загрузить карту проект → tz_id из дорожной карты.
+    Использует Sheets API напрямую (а не gspread), потому что нужны hyperlinks
+    из колонки "Ссылка на ТЗ" — gspread их не отдаёт.
+    Возвращает dict вида {"Тандер Первоуральск": {"tz_id": "...", "client": "...", "city": "...", "status": "..."}}.
+    """
     global _projects_cache, _projects_ts
     with _cache_lock:
         now = time.time()
         if _projects_cache is not None and now - _projects_ts < PROJECTS_TTL:
             return _projects_cache
 
-    gs, _ = get_clients()
-    if not gs:
+    svc = get_sheets_service()
+    if not svc:
         return {}
     try:
-        sh = gs.open_by_key(ROADMAP_SHEET_ID)
-        ws = sh.worksheet("Шаблон")
-        header_row = ws.row_values(1)
-        try:
-            tz_col_idx = header_row.index("TZ_URL") + 1
-        except ValueError:
+        resp = svc.spreadsheets().get(
+            spreadsheetId=ROADMAP_SHEET_ID,
+            ranges=[ROADMAP_TAB],
+            includeGridData=True,
+            fields="sheets(data(rowData(values(formattedValue,hyperlink,userEnteredValue,textFormatRuns,chipRuns))))",
+        ).execute()
+        rows = resp.get("sheets", [{}])[0].get("data", [{}])[0].get("rowData", [])
+        if not rows:
             return {}
-        col_k = ws.col_values(11)
-        col_q = ws.col_values(tz_col_idx)
-        projects = {}
-        for i in range(1, max(len(col_k), len(col_q))):
-            name_val = col_k[i].strip() if i < len(col_k) else ""
-            if not name_val:
+        # заголовок
+        header_cells = rows[0].get("values", [])
+        header = [(c.get("formattedValue") or "").strip() for c in header_cells]
+
+        def col_idx(name: str) -> int:
+            try:
+                return header.index(name)
+            except ValueError:
+                return -1
+
+        i_link = col_idx(ROADMAP_COL_LINK)
+        i_name = col_idx(ROADMAP_COL_NAME)
+        i_client = col_idx(ROADMAP_COL_CLIENT)
+        i_project = col_idx(ROADMAP_COL_PROJECT)
+        i_status = col_idx(ROADMAP_COL_STATUS)
+        if i_link < 0:
+            return {}
+
+        projects: dict = {}
+        for row in rows[1:]:
+            cells = row.get("values") or []
+            if not cells or i_link >= len(cells):
                 continue
-            url = col_q[i].strip() if i < len(col_q) else ""
+            url = _extract_hyperlink(cells[i_link])
             if not url:
                 continue
             m = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
-            if m:
-                projects[name_val] = {"tz_id": m.group(1)}
+            if not m:
+                continue
+            tz_id = m.group(1)
+
+            def pick(idx: int) -> str:
+                if idx < 0 or idx >= len(cells):
+                    return ""
+                return (cells[idx].get("formattedValue") or "").strip()
+
+            # Любые внутренние \t / \n / повторные пробелы в имени → одиночный пробел
+            def _norm_ws(s: str) -> str:
+                return re.sub(r"\s+", " ", s).strip()
+
+            name = _norm_ws(pick(i_name))
+            client = pick(i_client)
+            project_city = pick(i_project)
+            if not name:
+                name = _norm_ws(f"{client} {project_city}")
+            if not name:
+                continue
+
+            projects[name] = {
+                "tz_id": tz_id,
+                "client": client,
+                "city": project_city,
+                "status": pick(i_status),
+            }
+
         with _cache_lock:
             _projects_cache = projects
             _projects_ts = time.time()
         return projects
-    except Exception as e:
+    except Exception:
         return {}
 
 
 # ── ЧТЕНИЕ ТЗ ─────────────────────────────────────────────────────────────────
 def read_tz_data(sheet_id: str) -> str:
+    """Прочитать все листы ТЗ. Использует Sheets API values.batchGet —
+    1 metadata-запрос + 1 batch-запрос на все листы, вместо N+1.
+    На реальных ТЗ это ~0.8 сек вместо ~3.3 сек."""
     with _cache_lock:
         if sheet_id in _tz_cache:
             text, ts = _tz_cache[sheet_id]
             if time.time() - ts < TZ_TTL:
                 return text
 
-    gs, _ = get_clients()
-    if not gs:
+    svc = get_sheets_service()
+    if not svc:
         return f"⚠️ Google Sheets недоступен: {_clients_error}"
     try:
-        sh = gs.open_by_key(sheet_id)
+        # 1) метаданные — только имена листов (без gridData)
+        meta = svc.spreadsheets().get(
+            spreadsheetId=sheet_id,
+            fields="sheets(properties(title))",
+        ).execute()
+        titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
+        if not titles:
+            return ""
+
+        # 2) одним запросом тянем значения всех листов
+        resp = svc.spreadsheets().values().batchGet(
+            spreadsheetId=sheet_id,
+            ranges=titles,
+            majorDimension="ROWS",
+        ).execute()
+
+        # batchGet возвращает valueRanges в том же порядке, что и ranges,
+        # поэтому имя листа берём из исходного списка — это надёжнее,
+        # чем парсить range A1-нотации (там кавычки и спецсимволы).
         lines = []
-        for ws in sh.worksheets():
-            records = ws.get_all_values()
-            if records:
-                lines.append(f"=== Лист: {ws.title} ===")
-                for row in records:
-                    row_text = " | ".join(str(c).strip() for c in row)
-                    if row_text.strip(" |"):
-                        lines.append(row_text)
+        for title, vr in zip(titles, resp.get("valueRanges", [])):
+            values = vr.get("values") or []
+            if not values:
+                continue
+            lines.append(f"=== Лист: {title} ===")
+            for row in values:
+                # Внутриячеечные переносы строк → U+2028 (LINE SEPARATOR).
+                # Это «невидимый» Unicode-разделитель, который JS не считает за \n,
+                # так что фронт-парсер однозначно отличит новую строку sheet от
+                # продолжения многострочной ячейки.
+                row_text = " | ".join(str(c).strip().replace("\n", "\u2028") for c in row)
+                if row_text.strip(" |"):
+                    lines.append(row_text)
+
         result = "\n".join(lines)
         with _cache_lock:
             _tz_cache[sheet_id] = (result, time.time())
         return result
     except Exception as e:
         return f"Ошибка чтения ТЗ: {e}"
+
+
+# ── ПРОГРЕВ КЭШЕЙ ─────────────────────────────────────────────────────────────
+_warmup_started = False
+_warmup_lock = threading.Lock()
+
+
+def warmup_async(top_n_tz: int = 5) -> None:
+    """Прогреть кэши в фоновом потоке: список проектов, учебник, top-N ТЗ.
+    Идемпотентно — повторный вызов игнорируется. Безопасно вызывать из startup-хука FastAPI."""
+    global _warmup_started
+    with _warmup_lock:
+        if _warmup_started:
+            return
+        _warmup_started = True
+
+    def _run():
+        try:
+            t0 = time.time()
+            projects = load_projects_list()
+            t1 = time.time()
+            load_handbook()
+            t2 = time.time()
+            tz_loaded = 0
+            # прогреваем первые N проектов с реальным tz_id
+            for name, info in list(projects.items())[:top_n_tz]:
+                tz_id = info.get("tz_id")
+                if tz_id:
+                    read_tz_data(tz_id)
+                    tz_loaded += 1
+            t3 = time.time()
+            print(f"[recruiter] warmup: projects={len(projects)} ({(t1-t0)*1000:.0f}ms), "
+                  f"handbook ({(t2-t1)*1000:.0f}ms), top-{tz_loaded} ТЗ ({(t3-t2)*1000:.0f}ms), "
+                  f"итого {(t3-t0)*1000:.0f}ms",
+                  flush=True)
+        except Exception as e:
+            print(f"[recruiter] warmup failed: {e}", flush=True)
+
+    threading.Thread(target=_run, name="recruiter-warmup", daemon=True).start()
 
 
 # ── СТАТИСТИКА ─────────────────────────────────────────────────────────────────

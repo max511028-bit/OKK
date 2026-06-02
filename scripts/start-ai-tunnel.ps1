@@ -31,7 +31,25 @@ $stderrLog = Join-Path $logDir 'ai-tunnel.ssh-stderr.log'
 
 Write-Log "tunnel watchdog started"
 
+# Сколько подряд получено exit 255 (ExitOnForwardFailure = порт занят зомби-сессией).
+# После 3 промахов делаем precleanup на VPS: убиваем чужие sshd, держащие 21434.
+$consecutiveForwardFails = 0
+
 while ($true) {
+    # Precleanup: убрать зомби-tunnel на VPS, если последние попытки падали с 255
+    if ($consecutiveForwardFails -ge 3) {
+        Write-Log "precleanup: forwarding failed $consecutiveForwardFails times in a row, killing stale tunnels on VPS"
+        try {
+            # один короткий ssh-вызов: найти sshd, держащие 127.0.0.1:21434, и убить их
+            $cleanupCmd = "pids=`$(ss -lntp 2>/dev/null | awk '/127.0.0.1:21434/ {print `$NF}' | grep -oP 'pid=\K[0-9]+' | sort -u); [ -n `"`$pids`" ] && kill -9 `$pids 2>/dev/null; sleep 1; echo done"
+            & $sshExe '-i' $key '-o' 'ConnectTimeout=10' '-o' 'StrictHostKeyChecking=accept-new' '-o' "UserKnownHostsFile=C:\ProgramData\sth\known_hosts" $vps $cleanupCmd 2>&1 | Out-Null
+            $consecutiveForwardFails = 0
+            Write-Log "precleanup: done"
+        } catch {
+            Write-Log "precleanup failed: $($_.Exception.Message)"
+        }
+    }
+
     Write-Log "starting ssh tunnel..."
     $args = @(
         '-vv',
@@ -50,6 +68,12 @@ while ($true) {
         $proc = Start-Process -FilePath $sshExe -ArgumentList $args -NoNewWindow -PassThru -Wait `
             -RedirectStandardError $stderrLog -RedirectStandardOutput (Join-Path $logDir 'ai-tunnel.ssh-stdout.log')
         Write-Log "ssh exited with code $($proc.ExitCode)"
+        # 255 = generic failure; чаще всего это ExitOnForwardFailure (порт занят на VPS)
+        if ($proc.ExitCode -eq 255) {
+            $consecutiveForwardFails++
+        } else {
+            $consecutiveForwardFails = 0
+        }
     } catch {
         Write-Log "ssh launch failed: $($_.Exception.Message)"
     }

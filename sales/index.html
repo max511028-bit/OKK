@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STH · Продажи</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  
+<script>
+
+</script>
+<!-- STH_HELP_BTN_START -->
+<style>
+#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+  background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_help_btn:hover{background:#374151;transform:scale(1.08)}
+#_sth_help_modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99998;display:none;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#_sth_help_modal.show{display:flex}
+#_sth_help_box{background:#161b22;color:#e6edf3;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow:auto;
+  padding:24px 28px;box-shadow:0 24px 80px rgba(0,0,0,.7);font:14px/1.6 Inter,system-ui,sans-serif}
+#_sth_help_box h1{font-size:22px;margin:0 0 14px;color:#fff}
+#_sth_help_box h2{font-size:16px;margin:18px 0 8px;color:#fff}
+#_sth_help_box h3{font-size:14px;margin:14px 0 6px;color:#fff}
+#_sth_help_box p{margin:0 0 10px;color:#cbd5e1}
+#_sth_help_box ul,#_sth_help_box ol{margin:0 0 10px;padding-left:22px;color:#cbd5e1}
+#_sth_help_box li{margin-bottom:4px}
+#_sth_help_box code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px}
+#_sth_help_box strong{color:#fff}
+#_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
+  margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
+#_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+</style>
+<button id="_sth_help_btn" title="Помощь по дашборду">?</button>
+<div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
+<script>
+(function(){
+  const SLUG='sales';
+  const btn=document.getElementById('_sth_help_btn');
+  const modal=document.getElementById('_sth_help_modal');
+  const close=document.getElementById('_sth_help_close');
+  const box=document.getElementById('_sth_help_box');
+  const content=document.getElementById('_sth_help_content');
+  let _loaded=false;
+  function mdToHtml(md){
+    // Минимальный markdown → HTML рендер. Без зависимостей.
+    md=md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    md=md.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+    md=md.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+    md=md.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+    md=md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md=md.replace(/`([^`]+)`/g,'<code>$1</code>');
+    // списки
+    md=md.replace(/(^|\n)((?:- .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
+      return p+'<ul>'+items+'</ul>';
+    });
+    md=md.replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^\d+\. /,'')+'</li>').join('');
+      return p+'<ol>'+items+'</ol>';
+    });
+    // параграфы
+    return md.split(/\n\n+/).map(b=>b.match(/^<(h\d|ul|ol|li|p)/) ? b : ('<p>'+b.replace(/\n/g,'<br>')+'</p>')).join('\n');
+  }
+  async function loadHelp(){
+    if(_loaded)return;
+    try{
+      const r=await fetch('/docs/'+SLUG+'/help.md?_='+Date.now());
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const md=await r.text();
+      content.innerHTML=mdToHtml(md);
+      _loaded=true;
+    }catch(e){content.innerHTML='<p style="color:#f87171">Не удалось загрузить help.md: '+e.message+'</p>';}
+  }
+  btn.addEventListener('click',function(){modal.classList.add('show');loadHelp();});
+  close.addEventListener('click',function(){modal.classList.remove('show');});
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')modal.classList.remove('show');});
+})();
+</script>
+<!-- STH_HELP_BTN_END -->
+
+<script>
+
+// ===== AI FLOATING PANEL (SALES) =====
+(function(){
+const _SUGGS = ["Сколько лидов и сделок в работе сейчас?","Какие источники дают конверсию выше среднего?","На каких этапах теряем больше всего сделок?","Топ-3 ответственных по объёму сделок","Какие сделки висят без движения >14 дней?","Средний цикл от лида до выигранной сделки","Какие лиды без привязки к сделке?","Стадии-«дыры» с самой высокой потерей","Сравни два последних импорта — что изменилось","Прогноз закрытия сделок на месяц"];
+const _OLLAMA='/tasks/api/ai/proxy';
+const _DASH_TYPE='sales';
+let _hist=[], _models=[], _open=false, _dynPrompt=null;
+
+async function _loadDynPrompt(){
+  try{
+    const r=await fetch('/tasks/api/ai/prompt/'+_DASH_TYPE);
+    if(r.ok){const d=await r.json();_dynPrompt=d.prompt||null;}
+  }catch{}
+}
+
+async function _aiBuildCtx(){
+  try{
+    var R=await Promise.all([
+      fetch('/tasks/api/sales/leads').then(r=>r.json()).catch(()=>[]),
+      fetch('/tasks/api/sales/deals').then(r=>r.json()).catch(()=>[]),
+      fetch('/tasks/api/sales/stageMapping').then(r=>r.json()).catch(()=>[]),
+      fetch('/tasks/api/sales/imports').then(r=>r.json()).catch(()=>[]),
+    ]);
+    var leads=R[0]||[],deals=R[1]||[],maps=R[2]||[],imps=R[3]||[];
+    var L=['=== CRM SALES STH ==='];
+    L.push('Лиды всего: '+leads.length+'; Сделки всего: '+deals.length+'; Импортов: '+imps.length);
+    function getStage(e){var d=e&&e.data||{};return d.STAGE_ID||d.STATUS_ID||d.STAGE||'—';}
+    function getOwn(e){var d=e&&e.data||{};return d.ASSIGNED_BY_NAME||d.ASSIGNED_BY_ID||d.RESPONSIBLE||'—';}
+    function getAmt(e){var d=e&&e.data||{};return Number(d.OPPORTUNITY||d.AMOUNT||0)||0;}
+    var byStage={};
+    deals.forEach(function(d){var s=getStage(d);byStage[s]=(byStage[s]||0)+1;});
+    var stArr=Object.entries(byStage).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+    L.push('--- Сделки по этапам ---');
+    stArr.forEach(function(e){L.push('• '+e[0]+': '+e[1]);});
+    var byOwn={};
+    deals.forEach(function(d){var o=getOwn(d);if(!byOwn[o])byOwn[o]={n:0,sum:0};byOwn[o].n++;byOwn[o].sum+=getAmt(d);});
+    var ownArr=Object.entries(byOwn).sort(function(a,b){return b[1].sum-a[1].sum;}).slice(0,5);
+    L.push('--- Топ-5 ответственных по сумме сделок ---');
+    ownArr.forEach(function(e){L.push('• '+e[0]+': '+e[1].n+' шт, '+Math.round(e[1].sum).toLocaleString('ru-RU')+'р');});
+    if(imps.length){
+      var li=imps[imps.length-1];
+      L.push('Последний импорт: '+(li.entityType||'?')+' от '+(li.createdAt||'?')+', строк '+(li.rowCount||0));
+    }
+    return L.join('\n');
+  }catch(e){return '=== CRM SALES === (ошибка контекста: '+e.message+')';}
+}
+
+function _fmtAI(t){
+  t=t.replace(/[\u4e00-\u9fff\u3040-\u30ff]{1,3}(?=\s|[\u0400-\u04ff])/g,'');
+  t=t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const tr=/(\.+\|\n)((?:\|[-:])+\|\n)((?:\|.+\|\n?)+)/g;
+  t=t.replace(tr,function(_,h,s,b){
+    const hc=h.split('|').filter(c=>c.trim()).map(c=>`<th>${c.trim()}</th>`).join('');
+    const rows=b.trim().split('\n').map(r=>{const cells=r.split('|').filter(c=>c.trim()).map(c=>`<td>${c.trim()}</td>`).join('');return`<tr>${cells}</tr>`;}).join('');
+    return`<table><thead><tr>${hc}</tr></thead><tbody>${rows}</tbody></table>`;
+  });
+  return t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^- (.+)$/gm,'• $1')
+    .replace(/\n/g,'<br>');
+}
+
+function _addMsg(role,html){
+  const box=document.getElementById('_ai_msgs');
+  if(!box)return null;
+  const d=document.createElement('div');
+  d.className='_ai_msg '+role;
+  d.innerHTML=html;
+  box.appendChild(d);
+  box.scrollTop=box.scrollHeight;
+  return d;
+}
+
+async function _loadModels(){
+  const sel=document.getElementById('_ai_model_sel');
+  if(!sel)return;
+  sel.innerHTML='<option>⏳ Загрузка...</option>';
+  try{
+    const r=await fetch(_OLLAMA+'/tags');
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    _models=(data.models||[]).map(m=>m.name).sort();
+    if(!_models.length)throw new Error('Нет моделей на сервере');
+    sel.innerHTML=_models.map(m=>`<option value="${m}">${m}</option>`).join('');
+    const pref=['qwen3:8b','qwen3:30b','qwen3-coder-next:cloud','minimax-m2.7:cloud','llama3.2:3b'];
+    const def=pref.find(p=>_models.includes(p))||_models[0];
+    sel.value=def;
+  }catch(e){
+    const sel2=document.getElementById('_ai_model_sel');
+    if(sel2){sel2.innerHTML='<option value="">⚠️ '+(e.message||'Ошибка')+' — клик для повтора</option>';sel2.onclick=function(){if(!_models.length){sel2.onclick=null;_loadModels();}};}
+  }
+}
+
+async function _ask(msg){
+  const btn=document.getElementById('_ai_send');
+  const inp=document.getElementById('_ai_inp');
+  if(btn)btn.disabled=true;
+  if(inp)inp.disabled=true;
+  _addMsg('user',_fmtAI(msg));
+  const thinking=_addMsg('bot','<span>⏳ Анализирую...</span>');
+  let reply='';
+  try{
+    const model=document.getElementById('_ai_model_sel')?.value||'';
+    if(!model)throw new Error('Выберите модель');
+    const _ctxRaw=_aiBuildCtx();
+    const _ctx=(_ctxRaw&&typeof _ctxRaw.then==='function')?(await _ctxRaw):_ctxRaw;
+    const sysContent=(_dynPrompt||`Ты — AI-аналитик CRM-дашборда (импорт из Битрикс24). Видишь массивы лидов, сделок, связей, маппинга стадий.
+
+Правила:
+- Отвечай ТОЛЬКО на русском.
+- Используй ТОЛЬКО цифры из контекста.
+- Если данных нет — прямо скажи «нет данных».
+- Без приветствий.
+
+Формат: Факты с цифрами → Вывод → Рекомендация. До 8 предложений. **Жирным** — имена менеджеров и ключевые цифры.
+
+АКТУАЛЬНЫЕ ДАННЫЕ:
+`)+_ctx;
+    const messages=[{role:'system',content:sysContent},..._hist.map(h=>h)];
+    messages.push({role:'user',content:msg});
+    const payload={model,messages,stream:true,think:false};
+    const res=await fetch(_OLLAMA+'/chat/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const reader=res.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    if(thinking)thinking.innerHTML='▍';
+    while(true){
+      const {done,value}=await reader.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n');buf=lines.pop();
+      for(const line of lines){
+        if(!line.trim())continue;
+        try{
+          const c=JSON.parse(line);
+          if(c.error)throw new Error(c.error);
+          const p=c.message?.content||'';
+          if(p){reply+=p;if(thinking)thinking.innerHTML=_fmtAI(reply)+'<span style="animation:blink 1s step-end infinite">▍</span>';}
+        }catch(e2){if(e2.message&&!e2.message.includes('JSON'))throw e2;}
+      }
+    }
+    if(thinking)thinking.innerHTML=_fmtAI(reply);
+    _hist.push({role:'user',content:msg},{role:'assistant',content:reply});
+    if(_hist.length>20)_hist.splice(0,2);
+  }catch(e){
+    if(thinking){const sp=document.createElement('span');sp.style.color='#f85149';sp.textContent='⚠️ '+(e.message||'Ошибка');thinking.innerHTML='';thinking.appendChild(sp);}
+  }
+  if(btn)btn.disabled=false;
+  if(inp){inp.disabled=false;inp.focus();}
+  const box=document.getElementById('_ai_msgs');
+  if(box)box.scrollTop=box.scrollHeight;
+}
+
+function _send(){
+  const inp=document.getElementById('_ai_inp');
+  if(!inp)return;
+  const msg=inp.value.trim();
+  if(!msg)return;
+  inp.value='';
+  _ask(msg);
+}
+
+function _chip(txt){
+  const inp=document.getElementById('_ai_inp');
+  if(inp)inp.value=txt;
+  _send();
+}
+
+function _toggle(){
+  _open=!_open;
+  const panel=document.getElementById('_ai_panel');
+  if(panel)panel.style.display=_open?'flex':'none';
+  if(_open&&!_models.length){setTimeout(_loadModels,50);_loadDynPrompt();}
+}
+
+function _clear(){
+  _hist=[];
+  const box=document.getElementById('_ai_msgs');
+  if(box)box.innerHTML='<div class="_ai_msg bot">Привет! Я анализирую данные CRM — лиды, сделки, конверсии и воронку из Битрикс24.<br><br>Спросите про топ-источники, потери на этапах, аномалии и менеджеров.</div>';
+  const chips=document.getElementById('_ai_chips');
+  if(chips)chips.style.display='flex';
+}
+
+// Health-check плашка живёт в STH_AI_HEALTH_BANNER (см. index.html и инжект на всех
+// страницах) — здесь свою больше не ставим, чтобы не было двух красных баров.
+
+document.addEventListener('DOMContentLoaded',function(){
+  // CSS
+  const st=document.createElement('style');
+  st.textContent=`
+/* ===== AI FLOATING PANEL ===== */
+#_ai_btn{position:fixed;bottom:24px;right:24px;width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border:none;color:#fff;font-size:24px;cursor:pointer;z-index:9998;box-shadow:0 4px 20px rgba(59,130,246,.5);transition:transform .2s,box-shadow .2s;display:flex;align-items:center;justify-content:center;}
+#_ai_btn:hover{transform:scale(1.1);box-shadow:0 6px 28px rgba(59,130,246,.7);}
+#_ai_panel{position:fixed;bottom:90px;right:24px;width:400px;height:580px;background:#161b22;border:1px solid rgba(255,255,255,.1);border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.6);z-index:9997;display:none;flex-direction:column;overflow:hidden;font-family:Inter,system-ui,sans-serif;}
+#_ai_panel_head{padding:14px 16px;background:#0d1117;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;flex-shrink:0;}
+#_ai_panel_head .ai-title{font-weight:700;color:#f0f6fc;font-size:14px;flex:1;}
+#_ai_model_sel{background:#161b22;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#94a3b8;font-size:11px;padding:4px 8px;max-width:160px;}
+#_ai_clear{background:none;border:none;color:#64748b;cursor:pointer;font-size:18px;padding:0 4px;}
+#_ai_clear:hover{color:#94a3b8;}
+#_ai_msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;}
+#_ai_msgs::-webkit-scrollbar{width:4px;}
+#_ai_msgs::-webkit-scrollbar-track{background:transparent;}
+#_ai_msgs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px;}
+._ai_msg{max-width:85%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word;}
+._ai_msg.user{align-self:flex-end;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);color:#e2e8f0;border-bottom-right-radius:3px;}
+._ai_msg.bot{align-self:flex-start;background:#1e293b;border:1px solid rgba(255,255,255,.07);color:#cbd5e1;border-bottom-left-radius:3px;}
+._ai_msg.bot strong{color:#f0f6fc;}
+._ai_msg table{border-collapse:collapse;width:100%;margin:6px 0;font-size:12px;}
+._ai_msg th,._ai_msg td{border:1px solid rgba(255,255,255,.1);padding:4px 8px;text-align:left;}
+._ai_msg th{background:rgba(255,255,255,.05);}
+#_ai_chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;flex-shrink:0;}
+._ai_chip{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);border-radius:20px;padding:5px 12px;font-size:11px;color:#60a5fa;cursor:pointer;white-space:nowrap;transition:background .15s;}
+._ai_chip:hover{background:rgba(59,130,246,.2);}
+#_ai_inp_row{padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);display:flex;gap:8px;flex-shrink:0;}
+#_ai_inp{flex:1;background:#0d1117;border:1px solid rgba(255,255,255,.12);border-radius:10px;color:#f0f6fc;font-size:13px;padding:9px 12px;outline:none;resize:none;font-family:inherit;}
+#_ai_inp:focus{border-color:rgba(59,130,246,.5);}
+#_ai_send{background:#3b82f6;border:none;border-radius:10px;color:#fff;padding:9px 14px;cursor:pointer;font-size:18px;transition:background .15s;flex-shrink:0;}
+#_ai_send:hover{background:#2563eb;}
+#_ai_send:disabled{background:#334155;cursor:not-allowed;}
+`;
+  document.head.appendChild(st);
+
+  // Button
+  const btn=document.createElement('button');
+  btn.id='_ai_btn';
+  btn.innerHTML='🤖';
+  btn.title='CRM Ассистент';
+  btn.onclick=_toggle;
+  document.body.appendChild(btn);
+
+  // Panel
+  const panel=document.createElement('div');
+  panel.id='_ai_panel';
+  const suggs_html=_SUGGS.map(s=>`<span class="_ai_chip" onclick="_chip('${s}')">${s}</span>`).join('');
+  panel.innerHTML=`
+    <div id="_ai_panel_head">
+      <span style="font-size:20px">🤖</span>
+      <span class="ai-title">CRM Ассистент</span>
+      <select id="_ai_model_sel"></select>
+      <button id="_ai_clear" onclick="_clear()" title="Очистить чат">🗑</button>
+      <button id="_ai_close" onclick="_toggle()" title="Закрыть" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:20px;padding:0 4px;">✕</button>
+    </div>
+    <div id="_ai_msgs">
+      <div class="_ai_msg bot">Привет! Я анализирую данные CRM — лиды, сделки, конверсии и воронку из Битрикс24.<br><br>Спросите про топ-источники, потери на этапах, аномалии и менеджеров.</div>
+    </div>
+    <div id="_ai_chips">${suggs_html}</div>
+    <div id="_ai_inp_row">
+      <textarea id="_ai_inp" rows="1" placeholder="Задайте вопрос..."></textarea>
+      <button id="_ai_send" onclick="_send()">➤</button>
+    </div>`;
+  document.body.appendChild(panel);
+
+  // Enter to send
+  setTimeout(function(){
+    const inp=document.getElementById('_ai_inp');
+    if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();_send();}});
+  },100);
+
+  // Hide chips after first use
+  document.addEventListener('click',function(e){
+    if(e.target.classList.contains('_ai_chip')){
+      const chips=document.getElementById('_ai_chips');
+      if(chips)chips.style.display='none';
+    }
+  });
+});
+
+window._chip=_chip;
+window._toggle=_toggle;
+window._clear=_clear;
+})();
+
+</script>
+
+<!-- STH_AI_HEALTH_BANNER_START -->
+<style>
+#_sth_ai_offline_banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #b91c1c; color: #fff;
+  padding: 8px 16px; text-align: center;
+  font: 600 13px/1.4 Inter, system-ui, sans-serif;
+  z-index: 99999; display: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+#_sth_ai_offline_banner.show { display: block; }
+</style>
+<div id="_sth_ai_offline_banner">⚠️ ИИ временно недоступен — отвечать не сможет. Команда уже видит проблему.</div>
+<script>
+(function() {
+  const URL = '/tasks/api/ai/health';
+  const EL = () => document.getElementById('_sth_ai_offline_banner');
+  async function _check() {
+    try {
+      const r = await fetch(URL, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const el = EL();
+      if (el) el.classList.toggle('show', !d.online);
+    } catch (e) {
+      const el = EL();
+      if (el) el.classList.add('show');
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(_check, 2000);
+    setInterval(_check, 60000);
+  });
+})();
+</script>
+<!-- STH_AI_HEALTH_BANNER_END -->
+
+</body>
+</html>

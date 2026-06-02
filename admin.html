@@ -182,6 +182,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
       <button class="sidebar-tab" onclick="showTab('ai-tests')" id="tab-btn-ai-tests">
         <span class="tab-icon">🧪</span>Тесты ИИ
       </button>
+      <button class="sidebar-tab" onclick="showTab('analyst-canon')" id="tab-btn-analyst-canon">
+        <span class="tab-icon">📚</span>Канон-библиотека
+      </button>
     </nav>
 
     <!-- Content -->
@@ -369,6 +372,21 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
           <div style="font-size:14px;font-weight:700;margin-bottom:12px;">По дашбордам за 7 дней</div>
           <div class="info-card" id="lg-by-dashboard">—</div>
         </div>
+
+        <!-- ═══ AI CACHE (4.3) ═══ -->
+        <div style="margin-top:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="font-size:14px;font-weight:700;">Кэш ответов ИИ</div>
+            <button class="btn-reset" id="lc-clear" onclick="clearAiCache()" style="font-size:12px;padding:6px 12px;">🗑 Очистить кэш</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;">
+            <div class="info-card"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">Всего записей</div><div style="font-size:24px;font-weight:700;margin-top:6px;" id="lc-total">—</div></div>
+            <div class="info-card"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">Свежих (24ч)</div><div style="font-size:24px;font-weight:700;margin-top:6px;" id="lc-fresh">—</div></div>
+            <div class="info-card"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">Всего попаданий</div><div style="font-size:24px;font-weight:700;margin-top:6px;" id="lc-hits">—</div></div>
+            <div class="info-card"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;">Hit-rate за 7д</div><div style="font-size:24px;font-weight:700;margin-top:6px;" id="lc-hitrate">—</div></div>
+          </div>
+          <div class="info-card" id="lc-top">Загрузка топа…</div>
+        </div>
       </div>
 
       <!-- ═══ AI TESTS PANEL ═══ -->
@@ -406,6 +424,34 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ═══ ANALYST CANON LIBRARY PANEL (Variant 3) ═══ -->
+      <div class="admin-panel" id="panel-analyst-canon">
+        <div class="panel-title">Канон-библиотека аналитика</div>
+        <div class="panel-sub">
+          Когда пользователь на «Аналитике» просит построить отчёт — бэкенд сначала ищет тему по триггерам.<br>
+          <b>Нашёл</b> → канон подмешивается в системный промпт мгновенно.<br>
+          <b>Не нашёл</b> → отдельным «учебным» запросом модель сама описывает канон, мы сохраняем как <code>auto</code>-запись. В следующий раз — уже мгновенно.<br>
+          Помечай авто-записи как <b>проверенные</b> или редактируй их вручную.
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+          <button class="btn-save" onclick="addAnalystCanon()">+ Новая запись</button>
+          <button class="btn-save" onclick="saveAnalystCanon()">💾 Сохранить</button>
+          <button class="btn-reset" onclick="loadAnalystCanon()">↻ Перезагрузить</button>
+          <button class="btn-reset" onclick="resetAnalystCanonToDefault()" title="Восстановить дефолтный набор">↶ К дефолтам</button>
+          <span style="margin-left:8px;font-size:12px;color:var(--text3);">Фильтр:</span>
+          <select id="ac-filter" onchange="renderAnalystCanon()" class="prompt-textarea" style="width:auto;padding:6px 10px;font-size:12px;">
+            <option value="all">все</option>
+            <option value="verified">только проверенные</option>
+            <option value="auto">только авто</option>
+            <option value="unverified">непроверенные</option>
+          </select>
+          <span class="save-status" id="ac-status"></span>
+        </div>
+
+        <div id="ac-list"></div>
       </div>
 
     </main>
@@ -475,8 +521,174 @@ function showTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('tab-btn-' + name).classList.add('active');
   if (name === 'status') loadStatus();
-  if (name === 'ai-logs') { loadAiLogsStats(); loadAiLogs(); }
+  if (name === 'ai-logs') { loadAiLogsStats(); loadAiLogs(); loadAiCacheStats(); }
   if (name === 'ai-tests') { loadTestRuns(); }
+  if (name === 'analyst-canon') { loadAnalystCanon(); }
+}
+
+// ── Analyst Canon Library (Variant 3) ──
+let _analystCanon = [];
+let _analystCanonDefaults = [];
+
+function acEscape(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadAnalystCanon(){
+  const status = document.getElementById('ac-status');
+  status.textContent = 'Загрузка...';
+  try {
+    const r = await fetch(`${API}/admin/analyst-canon`, {headers:{'X-Auth-Token': _token}});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    _analystCanon = Array.isArray(d.canon) ? d.canon : (Array.isArray(d.recipes) ? d.recipes : []);
+    // Нормализуем legacy body→canon на фронте
+    _analystCanon = _analystCanon.map(r => ({
+      id: r.id, name: r.name, triggers: r.triggers || [],
+      canon: r.canon || r.body || '',
+      auto_generated: !!r.auto_generated,
+      verified: r.verified !== false,
+      hit_count: r.hit_count || 0,
+      created_at: r.created_at || '',
+      updated_at: r.updated_at || '',
+      source_question: r.source_question || '',
+    }));
+    _analystCanonDefaults = Array.isArray(d.defaults) ? d.defaults : [];
+    renderAnalystCanon();
+    status.textContent = '';
+  } catch(e){
+    status.textContent = 'Ошибка: ' + e.message;
+    status.style.color = 'var(--err, #EF4444)';
+  }
+}
+
+function _acFilteredIdx(){
+  const f = (document.getElementById('ac-filter')||{}).value || 'all';
+  return _analystCanon.map((r,i)=>[r,i]).filter(([r])=>{
+    if (f==='verified') return !r.auto_generated || r.verified;
+    if (f==='auto') return r.auto_generated;
+    if (f==='unverified') return r.auto_generated && !r.verified;
+    return true;
+  });
+}
+
+function renderAnalystCanon(){
+  const wrap = document.getElementById('ac-list');
+  const pairs = _acFilteredIdx();
+  if (!pairs.length){
+    wrap.innerHTML = '<div class="info-card">Записей нет (с учётом фильтра). Жми «+ Новая запись» или смени фильтр.</div>';
+    return;
+  }
+  wrap.innerHTML = pairs.map(([r, idx]) => {
+    const badges = [];
+    if (r.auto_generated) badges.push('<span style="background:#7C3AED;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">AUTO</span>');
+    if (r.auto_generated && !r.verified) badges.push('<span style="background:#F59E0B;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">непроверено</span>');
+    if (r.verified && !r.auto_generated) badges.push('<span style="background:#10B981;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">✓</span>');
+    const hits = r.hit_count ? `<span style="font-size:11px;color:var(--text3);">${r.hit_count}× использовано</span>` : '';
+    const src = r.source_question ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">Породивший вопрос: «${acEscape(r.source_question)}»</div>` : '';
+    const verifyBtn = r.auto_generated && !r.verified
+      ? `<button class="btn-save" style="flex:0 0 auto;background:#10B981;" onclick="verifyAnalystCanon(${idx})">✓ пометить проверенной</button>` : '';
+    return `
+    <div class="prompt-block" style="margin-bottom:16px;${r.auto_generated && !r.verified ? 'border-left:3px solid #F59E0B;':''}">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+        ${badges.join('')}
+        ${hits}
+        <span style="flex:1;"></span>
+        ${verifyBtn}
+        <button class="btn-reset" onclick="deleteAnalystCanon(${idx})" style="flex:0 0 auto;color:#EF4444;">✕ удалить</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">ID</span>
+        <input class="prompt-textarea" style="flex:0 0 240px;font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:6px 10px;" value="${acEscape(r.id)}" oninput="_analystCanon[${idx}].id=this.value" />
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">НАЗВАНИЕ</span>
+        <input class="prompt-textarea" style="flex:1;font-size:13px;padding:6px 10px;" value="${acEscape(r.name)}" oninput="_analystCanon[${idx}].name=this.value" />
+      </div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-bottom:4px;">ТРИГГЕРЫ (через запятую, регистронезависимый поиск подстроки)</div>
+        <input class="prompt-textarea" style="width:100%;font-size:12px;padding:6px 10px;" value="${acEscape((r.triggers||[]).join(', '))}" oninput="_analystCanon[${idx}].triggers=this.value.split(',').map(s=>s.trim()).filter(Boolean)" />
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-bottom:4px;">КАНОН (описание канонического вида отчёта — подмешивается в системный промпт)</div>
+        <textarea class="prompt-textarea" rows="8" spellcheck="false" oninput="_analystCanon[${idx}].canon=this.value">${acEscape(r.canon)}</textarea>
+        ${src}
+      </div>
+    </div>
+  `;}).join('');
+}
+
+function addAnalystCanon(){
+  const id = 'canon_' + Math.random().toString(36).slice(2, 8);
+  _analystCanon.push({
+    id, name: 'Новая запись', triggers: [], canon: '',
+    auto_generated: false, verified: true, hit_count: 0,
+  });
+  renderAnalystCanon();
+}
+
+function deleteAnalystCanon(idx){
+  if (!confirm('Удалить запись «' + (_analystCanon[idx].name || _analystCanon[idx].id) + '»?')) return;
+  _analystCanon.splice(idx, 1);
+  renderAnalystCanon();
+}
+
+async function verifyAnalystCanon(idx){
+  const entry = _analystCanon[idx];
+  if (!entry) return;
+  try {
+    const r = await fetch(`${API}/admin/analyst-canon/verify`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Auth-Token': _token},
+      body: JSON.stringify({id: entry.id, verified: true}),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    entry.verified = true;
+    renderAnalystCanon();
+  } catch(e){
+    alert('Ошибка верификации: ' + e.message);
+  }
+}
+
+async function saveAnalystCanon(){
+  const status = document.getElementById('ac-status');
+  const clean = _analystCanon
+    .map(r => ({
+      id: String(r.id||'').trim(),
+      name: String(r.name||'').trim(),
+      triggers: (r.triggers||[]).map(t => String(t).trim()).filter(Boolean),
+      canon: String(r.canon||'').trim(),
+      auto_generated: !!r.auto_generated,
+      verified: r.verified !== false,
+      hit_count: r.hit_count || 0,
+      created_at: r.created_at || '',
+      updated_at: r.updated_at || '',
+      source_question: r.source_question || '',
+    }))
+    .filter(r => r.id && r.name && r.canon && r.triggers.length);
+  if (!clean.length){ status.textContent = 'Нет валидных записей (нужно: id, name, canon, минимум 1 триггер)'; status.style.color='var(--err,#EF4444)'; return; }
+  status.textContent = 'Сохранение...';
+  status.style.color = '';
+  try {
+    const r = await fetch(`${API}/admin/analyst-canon`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'X-Auth-Token': _token},
+      body: JSON.stringify({canon: clean}),
+    });
+    if (!r.ok){ const t = await r.text(); throw new Error(t || ('HTTP ' + r.status)); }
+    const d = await r.json();
+    status.textContent = '✓ Сохранено: ' + d.saved + ' шт.';
+    status.style.color = 'var(--ok, #10B981)';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e){
+    status.textContent = 'Ошибка: ' + e.message;
+    status.style.color = 'var(--err, #EF4444)';
+  }
+}
+
+function resetAnalystCanonToDefault(){
+  if (!confirm('Заменить список на дефолтный набор? Локально, до «Сохранить».')) return;
+  _analystCanon = JSON.parse(JSON.stringify(_analystCanonDefaults)).map(r => ({
+    ...r, canon: r.canon || r.body || '',
+    auto_generated: false, verified: true, hit_count: 0,
+  }));
+  renderAnalystCanon();
 }
 
 // ── AI Smoke Tests ──
@@ -592,6 +804,45 @@ async function loadAiLogsStats(){
   } catch(e){
     document.getElementById('lg-total').textContent = 'err';
   }
+}
+async function loadAiCacheStats(){
+  try {
+    const r = await fetch(`${API}/admin/ai-cache/stats`, {headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    document.getElementById('lc-total').textContent = d.total_entries ?? 0;
+    document.getElementById('lc-fresh').textContent = d.fresh_24h ?? 0;
+    document.getElementById('lc-hits').textContent = d.total_hits ?? 0;
+    document.getElementById('lc-hitrate').textContent = (d.hit_rate_7d_pct ?? 0) + '%';
+    const top = d.top_questions || [];
+    if(top.length){
+      const rows = top.map((q,i) => `
+        <div class="info-row">
+          <span class="info-label" style="max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_escHtml(q.question||'')}">${i+1}. <strong>${_escHtml(q.dashboard||'?')}</strong> · ${_escHtml((q.question||'').slice(0,80))}</span>
+          <span class="info-val">${q.hits} попад.</span>
+        </div>`).join('');
+      document.getElementById('lc-top').innerHTML = rows;
+    } else {
+      document.getElementById('lc-top').innerHTML = '<span style="color:var(--text3);">Кэш пуст или нет попаданий</span>';
+    }
+  } catch(e){
+    document.getElementById('lc-total').textContent = 'err';
+  }
+}
+async function clearAiCache(){
+  if(!confirm('Очистить весь кэш ответов ИИ? Следующие запросы будут идти в Ollama напрямую.')) return;
+  const btn = document.getElementById('lc-clear');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/admin/ai-cache/clear`, {method:'POST', headers:{'X-Auth-Token': _token}});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    alert(`Очищено: ${d.cleared} записей`);
+    loadAiCacheStats();
+  } catch(e){
+    alert('Ошибка: ' + e.message);
+  }
+  btn.disabled = false;
 }
 async function loadAiLogs(){
   const tbody = document.getElementById('lg-tbody');
@@ -780,5 +1031,37 @@ async function loadStatus() {
 </script>
 <!-- STH_AI_HEALTH_BANNER_END -->
 
+<!-- STH_MOBILE_CSS_START -->
+<style id="_sth_mobile_overrides">
+@media (max-width: 768px) {
+  html, body { font-size: 14px; }
+  [class*="grid"], [class*="-grid"] { grid-template-columns: 1fr !important; gap: 12px !important; }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; max-width: 100%; }
+  .container, main, .main, .content, .page-content { padding-left: 12px !important; padding-right: 12px !important; }
+  h1 { font-size: 22px !important; line-height: 1.25; }
+  h2 { font-size: 18px !important; line-height: 1.3; }
+  h3 { font-size: 16px !important; }
+  aside, .sidebar, nav.side, .side-nav { position: static !important; width: 100% !important; height: auto !important; border-right: 0 !important; border-bottom: 1px solid rgba(255,255,255,.08); }
+  button, .btn, [role="button"] { min-height: 40px; }
+  .card, .kpi, .metric, .stat-card, .stat { width: 100% !important; min-width: 0 !important; }
+  canvas, svg, .chart, [class*="chart"] { max-width: 100% !important; height: auto !important; }
+}
+@media (max-width: 480px) {
+  html, body { font-size: 13px; }
+  h1 { font-size: 19px !important; }
+  h2 { font-size: 16px !important; }
+  #_ai_panel, #_tai_panel { width: calc(100vw - 16px) !important; height: calc(100vh - 100px) !important; bottom: 80px !important; right: 8px !important; left: 8px !important; max-width: none !important; max-height: none !important; }
+  #_ai_btn, #_tai_btn { bottom: 16px !important; right: 16px !important; width: 50px !important; height: 50px !important; }
+  #_sth_help_btn { right: 78px !important; }
+  #_sth_xlsx_btn { right: 138px !important; }
+  #_sth_ai_offline_banner { font-size: 11px !important; padding: 6px 10px !important; }
+  .subtitle, .desc-long, .label-decoration { display: none; }
+  .container, main, .main, .content, .page-content, .panel, .section, section { padding: 8px !important; }
+}
+@media (max-width: 1024px) {
+  .table-wrap, .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+</style>
+<!-- STH_MOBILE_CSS_END -->
 </body>
 </html>

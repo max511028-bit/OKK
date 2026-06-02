@@ -85,6 +85,140 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text1);min-
 .tz-status.loaded{color:var(--green);}
 .tz-status.error{color:var(--red);}
 
+.tz-actions{display:none;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.tz-actions.show{display:flex;}
+.tz-action{
+  flex:1;min-width:0;background:var(--bg3);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text1);font-size:12px;font-weight:500;
+  padding:6px 10px;cursor:pointer;transition:background .2s,border-color .2s;
+  text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  font-family:inherit;
+}
+.tz-action:hover{background:rgba(59,130,246,.18);border-color:rgba(59,130,246,.4);color:var(--blue);}
+
+/* ── TZ Modal ── */
+.tz-modal-bg{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
+  z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);
+}
+.tz-modal-bg.show{display:flex;}
+.tz-modal{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  width:min(900px,92vw);max-height:88vh;display:flex;flex-direction:column;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.tz-modal-head{
+  display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);
+}
+.tz-modal-title{flex:1;font-size:15px;font-weight:600;color:var(--text1);min-width:0;}
+.tz-modal-title small{display:block;font-size:11px;font-weight:400;color:var(--text3);margin-top:2px;}
+.tz-modal-close{
+  background:none;border:1px solid var(--border);border-radius:8px;color:var(--text2);
+  font-size:18px;width:30px;height:30px;cursor:pointer;line-height:1;
+}
+.tz-modal-close:hover{color:var(--red);border-color:var(--red);}
+.tz-modal-search{
+  padding:10px 20px;border-bottom:1px solid var(--border);
+}
+.tz-modal-search input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text1);font-size:13px;padding:8px 12px;outline:none;font-family:inherit;
+}
+.tz-modal-search input:focus{border-color:var(--blue);}
+.tz-modal-body{
+  padding:16px 20px;overflow-y:auto;flex:1;font-size:13px;line-height:1.6;color:var(--text1);
+}
+.tz-modal-body pre{
+  white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono','Consolas',monospace;
+  font-size:12.5px;color:var(--text1);
+}
+.tz-modal-body mark{background:rgba(245,158,11,.4);color:#fde68a;padding:0 2px;border-radius:2px;}
+/* TZ modal body — двухпанельная раскладка */
+.tz-modal-body{
+  display:grid;grid-template-columns:260px 1fr;gap:0;padding:0;
+  font-size:13.5px;line-height:1.55;color:var(--text1);
+}
+.tz-toc-aside{
+  position:sticky;top:0;align-self:start;max-height:calc(88vh - 130px);overflow-y:auto;
+  padding:18px 10px 18px 16px;border-right:1px solid var(--border);
+  background:rgba(15,23,42,.4);
+}
+.tz-toc-aside .tz-toc-label{
+  font-size:10.5px;font-weight:600;color:var(--text3);text-transform:uppercase;
+  letter-spacing:.8px;margin-bottom:10px;padding-left:10px;
+}
+.tz-toc-chip{
+  display:block;padding:8px 12px;margin-bottom:2px;border-radius:6px;
+  font-size:13px;color:var(--text2);text-decoration:none;cursor:pointer;
+  transition:background .15s,color .15s;
+  white-space:normal;line-height:1.35;word-break:break-word;
+}
+.tz-toc-chip:hover,.tz-toc-chip.active{background:rgba(59,130,246,.14);color:var(--blue);font-weight:500;}
+
+.tz-content{padding:18px 22px 22px;overflow-y:auto;}
+.tz-content .empty-hint{color:var(--text3);font-size:13px;padding:20px 0;}
+
+.tz-modal-body .tz-section{
+  margin-bottom:22px;
+}
+.tz-modal-body .tz-section-title{
+  font-weight:700;color:var(--text1);font-size:15px;
+  margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.tz-modal-body .tz-section-title .sec-icon{color:var(--blue);}
+
+/* Подзаголовок (категория полей внутри листа) */
+.tz-subheader{
+  font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;
+  letter-spacing:.6px;margin:18px 0 8px;
+}
+.tz-subheader:first-child{margin-top:4px;}
+
+/* Карточка ряда поле→значение */
+.tz-row{
+  display:grid;grid-template-columns:minmax(180px,30%) 1fr;gap:18px;
+  padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.tz-row:last-child{border-bottom:none;}
+.tz-row-key{color:var(--text2);font-weight:500;line-height:1.5;}
+.tz-row-val{
+  color:var(--text1);line-height:1.55;white-space:pre-wrap;word-break:break-word;
+}
+.tz-row-val .tz-row-comment{
+  display:block;color:#cbd5e1;font-size:12.5px;margin-top:6px;padding:5px 0 5px 10px;
+  border-left:2px solid var(--blue);background:rgba(59,130,246,.05);border-radius:0 4px 4px 0;
+  line-height:1.5;
+}
+
+.tz-row.full{grid-template-columns:1fr;}
+.tz-row.full .tz-row-val{color:var(--text1);}
+
+/* Таблица для строк-заголовков-колонок (header row + следующие data rows) */
+.tz-table{
+  margin:8px 0 14px;border:1px solid var(--border);border-radius:8px;
+  overflow:hidden;font-size:12.5px;
+}
+.tz-table-row{
+  display:grid;border-bottom:1px solid var(--border);
+}
+.tz-table-row:last-child{border-bottom:none;}
+.tz-table-row.head{background:rgba(59,130,246,.08);font-weight:600;color:var(--blue);}
+.tz-table-cell{padding:8px 12px;border-right:1px solid var(--border);line-height:1.45;}
+.tz-table-cell:last-child{border-right:none;}
+
+@media (max-width:680px){
+  .tz-modal-body{grid-template-columns:1fr;}
+  .tz-toc-aside{position:static;border-right:none;border-bottom:1px solid var(--border);max-height:none;padding:12px;}
+  .tz-toc-aside .tz-toc-label{display:none;}
+  .tz-toc-chip{display:inline-block;margin:2px;}
+  .tz-row{grid-template-columns:1fr;gap:2px;}
+}
+.tz-modal-foot{
+  padding:12px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+}
+
 /* ── MODEL SELECT ── */
 .model-select-wrap{margin-top:4px;}
 select.model-sel{
@@ -101,6 +235,9 @@ select.model-sel option{background:#1e293b;}
   white-space:nowrap;
 }
 .tag:hover{background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.35);color:var(--blue);}
+.tag-key{display:inline-block;background:rgba(59,130,246,.18);color:var(--blue);font-weight:700;font-size:10px;line-height:1;border-radius:4px;padding:2px 4px;margin-right:5px;min-width:10px;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
+.tag-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin:6px 0 8px;cursor:pointer;user-select:none;}
+.tag-toggle input{width:13px;height:13px;cursor:pointer;accent-color:var(--blue);}
 
 /* ── OBJECTION INPUT ── */
 .objection-wrap{padding:16px 20px;border-bottom:1px solid var(--border);}
@@ -391,6 +528,10 @@ select.model-sel option{background:#1e293b;}
         📄 Загрузить ТЗ
       </button>
       <div class="tz-status" id="tz-status"></div>
+      <div class="tz-actions" id="tz-actions">
+        <a class="tz-action" id="tz-open-link" href="#" target="_blank" rel="noopener" title="Открыть исходную таблицу в Google">🔗 Открыть</a>
+        <button class="tz-action" id="tz-view-btn" onclick="openTZModal()" title="Просмотреть текст ТЗ в этой вкладке">👁 Просмотр</button>
+      </div>
     </div>
 
     <!-- Model -->
@@ -406,6 +547,9 @@ select.model-sel option{background:#1e293b;}
     <!-- Quick tags -->
     <div class="sidebar-section">
       <div class="section-label">Быстрые возражения</div>
+      <label class="tag-toggle" title="Если включено — клик по тегу сразу отправляет запрос, без отдельной кнопки. Цифры 1–9 на клавиатуре дублируют первые 9 тегов.">
+        <input type="checkbox" id="tag-auto-ask" checked> Отправлять сразу по клику <span style="opacity:.7">(и 1–9 на клавиатуре)</span>
+      </label>
       <div class="tags-wrap" id="tags-wrap">
         <span class="tag" onclick="useTag(this)">Мало платят</span>
         <span class="tag" onclick="useTag(this)">Далеко ехать</span>
@@ -491,6 +635,7 @@ const API = '/tasks/api';
 // ── State ──
 let selectedProject = '';
 let tzText = '';
+let _tzUrl = '';
 let firstAnswer = '';
 let chatHistory = [];
 let currentVariants = [];
@@ -575,7 +720,9 @@ function selectProject(name) {
   document.getElementById('btn-load-tz').disabled = false;
   document.getElementById('tz-status').textContent = '';
   document.getElementById('tz-status').className = 'tz-status';
+  document.getElementById('tz-actions').classList.remove('show');
   tzText = '';
+  _tzUrl = '';
   renderProjectList(allProjects.filter(p =>
     p.toLowerCase().includes(name.toLowerCase())
   ));
@@ -615,12 +762,25 @@ async function loadTZ() {
     }
     const d = await r.json();
     tzText = d.tz || '';
+    _tzUrl = d.url || '';
     status.className = 'tz-status loaded';
     status.textContent = `✓ ТЗ загружено (${tzText.length} симв.)`;
+    // Показать кнопки «Открыть» и «Просмотр»
+    const actions = document.getElementById('tz-actions');
+    const link = document.getElementById('tz-open-link');
+    if (_tzUrl) {
+      link.href = _tzUrl;
+      link.style.display = '';
+    } else {
+      link.style.display = 'none';
+    }
+    actions.classList.add('show');
   } catch (e) {
     status.className = 'tz-status error';
     status.textContent = '✗ ' + e.message;
     tzText = '';
+    _tzUrl = '';
+    document.getElementById('tz-actions').classList.remove('show');
   }
   btn.disabled = false;
   btn.innerHTML = '📄 Загрузить ТЗ';
@@ -629,10 +789,59 @@ async function loadTZ() {
 // ── Tags ──
 function useTag(el) {
   const inp = document.getElementById('objection-inp');
-  inp.value = el.textContent;
+  // textContent включает префикс "1 " от .tag-key — берём data-text если есть
+  const text = el.dataset.text || el.textContent.replace(/^\s*\d+\s+/, '').trim();
+  inp.value = text;
   updateCharCount(inp);
-  inp.focus();
+  // Если включено "Отправлять сразу" — стартуем запрос без второго клика.
+  // Сохраняем выбор в localStorage чтобы он переживал перезагрузку.
+  const autoAsk = document.getElementById('tag-auto-ask');
+  const auto = autoAsk ? autoAsk.checked : true;
+  if (auto) {
+    askAI();
+  } else {
+    inp.focus();
+  }
 }
+
+// ── Hotkeys 1–9 на теги + нумерация ──
+// Нумеруем первые 9 тегов и пробрасываем нажатие цифры → клик по теду.
+// Не работает когда фокус во вводе/textarea (чтобы не мешать набору).
+document.addEventListener('DOMContentLoaded', function() {
+  // Нумеруем теги
+  const tags = document.querySelectorAll('#tags-wrap .tag');
+  tags.forEach((el, i) => {
+    const orig = el.textContent.trim();
+    el.dataset.text = orig;
+    if (i < 9) {
+      el.innerHTML = '<span class="tag-key">' + (i + 1) + '</span>' + orig;
+      el.title = 'Нажмите ' + (i + 1) + ' на клавиатуре';
+    }
+  });
+  // Восстанавливаем настройку auto-ask
+  try {
+    const saved = localStorage.getItem('recruiter_tag_auto_ask');
+    const cb = document.getElementById('tag-auto-ask');
+    if (cb && saved !== null) cb.checked = saved === '1';
+    if (cb) cb.addEventListener('change', () => {
+      try { localStorage.setItem('recruiter_tag_auto_ask', cb.checked ? '1' : '0'); } catch(e){}
+    });
+  } catch(e){}
+  // Hotkeys
+  document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key >= '1' && e.key <= '9') {
+      const idx = parseInt(e.key, 10) - 1;
+      const tag = document.querySelectorAll('#tags-wrap .tag')[idx];
+      if (tag) {
+        e.preventDefault();
+        tag.click();
+      }
+    }
+  });
+});
 
 // ── Char count ──
 function updateCharCount(el) {
@@ -986,6 +1195,326 @@ function formatText(t) {
 })();
 </script>
 <!-- STH_AI_HEALTH_BANNER_END -->
+
+<!-- STH_HELP_BTN_START -->
+<style>
+#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+  background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
+  cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
+#_sth_help_btn:hover{background:#374151;transform:scale(1.08)}
+#_sth_help_modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99998;display:none;
+  align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+#_sth_help_modal.show{display:flex}
+#_sth_help_box{background:#161b22;color:#e6edf3;border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;max-width:680px;width:100%;max-height:80vh;overflow:auto;
+  padding:24px 28px;box-shadow:0 24px 80px rgba(0,0,0,.7);font:14px/1.6 Inter,system-ui,sans-serif}
+#_sth_help_box h1{font-size:22px;margin:0 0 14px;color:#fff}
+#_sth_help_box h2{font-size:16px;margin:18px 0 8px;color:#fff}
+#_sth_help_box h3{font-size:14px;margin:14px 0 6px;color:#fff}
+#_sth_help_box p{margin:0 0 10px;color:#cbd5e1}
+#_sth_help_box ul,#_sth_help_box ol{margin:0 0 10px;padding-left:22px;color:#cbd5e1}
+#_sth_help_box li{margin-bottom:4px}
+#_sth_help_box code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;font-size:12px}
+#_sth_help_box strong{color:#fff}
+#_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
+  margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
+#_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
+@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+</style>
+<button id="_sth_help_btn" title="Помощь по дашборду">?</button>
+<div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
+<script>
+(function(){
+  const SLUG='recruiter';
+  const btn=document.getElementById('_sth_help_btn');
+  const modal=document.getElementById('_sth_help_modal');
+  const close=document.getElementById('_sth_help_close');
+  const box=document.getElementById('_sth_help_box');
+  const content=document.getElementById('_sth_help_content');
+  let _loaded=false;
+  function mdToHtml(md){
+    // Минимальный markdown → HTML рендер. Без зависимостей.
+    md=md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    md=md.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+    md=md.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+    md=md.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+    md=md.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    md=md.replace(/`([^`]+)`/g,'<code>$1</code>');
+    // списки
+    md=md.replace(/(^|\n)((?:- .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
+      return p+'<ul>'+items+'</ul>';
+    });
+    md=md.replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g,function(m,p,b){
+      const items=b.trim().split('\n').map(l=>'<li>'+l.replace(/^\d+\. /,'')+'</li>').join('');
+      return p+'<ol>'+items+'</ol>';
+    });
+    // параграфы
+    return md.split(/\n\n+/).map(b=>b.match(/^<(h\d|ul|ol|li|p)/) ? b : ('<p>'+b.replace(/\n/g,'<br>')+'</p>')).join('\n');
+  }
+  async function loadHelp(){
+    if(_loaded)return;
+    try{
+      const r=await fetch('/docs/'+SLUG+'/help.md?_='+Date.now());
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const md=await r.text();
+      content.innerHTML=mdToHtml(md);
+      _loaded=true;
+    }catch(e){content.innerHTML='<p style="color:#f87171">Не удалось загрузить help.md: '+e.message+'</p>';}
+  }
+  btn.addEventListener('click',function(){modal.classList.add('show');loadHelp();});
+  close.addEventListener('click',function(){modal.classList.remove('show');});
+  modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('show');});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')modal.classList.remove('show');});
+})();
+</script>
+<!-- STH_HELP_BTN_END -->
+
+<!-- ═══ TZ Viewer Modal ═══ -->
+<div class="tz-modal-bg" id="tz-modal-bg" onclick="if(event.target===this)closeTZModal()">
+  <div class="tz-modal">
+    <div class="tz-modal-head">
+      <div class="tz-modal-title">
+        <span id="tz-modal-project">ТЗ проекта</span>
+        <small id="tz-modal-meta"></small>
+      </div>
+      <a class="tz-action" id="tz-modal-open" href="#" target="_blank" rel="noopener" style="flex:0 0 auto;">🔗 Google</a>
+      <button class="tz-modal-close" onclick="closeTZModal()" title="Закрыть (Esc)">×</button>
+    </div>
+    <div class="tz-modal-search">
+      <input type="search" id="tz-modal-search-input" placeholder="🔍 Поиск по ТЗ (Ctrl+F внутри окна)…" oninput="filterTZ(this.value)">
+    </div>
+    <div class="tz-modal-body" id="tz-modal-body"></div>
+    <div class="tz-modal-foot">
+      <span id="tz-modal-stats"></span>
+      <span>Esc — закрыть</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── TZ Viewer ──
+let _tzRawText = '';
+let _tzCurrentProject = '';
+
+function escTZ(s){return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+// Заменяет внутриячеечный U+2028 (LINE SEPARATOR) и обычный \n на <br>.
+// Использовать только после escTZ.
+function nl2br(s){return (s||'').replace(/[\u2028\n]/g, '<br>');}
+
+// Каждая строка bodyText (после split('\n')) — отдельная запись sheet.
+// Внутриячеечные переносы хранятся как U+2028 и не разбивают строки.
+function _tzLogicalRows(body){
+  const raw = body.split('\n');
+  const recs = [];
+  for (const ln of raw) {
+    if (!ln.trim()) continue;
+    if (ln.includes('|')) {
+      recs.push({cells: ln.split('|').map(c => c.trim())});
+    } else {
+      // Однострочная запись без | — это либо подзаголовок, либо длинный параграф
+      recs.push({cells: [ln.trim()]});
+    }
+  }
+  return recs;
+}
+
+// Эвристика: «таблица из 3+ колонок-заголовков»
+// Если в строке 3+ непустых коротких ячейки (≤30 симв каждая) И ни одна не выглядит
+// как длинное значение — считаем что это строка-заголовок таблицы.
+function _looksLikeTableHeader(rec){
+  const cells = rec.cells.filter(c => c);
+  if (cells.length < 3) return false;
+  if (cells.some(c => c.length > 35 || c.includes('\n'))) return false;
+  // Не считаем заголовком если первое поле выглядит как ключ-значение
+  // (например, имеет ":" посередине или это вопрос с "?")
+  if (cells[0].endsWith('?') || cells[0].endsWith(':')) return false;
+  return true;
+}
+
+function _renderTzTable(headerRec, dataRecs){
+  const cols = headerRec.cells.length;
+  const tpl = `grid-template-columns:repeat(${cols}, minmax(0,1fr));`;
+  let html = '<div class="tz-table">';
+  html += `<div class="tz-table-row head" style="${tpl}">`;
+  headerRec.cells.forEach(c => {
+    html += '<div class="tz-table-cell">'+escTZ(c || '—')+'</div>';
+  });
+  html += '</div>';
+  dataRecs.forEach(r => {
+    html += `<div class="tz-table-row" style="${tpl}">`;
+    for (let i = 0; i < cols; i++) {
+      const v = (r.cells[i] || '').trim();
+      html += '<div class="tz-table-cell">'+escTZ(v || '—')+'</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _renderTzKeyVal(rec){
+  const cells = rec.cells;
+  // одна ячейка → подзаголовок или длинный параграф
+  if (cells.length === 1) {
+    const v = cells[0];
+    if (!v) return '';
+    if (v.length > 90 || v.includes('\u2028'))
+      return '<div class="tz-row full"><div class="tz-row-val">'+nl2br(escTZ(v))+'</div></div>';
+    return '<div class="tz-subheader">'+escTZ(v)+'</div>';
+  }
+  const k = cells[0];
+  const v = cells[1];
+  const rest = cells.slice(2).filter(c => c && c !== '-');
+  const comment = rest.join(' · ');
+  if (!k && v) {
+    return '<div class="tz-row full"><div class="tz-row-val">'+nl2br(escTZ(v))+
+      (comment ? '<span class="tz-row-comment">'+nl2br(escTZ(comment))+'</span>' : '')+
+      '</div></div>';
+  }
+  if (k && !v && !comment) {
+    return '<div class="tz-subheader">'+escTZ(k)+'</div>';
+  }
+  let html = '<div class="tz-row">';
+  html += '<div class="tz-row-key">'+nl2br(escTZ(k || '—'))+'</div>';
+  html += '<div class="tz-row-val">'+nl2br(escTZ(v || '—'));
+  if (comment) html += '<span class="tz-row-comment">'+nl2br(escTZ(comment))+'</span>';
+  html += '</div></div>';
+  return html;
+}
+
+function _renderTZSection(title, body, idx){
+  const recs = _tzLogicalRows(body);
+  if (!recs.length) return '';
+
+  // Группировка: ищем подряд идущие записи начинающиеся с одного заголовка-таблицы
+  let html = '';
+  let i = 0;
+  while (i < recs.length) {
+    const r = recs[i];
+    if (_looksLikeTableHeader(r)) {
+      // Сколько следующих data-строк имеют столько же ячеек?
+      const cols = r.cells.length;
+      const data = [];
+      let j = i + 1;
+      while (j < recs.length && recs[j].cells.length === cols && !_looksLikeTableHeader(recs[j])) {
+        data.push(recs[j]);
+        j++;
+      }
+      if (data.length >= 1) {
+        html += _renderTzTable(r, data);
+        i = j;
+        continue;
+      }
+    }
+    html += _renderTzKeyVal(r);
+    i++;
+  }
+
+  const safeTitle = escTZ(title);
+  return '<div class="tz-section" id="tz-sec-'+idx+'">'
+       +   '<div class="tz-section-title"><span class="sec-icon">●</span>'+safeTitle+'</div>'
+       +   html
+       + '</div>';
+}
+
+function _renderTZ(text){
+  if (!text) return '<div class="empty-hint">Текст ТЗ пуст.</div>';
+  const re = /^===\s*Лист:\s*(.+?)\s*===\s*$/gm;
+  const matches = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    matches.push({title: m[1], start: m.index, headerEnd: m.index + m[0].length});
+  }
+  // строим контент
+  const sections = [];
+  if (matches.length === 0) {
+    sections.push({title: 'ТЗ', body: text, idx: 0});
+  } else {
+    if (matches[0].start > 0) {
+      const pre = text.slice(0, matches[0].start).trim();
+      if (pre) sections.push({title: 'Вводная', body: pre, idx: 'pre'});
+    }
+    matches.forEach((cur, i) => {
+      const nextStart = (i+1 < matches.length) ? matches[i+1].start : text.length;
+      sections.push({title: cur.title, body: text.slice(cur.headerEnd, nextStart).trim(), idx: i});
+    });
+  }
+  // TOC
+  let tocHtml = '<aside class="tz-toc-aside"><div class="tz-toc-label">Разделы</div>';
+  sections.forEach(s => {
+    tocHtml += `<a class="tz-toc-chip" data-tz-idx="${s.idx}" onclick="_scrollTZTo('${s.idx}')">${escTZ(s.title)}</a>`;
+  });
+  tocHtml += '</aside>';
+  // содержимое
+  let bodyHtml = '<div class="tz-content">';
+  sections.forEach(s => { bodyHtml += _renderTZSection(s.title, s.body, s.idx); });
+  bodyHtml += '</div>';
+  return tocHtml + bodyHtml;
+}
+
+function _scrollTZTo(idx){
+  const el = document.getElementById('tz-sec-'+idx);
+  if (!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'start'});
+  // подсветка активного чипа
+  document.querySelectorAll('.tz-toc-chip').forEach(c => c.classList.remove('active'));
+  const chip = document.querySelector('.tz-toc-chip[data-tz-idx="'+idx+'"]');
+  if (chip) chip.classList.add('active');
+}
+
+function openTZModal(){
+  if (!tzText) { alert('Сначала загрузите ТЗ'); return; }
+  _tzRawText = tzText;
+  _tzCurrentProject = selectedProject || '';
+  document.getElementById('tz-modal-project').textContent = _tzCurrentProject || 'ТЗ проекта';
+  document.getElementById('tz-modal-meta').textContent = (tzText.length).toLocaleString('ru-RU')+' символов · '+(tzText.split('\n').length).toLocaleString('ru-RU')+' строк';
+  const link = document.getElementById('tz-modal-open');
+  if (_tzUrl) { link.href = _tzUrl; link.style.display = ''; } else { link.style.display = 'none'; }
+  document.getElementById('tz-modal-search-input').value = '';
+  document.getElementById('tz-modal-stats').textContent = '';
+  document.getElementById('tz-modal-body').innerHTML = _renderTZ(tzText);
+  document.getElementById('tz-modal-bg').classList.add('show');
+}
+function closeTZModal(){ document.getElementById('tz-modal-bg').classList.remove('show'); }
+function filterTZ(q){
+  const body = document.getElementById('tz-modal-body');
+  const stats = document.getElementById('tz-modal-stats');
+  if (!q || q.length < 2) {
+    body.innerHTML = _renderTZ(_tzRawText);
+    stats.textContent = '';
+    return;
+  }
+  const ql = q.toLowerCase();
+  const lines = _tzRawText.split('\n');
+  const hits = [];
+  lines.forEach((line, idx) => {
+    if (line.toLowerCase().includes(ql)) hits.push({line, idx});
+  });
+  if (hits.length === 0) {
+    body.innerHTML = '<div class="tz-content" style="grid-column:1/-1"><p style="color:var(--text3)">Ничего не найдено по «'+escTZ(q)+'»</p></div>';
+    stats.textContent = 'Совпадений: 0';
+    return;
+  }
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const html = hits.map(h => {
+    const safe = escTZ(h.line);
+    return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:JetBrains Mono,Consolas,monospace;font-size:12.5px;">'
+         + '<span style="color:var(--text3)">'+(h.idx+1).toString().padStart(4,' ')+': </span>'
+         + safe.replace(re, m=>'<mark>'+m+'</mark>')
+         + '</div>';
+  }).join('');
+  body.innerHTML = '<div class="tz-content" style="grid-column:1/-1">'+html+'</div>';
+  stats.textContent = 'Совпадений: '+hits.length;
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const m = document.getElementById('tz-modal-bg');
+    if (m && m.classList.contains('show')) closeTZModal();
+  }
+});
+</script>
 
 </body>
 </html>
