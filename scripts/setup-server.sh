@@ -205,6 +205,17 @@ if [ -f "$TASKS_DIR/main.py" ]; then
   echo "[tasks-api] Installed packages:"
   "$VENV/bin/pip" list 2>/dev/null | grep -iE "fastapi|uvicorn|pydantic" || echo "  (none of fastapi/uvicorn/pydantic found!)"
 
+  # Если /etc/sth-portal.env отсутствует — создаём с дефолтными паролями из DOCS.md.
+  # Файл не в git, после первой инициализации пароли можно поменять руками.
+  if [ ! -f /etc/sth-portal.env ]; then
+    echo "[tasks-api] /etc/sth-portal.env not found — creating with defaults"
+    cat > /etc/sth-portal.env << 'ENV_EOF'
+ADMIN_PASSWORD=028511
+PORTAL_PASSWORD=511028
+ENV_EOF
+    chmod 600 /etc/sth-portal.env
+  fi
+
   cat > /etc/systemd/system/tasks-api.service << TASKS_EOF
 [Unit]
 Description=Задачник API (FastAPI)
@@ -219,6 +230,7 @@ Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 Environment=TASKS_DB=$TASKS_DIR/tasks.db
+EnvironmentFile=-/etc/sth-portal.env
 
 [Install]
 WantedBy=multi-user.target
