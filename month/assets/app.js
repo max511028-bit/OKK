@@ -178,6 +178,7 @@ async function boot() {
   state.monthId = state.data.reports.at(-1).id;
   state.compareMonthId = state.data.reports[0].id;
   recalculateAll();
+  applySavedTheme();
   render();
 }
 
@@ -399,6 +400,7 @@ function render() {
       <aside class="sidebar">
         <div class="brand">${sthLogo()}<div><div class="brand-title">STH</div><div class="brand-subtitle">Month dashboard</div></div></div>
         <nav class="nav">${views.map(([id, label]) => `<button class="${state.view === id ? "active" : ""}" data-view="${id}">${label}</button>`).join("")}</nav>
+        <button class="theme-toggle" data-theme-toggle title="Переключить тему">${document.documentElement.dataset.theme === "light" ? "🌙 Тёмная тема" : "☀️ Светлая тема"}</button>
         <p class="footer-note">Тестовая версия на GitHub Pages. Таблица-отчет сохранена, изменения пока локальные.</p>
       </aside>
       <main class="main">${topbar()}<section id="screen">${screen()}</section></main>
@@ -453,7 +455,38 @@ function bind() {
   document.querySelectorAll("[data-export-json]").forEach((b) => b.addEventListener("click", downloadJson));
   document.querySelectorAll("[data-export-csv]").forEach((b) => b.addEventListener("click", exportCsv));
   const search = document.querySelector("[data-search]");
-  if (search) search.addEventListener("input", (event) => { state.search = event.target.value; document.querySelector("#screen").innerHTML = screen(); bind(); });
+  if (search) {
+    search.addEventListener("input", (event) => {
+      const el = event.target;
+      const caret = el.selectionStart;
+      state.search = el.value;
+      document.querySelector("#screen").innerHTML = screen();
+      bind();
+      // Восстанавливаем фокус и позицию курсора, иначе после innerHTML фокус
+      // улетает на body и каждая буква «обрывает» ввод (#bug 03.06.2026).
+      const next = document.querySelector("[data-search]");
+      if (next) {
+        next.focus();
+        try { next.setSelectionRange(caret, caret); } catch (_) {}
+      }
+    });
+  }
+  // Переключатель тёмная/светлая тема
+  document.querySelectorAll("[data-theme-toggle]").forEach((b) => b.addEventListener("click", toggleTheme));
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  const next = cur === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("sth-month-theme", next); } catch (_) {}
+  render();
+}
+
+function applySavedTheme() {
+  let saved = "dark";
+  try { saved = localStorage.getItem("sth-month-theme") || "dark"; } catch (_) {}
+  document.documentElement.dataset.theme = saved === "light" ? "light" : "dark";
 }
 
 function onCellChange(event) {

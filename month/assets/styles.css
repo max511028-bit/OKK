@@ -5,6 +5,10 @@
   --bg-2: #1F1F1F;
   --panel: #1F1F1F;
   --panel-2: #252525;
+  --sidebar: #0E0E0E;
+  --th-bg: #171717;
+  --badge-neutral: #2a2a2a;
+  --hover: rgba(255, 255, 255, 0.025);
   --line: #343434;
   --text: #FFFFFF;
   --muted: #A8A8A8;
@@ -15,6 +19,49 @@
   --cyan: #65D6FF;
   --violet: #A98BFF;
   color-scheme: dark;
+}
+
+/* Светлая тема — переопределяет CSS-переменные. Бренд-розовый и семантические
+   цвета (зелёный/жёлтый/красный) остаются прежними для узнаваемости. */
+html[data-theme="light"] {
+  --bg: #F4F5F7;
+  --bg-2: #FFFFFF;
+  --panel: #FFFFFF;
+  --panel-2: #F8F9FB;
+  --sidebar: #FFFFFF;
+  --th-bg: #EEF0F4;
+  --badge-neutral: #E4E6EB;
+  --hover: rgba(0, 0, 0, 0.035);
+  --line: #D8DCE3;
+  --text: #14181F;
+  --muted: #6B7280;
+  --soft: #1F2937;
+  color-scheme: light;
+}
+html[data-theme="light"] .badge.bad { color: #C81B45; }
+html[data-theme="light"] .badge.warn { color: #B0810F; background: rgba(255, 209, 102, 0.28); }
+html[data-theme="light"] .badge.good { color: #138862; background: rgba(61, 220, 151, 0.22); }
+html[data-theme="light"] .badge.neutral { color: #1E7BA6; background: rgba(101, 214, 255, 0.22); }
+html[data-theme="light"] .delta-down { color: #C81B45; }
+html[data-theme="light"] .delta-up { color: #138862; }
+html[data-theme="light"] .nav button.active { box-shadow: inset 3px 0 0 var(--sth-pink); border-color: rgba(230, 34, 80, 0.6); }
+html[data-theme="light"] body { background: var(--bg); }
+
+.theme-toggle {
+  margin-top: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: left;
+  transition: background .15s, color .15s;
+}
+.theme-toggle:hover {
+  background: var(--panel);
+  color: var(--text);
 }
 
 * {
@@ -57,7 +104,7 @@ button {
   top: 0;
   height: 100vh;
   padding: 28px 18px;
-  background: #0E0E0E;
+  background: var(--sidebar);
   border-right: 1px solid var(--line);
   overflow: auto;
 }
@@ -253,7 +300,7 @@ input {
   min-height: 24px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: #2a2a2a;
+  background: var(--badge-neutral);
   color: var(--soft);
   font-size: 12px;
   white-space: nowrap;
@@ -303,7 +350,7 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #171717;
+  background: var(--th-bg);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
@@ -315,7 +362,7 @@ td {
 }
 
 tr:hover td {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--hover);
 }
 
 .linkish {
@@ -926,3 +973,44 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Светлая тема: переопределения хардкоженных тёмных цветов ===== */
+html[data-theme="light"] .bar-track { background: #E2E5EB; }
+html[data-theme="light"] .filter-pill.active { color: #fff; }
+html[data-theme="light"] .filter-pill strong { color: var(--text); }
+html[data-theme="light"] .source-table-wrap { background: #FFFFFF; }
+html[data-theme="light"] .source-table th,
+html[data-theme="light"] .source-table td {
+  background: #FFFFFF;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+html[data-theme="light"] .source-table td { color: var(--text); }
+html[data-theme="light"] .source-table th { color: var(--text); }
+html[data-theme="light"] .source-table .group-head th {
+  background: #EEF0F4;
+  color: var(--text);
+}
+html[data-theme="light"] .source-table .group-head th.realization-zone { background: #FDE9EE; }
+html[data-theme="light"] .source-table .group-head th.recruiting-zone { background: #E5F8EF; }
+html[data-theme="light"] .source-table .group-head th.marketing-zone { background: #E6F2FB; }
+html[data-theme="light"] .source-table thead tr:nth-child(2) th { color: var(--soft); }
+html[data-theme="light"] .source-table th.realization-zone { background: #FBEDF0; }
+html[data-theme="light"] .source-table th.recruiting-zone { background: #ECF7F1; }
+html[data-theme="light"] .source-table th.marketing-zone { background: #ECF3FB; }
+html[data-theme="light"] .source-table td.realization-zone { background: #FEF5F7; }
+html[data-theme="light"] .source-table td.recruiting-zone { background: #F2FAF6; }
+html[data-theme="light"] .source-table td.marketing-zone { background: #F2F7FC; }
+html[data-theme="light"] .source-table .sticky-col { background: #F8F9FB; }
+html[data-theme="light"] .source-table .formula-cell {
+  color: #8C6A0F;
+  background: #FFF7E2;
+}
+html[data-theme="light"] .source-table .total-row td {
+  background: #FBE3E9;
+  color: var(--text);
+}
+html[data-theme="light"] .drawer-backdrop { background: rgba(20, 24, 31, 0.42); }
+html[data-theme="light"] .edit-drawer { background: #FFFFFF; }
+html[data-theme="light"] .drawer-fields h3 { color: var(--text); }
+html[data-theme="light"] .norm-line { border-top-color: rgba(0, 0, 0, 0.08); }
