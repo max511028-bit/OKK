@@ -32,6 +32,7 @@ jobs:
             --exclude='tasks/api/tasks.db' \
             --exclude='tasks/api/ai_url.json' \
             --exclude='tasks/api/.venv' \
+            --exclude='tasks/api/attachments' \
             --exclude='**/__pycache__' \
             --exclude='sales/node_modules' \
             --exclude='sales/src' \

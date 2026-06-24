@@ -15,9 +15,9 @@ import urllib.error as _urllib_error
 
 import httpx
 
-from fastapi import FastAPI, HTTPException, Request, Depends, Header
+from fastapi import FastAPI, HTTPException, Request, Depends, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 
 DB_PATH = os.getenv("TASKS_DB", "/var/www/okk/tasks/api/tasks.db")
@@ -314,6 +314,29 @@ class Task(BaseModel):
     blockers: str = "Нет"
     deps: str = "—"
     history: list[str] = []
+    attachments: list[dict] = []   # [{name, size, uploaded_at}]
+
+
+# ── Файловые вложения к задачам ──────────────────────────────────────────
+ATTACH_ROOT = Path(os.getenv("TASKS_ATTACH_DIR", "/var/www/okk/tasks/api/attachments"))
+ATTACH_ROOT.mkdir(parents=True, exist_ok=True)
+MAX_ATTACH_BYTES = 25 * 1024 * 1024  # 25 МБ
+
+
+def _safe_name(name: str) -> str:
+    """Чистим имя файла от path traversal и опасных символов."""
+    import re
+    name = os.path.basename(name or "file")
+    name = re.sub(r"[^\w\s.\-А-Яа-яЁё]", "_", name)
+    name = name.strip(" .")
+    return name[:120] or "file"
+
+
+def _attach_dir(tid: str) -> Path:
+    safe_tid = _safe_name(tid)
+    d = ATTACH_ROOT / safe_tid
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def row_to_task(row: sqlite3.Row) -> dict:
@@ -471,6 +494,92 @@ def purge_trash(request: Request, days: int = 7):
             (f"-{int(days)} days",),
         )
         return {"ok": True, "purged": cur.rowcount}
+
+
+@app.post("/tasks/{tid}/attachments", dependencies=[Depends(require_portal_token)])
+async def upload_attachment(tid: str, file: UploadFile = File(...)):
+    """Загружает файл и привязывает к задаче. Обновляет task.attachments."""
+    with db() as conn:
+        row = conn.execute("SELECT data FROM tasks WHERE id=? AND deleted_at IS NULL", (tid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Task not found")
+        task = json.loads(row["data"])
+
+    # читаем тело с лимитом
+    body = await file.read()
+    if len(body) > MAX_ATTACH_BYTES:
+        raise HTTPException(413, f"File too large (max {MAX_ATTACH_BYTES // 1024 // 1024} MB)")
+    if not body:
+        raise HTTPException(400, "Empty file")
+
+    name = _safe_name(file.filename or "file")
+    dest = _attach_dir(tid) / name
+    # если уже есть с таким именем — добавляем суффикс _2, _3, ...
+    if dest.exists():
+        stem, ext = os.path.splitext(name)
+        i = 2
+        while (_attach_dir(tid) / f"{stem}_{i}{ext}").exists():
+            i += 1
+        name = f"{stem}_{i}{ext}"
+        dest = _attach_dir(tid) / name
+    dest.write_bytes(body)
+
+    import datetime as _dt
+    attach = {
+        "name": name,
+        "size": len(body),
+        "uploaded_at": _dt.datetime.now().isoformat(timespec="seconds"),
+    }
+    atts = task.get("attachments") or []
+    atts.append(attach)
+    task["attachments"] = atts
+    # автоматически проставляем «ТЗ есть», если ещё не стоит
+    if task.get("tz") == "❌ Нет":
+        task["tz"] = "✅ Есть"
+    with db() as conn:
+        conn.execute(
+            "UPDATE tasks SET data=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(task, ensure_ascii=False), tid),
+        )
+        conn.execute(
+            "INSERT INTO task_history(task_id,event) VALUES(?,?)",
+            (tid, f"Прикреплён файл: {name} ({len(body)//1024} КБ)"),
+        )
+    return {"ok": True, "attachment": attach, "task": task}
+
+
+@app.get("/tasks/{tid}/attachments/{name}")
+def download_attachment(tid: str, name: str):
+    """Отдаёт файл вложения. Открытый эндпоинт — портал и так за паролем."""
+    safe = _safe_name(name)
+    path = _attach_dir(tid) / safe
+    if not path.exists() or not path.is_file():
+        raise HTTPException(404, "Attachment not found")
+    return FileResponse(path, filename=safe)
+
+
+@app.delete("/tasks/{tid}/attachments/{name}", dependencies=[Depends(require_portal_token)])
+def delete_attachment(tid: str, name: str):
+    safe = _safe_name(name)
+    path = _attach_dir(tid) / safe
+    with db() as conn:
+        row = conn.execute("SELECT data FROM tasks WHERE id=? AND deleted_at IS NULL", (tid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Task not found")
+        task = json.loads(row["data"])
+    if path.exists():
+        path.unlink()
+    task["attachments"] = [a for a in (task.get("attachments") or []) if a.get("name") != safe]
+    with db() as conn:
+        conn.execute(
+            "UPDATE tasks SET data=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(task, ensure_ascii=False), tid),
+        )
+        conn.execute(
+            "INSERT INTO task_history(task_id,event) VALUES(?,?)",
+            (tid, f"Удалён файл: {safe}"),
+        )
+    return {"ok": True, "task": task}
 
 
 @app.get("/tasks/{tid}/history")

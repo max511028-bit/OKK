@@ -731,6 +731,9 @@ thead th {
   white-space: nowrap;
 }
 thead th:hover { color: var(--text-primary); }
+thead th.sortable { cursor: pointer; }
+thead th.sortable.sorted { color: var(--accent); }
+thead th .sort-ind { font-size: 9px; opacity: 0.8; }
 
 tbody tr {
   border-bottom: 1px solid var(--border);
@@ -1603,16 +1606,16 @@ td {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Задача</th>
-                <th>Система</th>
-                <th>Ответственный</th>
-                <th>Срок</th>
-                <th>Статус</th>
-                <th>Риск</th>
-                <th>Метрика</th>
-                <th>ТЗ</th>
-                <th>Эффект</th>
+                <th class="sortable" data-sortcol="id">ID<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="title">Задача<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="system">Система<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="assignee">Ответственный<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="deadline">Срок<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="status">Статус<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="risk">Риск<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="metric">Метрика<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="tz">ТЗ<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="effect">Эффект<span class="sort-ind"></span></th>
               </tr>
             </thead>
             <tbody id="tasksBody"><tr>
@@ -3009,6 +3012,25 @@ function getStatusEmoji(s) {
   return m[s] || '•';
 }
 
+// Состояние клик-сортировки колонок таблицы. null = нет сортировки.
+window._tableSort = window._tableSort || { col: null, dir: 'asc' };
+
+function _cmpTasks(a, b, col) {
+  const RISK_ORDER = { high: 0, med: 1, low: 2 };
+  const STATUS_ORDER = { 'Просрочено':0,'В процессе':1,'На доработке':2,'На паузе':3,'Не начато':4,'Проблемы':5,'Выполнено':6,'Неактуально':7 };
+  const TZ_ORDER = { '❌ Нет':0,'✅ Есть':1 };
+  const va = a[col], vb = b[col];
+  if (col === 'deadline') {
+    const da = va ? new Date(va.split('.').reverse().join('-')).getTime() : Infinity;
+    const db = vb ? new Date(vb.split('.').reverse().join('-')).getTime() : Infinity;
+    return da - db;
+  }
+  if (col === 'risk') return (RISK_ORDER[va] ?? 99) - (RISK_ORDER[vb] ?? 99);
+  if (col === 'status') return (STATUS_ORDER[va] ?? 99) - (STATUS_ORDER[vb] ?? 99);
+  if (col === 'tz') return (TZ_ORDER[va] ?? 99) - (TZ_ORDER[vb] ?? 99);
+  return String(va||'').localeCompare(String(vb||''), 'ru', { numeric: true });
+}
+
 function renderTasks() {
   const body = document.getElementById('tasksBody');
   if (!body) return;
@@ -3025,9 +3047,28 @@ function renderTasks() {
   if (assignee) data = data.filter(t => t.assignee === assignee);
   if (system) data = data.filter(t => t.system.includes(system));
 
-  if (sort === 'deadline') data.sort((a,b) => new Date(a.deadline.split('.').reverse().join('-')) - new Date(b.deadline.split('.').reverse().join('-')));
-  if (sort === 'risk') data.sort((a,b) => ['high','med','low'].indexOf(a.risk) - ['high','med','low'].indexOf(b.risk));
-  if (sort === 'priority') data.sort((a,b) => ['high','med','low'].indexOf(a.priority) - ['high','med','low'].indexOf(b.priority));
+  // Сортировка из выпадашки (если выбрана и нет клика по колонке)
+  if (!window._tableSort.col) {
+    if (sort === 'deadline') data.sort((a,b) => new Date(a.deadline.split('.').reverse().join('-')) - new Date(b.deadline.split('.').reverse().join('-')));
+    if (sort === 'risk') data.sort((a,b) => ['high','med','low'].indexOf(a.risk) - ['high','med','low'].indexOf(b.risk));
+    if (sort === 'priority') data.sort((a,b) => ['high','med','low'].indexOf(a.priority) - ['high','med','low'].indexOf(b.priority));
+  } else {
+    const { col, dir } = window._tableSort;
+    data.sort((a,b) => _cmpTasks(a, b, col) * (dir === 'desc' ? -1 : 1));
+  }
+
+  // Обновляем индикаторы ▲▼ в заголовках
+  document.querySelectorAll('th.sortable').forEach(th => {
+    const ind = th.querySelector('.sort-ind');
+    if (!ind) return;
+    if (window._tableSort.col === th.dataset.sortcol) {
+      ind.textContent = window._tableSort.dir === 'desc' ? ' ▼' : ' ▲';
+      th.classList.add('sorted');
+    } else {
+      ind.textContent = '';
+      th.classList.remove('sorted');
+    }
+  });
 
   data.forEach(t => {
     const isOverdue = t.status === 'Просрочено';
@@ -3047,7 +3088,7 @@ function renderTasks() {
       <td><span class="status-pill ${getStatusClass(t.status)}">${getStatusEmoji(t.status)} ${t.status}</span></td>
       <td><span class="risk-dot risk-${t.risk}">● ${t.risk==='high'?'Высокий':t.risk==='med'?'Средний':'Низкий'}</span></td>
       <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">${t.metric}</td>
-      <td><span class="${t.tz==='✅ Есть'?'status-pill status-done':'status-pill status-blocked'}">${t.tz}</span></td>
+      <td><span class="${t.tz==='✅ Есть'?'status-pill status-done':'status-pill status-blocked'}">${t.tz}</span>${(t.attachments&&t.attachments.length)?`<span style="font-size:10px;color:var(--text-tertiary);margin-left:4px;" title="${t.attachments.length} файл(ов)">📎${t.attachments.length}</span>`:''}</td>
       <td style="font-size:11px;color:var(--text-secondary);max-width:110px;white-space:normal;">${t.effect}</td>
     `;
     tr.onclick = () => openPanel(t);
@@ -3690,6 +3731,90 @@ async function _authHeaders(extra){
   return h;
 }
 
+// ── Файловые вложения к задачам ──────────────────────────────────────────
+function _humanSize(b){
+  if(b==null) return '';
+  if(b < 1024) return b+' B';
+  if(b < 1024*1024) return (b/1024).toFixed(1)+' KB';
+  return (b/1024/1024).toFixed(1)+' MB';
+}
+
+function _renderAttachListInEditor(taskId){
+  const box = document.getElementById('te_attach_list');
+  if(!box) return;
+  const task = TASKS.find(x=>x.id===taskId);
+  const atts = (task && task.attachments) || [];
+  if(!atts.length){
+    box.innerHTML = '<div style="font-size:11px;color:var(--text-tertiary);">Файлов пока нет.</div>';
+    return;
+  }
+  box.innerHTML = atts.map(a => {
+    const url = API_BASE + '/tasks/' + encodeURIComponent(taskId) + '/attachments/' + encodeURIComponent(a.name);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;font-size:12px;">
+      <span style="font-size:14px;">📎</span>
+      <a href="${url}" target="_blank" style="flex:1;color:var(--accent);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="Скачать">${escTxt(a.name)}</a>
+      <span style="color:var(--text-tertiary);font-size:10px;">${_humanSize(a.size)}</span>
+      <button type="button" onclick="deleteAttachmentFromEditor('${escAttr(taskId)}','${escAttr(a.name)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:2px 6px;" title="Удалить">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function uploadAttachmentFromEditor(taskId, input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(!taskId){ showToast('Сначала сохраните задачу','warn'); input.value=''; return; }
+  if(file.size > 25*1024*1024){ showToast('Файл больше 25 МБ','err'); input.value=''; return; }
+  const headers = await _authHeaders();
+  if(!headers['X-Auth-Token']){ showToast('🔒 Нужен пароль','warn'); input.value=''; return; }
+  const label = document.getElementById('te_attach_btnlabel');
+  const oldLabel = label ? label.textContent : '';
+  if(label) label.textContent = '⏳ Загружаю...';
+  const fd = new FormData(); fd.append('file', file);
+  try{
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(taskId)+'/attachments', { method:'POST', headers, body: fd });
+    if(!r.ok){
+      const t = await r.text().catch(()=>r.statusText);
+      throw new Error('HTTP '+r.status+': '+t.slice(0,140));
+    }
+    const data = await r.json();
+    if(data && data.task){
+      const i = TASKS.findIndex(x=>x.id===taskId);
+      if(i>=0) TASKS[i] = data.task;
+    }
+    showToast('✅ Файл прикреплён','ok');
+    _renderAttachListInEditor(taskId);
+    rerenderAll();
+    // подтянуть статус ТЗ в селекте, если бэк его сменил
+    const tzSel = document.getElementById('te_tz');
+    if(tzSel && data.task && data.task.tz) tzSel.value = data.task.tz;
+  }catch(e){
+    showToast('Ошибка: '+e.message,'err');
+  }finally{
+    if(label) label.textContent = oldLabel;
+    input.value = '';
+  }
+}
+
+async function deleteAttachmentFromEditor(taskId, name){
+  if(!confirm('Удалить файл "'+name+'"?')) return;
+  const headers = await _authHeaders();
+  if(!headers['X-Auth-Token']){ showToast('🔒 Нужен пароль','warn'); return; }
+  try{
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(taskId)+'/attachments/'+encodeURIComponent(name), { method:'DELETE', headers });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    if(data && data.task){
+      const i = TASKS.findIndex(x=>x.id===taskId);
+      if(i>=0) TASKS[i] = data.task;
+    }
+    showToast('🗑 Файл удалён','ok');
+    _renderAttachListInEditor(taskId);
+    rerenderAll();
+  }catch(e){
+    showToast('Ошибка: '+e.message,'err');
+  }
+}
+
 window.API_ONLINE = false;
 async function apiLoadAll(retries){
   retries = retries==null ? 3 : retries;
@@ -3792,7 +3917,8 @@ function openTaskEditor(existing){
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Ответственный</div><input id="te_assignee" value="${escAttr(t.assignee)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Дедлайн (ДД.ММ.ГГГГ)</div><input id="te_deadline" value="${escAttr(t.deadline)}" placeholder="01.06.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Статус</div><select id="te_status" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['Не начато','В процессе','На доработке','Просрочено','На паузе','Выполнено','Проблемы','Неактуально'],t.status)}</select></label>
-        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">ТЗ</div><select id="te_tz" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['✅ Есть','❌ Нет'],t.tz)}</select></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">ТЗ (статус)</div><select id="te_tz" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['✅ Есть','❌ Нет'],t.tz)}</select></label>
+        <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:6px;">Файлы ТЗ / документы</div><div id="te_attach_list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div><label style="display:inline-block;cursor:pointer;background:var(--surface-2);border:1px dashed var(--border);padding:8px 14px;border-radius:8px;font-size:12px;color:var(--text-secondary);"><span id="te_attach_btnlabel">📎 Прикрепить файл</span><input type="file" id="te_attach_input" style="display:none" onchange="uploadAttachmentFromEditor('${escAttr(t.id)}', this)"></label><div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">До 25 МБ. ${isNew?'Сохраните задачу, чтобы прикрепить файлы.':''}</div></div>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Метрика</div><input id="te_metric" value="${escAttr(t.metric)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Эффект</div><input id="te_effect" value="${escAttr(t.effect)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
         <label style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Блокеры</div><input id="te_blockers" value="${escAttr(t.blockers)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
@@ -3805,6 +3931,8 @@ function openTaskEditor(existing){
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  // показать список уже прикреплённых файлов (только для существующих задач)
+  if(!isNew) _renderAttachListInEditor(t.id);
 }
 async function saveTaskFromEditor(isNew, oldId){
   const v = id => document.getElementById(id)?.value || '';
@@ -3827,7 +3955,8 @@ async function saveTaskFromEditor(isNew, oldId){
     effect: v('te_effect').trim(),
     blockers: v('te_blockers').trim() || 'Нет',
     deps: v('te_deps').trim() || '—',
-    history: [...((exist&&exist.history)||[]), `${dd}: ${isNew?'Создана':'Обновлена'}`]
+    history: [...((exist&&exist.history)||[]), `${dd}: ${isNew?'Создана':'Обновлена'}`],
+    attachments: (exist && exist.attachments) || []
   };
   if(!task.id || !task.title){ showToast('❌ Заполните ID и название','err'); return; }
   const result = isNew ? await apiCreateTask(task) : await apiSaveTask(task);
@@ -3853,6 +3982,17 @@ async function confirmDeleteTask(id){
 document.addEventListener('DOMContentLoaded', async () => {
   await apiLoadAll();
   rerenderAll();
+  // Click-to-sort на заголовках таблицы задач (#tasks)
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortcol;
+      const s = window._tableSort;
+      if (s.col !== col)      { s.col = col;  s.dir = 'asc'; }
+      else if (s.dir === 'asc') { s.dir = 'desc'; }
+      else                    { s.col = null; s.dir = 'asc'; }  // 3-й клик = сброс
+      renderTasks();
+    });
+  });
   // FAB "+"
   const fab = document.createElement('button');
   fab.innerHTML='+ Новая задача';
