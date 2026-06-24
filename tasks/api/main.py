@@ -315,6 +315,11 @@ class Task(BaseModel):
     deps: str = "—"
     history: list[str] = []
     attachments: list[dict] = []   # [{name, size, uploaded_at}]
+    comments: list[dict] = []      # [{ts, text}] — обсуждение задачи (без авторства)
+
+
+class CommentPayload(BaseModel):
+    text: str
 
 
 # ── Файловые вложения к задачам ──────────────────────────────────────────
@@ -580,6 +585,35 @@ def delete_attachment(tid: str, name: str):
             (tid, f"Удалён файл: {safe}"),
         )
     return {"ok": True, "task": task}
+
+
+@app.post("/tasks/{tid}/comments")
+def add_comment(tid: str, payload: CommentPayload):
+    """Добавить комментарий к задаче. Без авторизации (внутренний портал за паролем)."""
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(400, "Empty comment")
+    if len(text) > 5000:
+        raise HTTPException(413, "Comment too long (max 5000 chars)")
+    with db() as conn:
+        row = conn.execute("SELECT data FROM tasks WHERE id=? AND deleted_at IS NULL", (tid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Task not found")
+        task = json.loads(row["data"])
+    import datetime as _dt
+    comment = {
+        "ts": _dt.datetime.now().isoformat(timespec="seconds"),
+        "text": text,
+    }
+    comments = task.get("comments") or []
+    comments.append(comment)
+    task["comments"] = comments
+    with db() as conn:
+        conn.execute(
+            "UPDATE tasks SET data=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(task, ensure_ascii=False), tid),
+        )
+    return {"ok": True, "comment": comment, "task": task}
 
 
 @app.get("/tasks/{tid}/history")

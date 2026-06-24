@@ -848,6 +848,36 @@ td {
 .history-text { font-size: 12px; color: var(--text-secondary); }
 .history-time { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; }
 
+/* ── Обсуждение задачи (комментарии) ── */
+.comment-card {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: border-color .15s;
+  animation: commentIn 0.18s ease-out;
+}
+.comment-card:hover { border-color: var(--border-strong); }
+.comment-ts {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.comment-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@keyframes commentIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#commentInput:focus { border-color: var(--accent); }
+#commentSendBtn:not(:disabled):hover { background: var(--accent-dark, #c81b45); }
+
 /* ── COMMAND PALETTE ── */
 .cmd-overlay {
   position: fixed;
@@ -3352,10 +3382,140 @@ function openPanel(task) {
         </div>
       </div>
     `).join('')}
+    <hr class="panel-divider">
+    <div id="commentsSection"></div>
   `;
+  _renderCommentsSection(task);
 
   document.getElementById('sidePanel').classList.add('open');
   document.getElementById('overlayBlocker').classList.add('show');
+}
+
+// ── Комментарии к задаче ─────────────────────────────────────────────────
+function _fmtCommentTs(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const day = d.getDate();
+  const mo = months[d.getMonth()];
+  const yr = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${day} ${mo} ${yr}, ${hh}:${mm}`;
+}
+
+function _linkify(text){
+  // 1) экранируем HTML, 2) превращаем URL в кликабельные ссылки
+  const esc = String(text||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return esc.replace(
+    /(https?:\/\/[^\s<]+[^\s<.,)\]!?])/g,
+    '<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;text-underline-offset:2px;word-break:break-all;">$1</a>'
+  );
+}
+
+function _renderCommentsSection(task){
+  const box = document.getElementById('commentsSection');
+  if(!box) return;
+  const comments = (task && task.comments) || [];
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <div class="panel-field-label" style="margin:0;">💬 Обсуждение</div>
+      <span style="background:var(--surface-2);color:var(--text-tertiary);font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;">${comments.length}</span>
+    </div>
+    <div id="commentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+      ${comments.length ? comments.map(c => `
+        <div class="comment-card">
+          <div class="comment-ts">${_fmtCommentTs(c.ts)}</div>
+          <div class="comment-text">${_linkify(c.text)}</div>
+        </div>
+      `).join('') : `
+        <div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:18px 0;">
+          Пока пусто. Будь первым, кто напишет.
+        </div>
+      `}
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:14px;">
+      <textarea id="commentInput" placeholder="Написать комментарий... (Ctrl+Enter — отправить)"
+        style="width:100%;min-height:72px;max-height:240px;padding:10px 12px;font-family:inherit;font-size:13px;line-height:1.5;
+               border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text-primary);
+               resize:vertical;outline:none;box-sizing:border-box;transition:border-color .15s;"
+        oninput="_onCommentInput(this)"
+        onkeydown="_onCommentKey(event)"></textarea>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:8px;">
+        <span id="commentHint" style="font-size:10.5px;color:var(--text-tertiary);"></span>
+        <button id="commentSendBtn" type="button" onclick="addCommentToCurrentTask()" disabled
+          style="background:var(--accent);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:600;
+                 font-size:12.5px;cursor:pointer;font-family:inherit;transition:opacity .15s,background .15s;opacity:0.45;">
+          Отправить
+        </button>
+      </div>
+    </div>
+  `;
+  // Прокрутка к последнему комментарию (если они есть)
+  const list = document.getElementById('commentsList');
+  if(list && comments.length){
+    setTimeout(() => { list.scrollIntoView({block:'end',behavior:'auto'}); }, 0);
+  }
+}
+
+function _onCommentInput(ta){
+  const btn = document.getElementById('commentSendBtn');
+  const hint = document.getElementById('commentHint');
+  const len = (ta.value||'').trim().length;
+  if(btn){
+    btn.disabled = !len;
+    btn.style.opacity = len ? '1' : '0.45';
+    btn.style.cursor  = len ? 'pointer' : 'not-allowed';
+  }
+  if(hint){
+    if(len > 4500) hint.textContent = `${len} / 5000`;
+    else hint.textContent = '';
+  }
+  // autosize
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(240, ta.scrollHeight) + 'px';
+}
+
+function _onCommentKey(e){
+  if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+    e.preventDefault();
+    addCommentToCurrentTask();
+  }
+}
+
+async function addCommentToCurrentTask(){
+  const task = window._currentPanelTask;
+  if(!task){ showToast('Задача не выбрана','warn'); return; }
+  const ta = document.getElementById('commentInput');
+  const text = (ta?.value || '').trim();
+  if(!text) return;
+  if(text.length > 5000){ showToast('Слишком длинный (>5000 символов)','err'); return; }
+  const btn = document.getElementById('commentSendBtn');
+  if(btn){ btn.disabled = true; btn.style.opacity='0.45'; btn.textContent='⏳'; }
+  try{
+    const r = await fetch(API_BASE+'/tasks/'+encodeURIComponent(task.id)+'/comments', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    if(!r.ok){
+      const t = await r.text().catch(()=>r.statusText);
+      throw new Error('HTTP '+r.status+': '+t.slice(0,140));
+    }
+    const data = await r.json();
+    if(data && data.task){
+      const i = TASKS.findIndex(x=>x.id===task.id);
+      if(i>=0) TASKS[i] = data.task;
+      window._currentPanelTask = data.task;
+    }
+    _renderCommentsSection(window._currentPanelTask);
+  }catch(e){
+    showToast('Ошибка: '+e.message,'err');
+    if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.textContent='Отправить'; }
+  }
 }
 
 function closePanel() {
