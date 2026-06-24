@@ -183,10 +183,34 @@ TASKS_DIR="/var/www/okk/tasks/api"
 if [ -f "$TASKS_DIR/main.py" ]; then
   echo "=== [tasks-api] Setting up FastAPI backend ==="
 
-  # Ensure pip3 is installed
+  # Ensure pip3 + ffmpeg + unzip установлены (последние два нужны для Vosk-валидатора)
   if ! command -v pip3 &> /dev/null; then
     echo "[tasks-api] pip3 not found, installing..."
     apt-get update -qq && apt-get install -y -qq python3-pip python3-venv
+  fi
+  if ! command -v ffmpeg &> /dev/null; then
+    echo "[validator] ffmpeg not found, installing..."
+    apt-get update -qq && apt-get install -y -qq ffmpeg
+  fi
+  if ! command -v unzip &> /dev/null; then
+    apt-get install -y -qq unzip
+  fi
+
+  # Vosk-модель для русского распознавания (small, ~45 МБ — нормально для коротких ответов)
+  VOSK_DIR="$TASKS_DIR/vosk-model"
+  if [ ! -d "$VOSK_DIR" ]; then
+    echo "[validator] downloading Vosk RU small model..."
+    cd /tmp
+    rm -rf vosk-model-small-ru-0.22 vosk-model-small-ru-0.22.zip
+    if wget -q "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"; then
+      unzip -q vosk-model-small-ru-0.22.zip
+      mv vosk-model-small-ru-0.22 "$VOSK_DIR"
+      rm -f vosk-model-small-ru-0.22.zip
+      echo "[validator] Vosk model installed at $VOSK_DIR"
+    else
+      echo "[validator] WARN: не удалось скачать Vosk-модель, валидатор будет ругаться при попытке распознать аудио"
+    fi
+    cd -
   fi
 
   # Use a virtualenv to avoid system package conflicts (PEP 668)

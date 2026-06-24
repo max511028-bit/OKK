@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>СТХ — Голосовая валидация кандидата</title>
+<style>
+  :root{
+    --bg:#0f1115; --surface:#171a21; --surface2:#1e222b; --line:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa0ab; --hint:#6b7280;
+    --accent:#3b82f6; --accent-soft:#16243d;
+    --ok:#22c55e; --ok-soft:#13301d; --bad:#ef4444; --bad-soft:#34191a; --warn:#f59e0b; --warn-soft:#332408;
+    --bot:#1e222b; --user:#16243d; --user-text:#cfe0fb;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.55;
+    -webkit-font-smoothing:antialiased; padding:16px;
+  }
+  .wrap{max-width:760px; margin:0 auto}
+  .topnav{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px;color:var(--muted);}
+  .topnav a{color:var(--muted);text-decoration:none;}
+  .topnav a:hover{color:var(--text);}
+  .head{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+  h1{font-size:17px; font-weight:600; margin:0}
+  .sub{font-size:13px; color:var(--muted); margin:2px 0 16px}
+  .sub b{color:var(--text); font-weight:600}
+
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:14px}
+  .meta{background:var(--surface2); border-radius:var(--radius); padding:12px 14px; margin-bottom:14px; font-size:13px; color:var(--muted); line-height:1.6}
+  .meta b{color:var(--text)}
+
+  #chat{min-height:240px; max-height:46vh; overflow-y:auto; display:flex; flex-direction:column; gap:10px}
+  .ph{margin:auto; text-align:center; color:var(--hint); font-size:14px; padding:40px 0}
+  .ph svg{display:block;margin:0 auto 10px;opacity:.5}
+  .row{display:flex}
+  .row.bot{justify-content:flex-start}
+  .row.user{justify-content:flex-end}
+  .msg{max-width:80%; padding:9px 12px; border-radius:var(--radius); font-size:14px; white-space:pre-wrap; word-break:break-word;}
+  .bot .msg{background:var(--bot); border-bottom-left-radius:4px}
+  .user .msg{background:var(--user); color:var(--user-text); border-bottom-right-radius:4px}
+
+  #status{text-align:center; font-size:13px; color:var(--muted); min-height:20px; margin:10px 0 4px}
+
+  .controls{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px}
+  button{
+    font-family:inherit; font-size:14px; color:var(--text); background:var(--surface2);
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:9px 14px; cursor:pointer;
+    transition:background .12s, border-color .12s, transform .05s; display:inline-flex; align-items:center; gap:7px;
+  }
+  button:hover:not(:disabled){background:#262b36; border-color:#3a4150}
+  button:active:not(:disabled){transform:scale(.98)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover:not(:disabled){background:#2f6fd6}
+  button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  button.small{font-size:13px; padding:7px 11px}
+
+  .typed{display:flex; gap:8px; margin-top:10px}
+  input[type=text]{
+    flex:1; font-family:inherit; font-size:14px; color:var(--text); background:var(--surface2);
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:9px 12px; outline:none;
+  }
+  input[type=text]:focus{border-color:var(--accent)}
+  input[type=text]:disabled{opacity:.5}
+
+  .opt{display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:var(--muted); cursor:pointer; user-select:none}
+  .opt input{width:16px;height:16px;accent-color:var(--accent)}
+
+  .warnbox{display:none; background:var(--warn-soft); color:#f3c87a; border:1px solid #4a3a14; border-radius:var(--radius-sm); padding:11px 13px; font-size:13px; line-height:1.6; margin-bottom:14px}
+
+  #result{margin-top:16px}
+  .verdict{border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; font-weight:600; display:flex; align-items:center; gap:9px; font-size:15px}
+  .verdict.ok{background:var(--ok-soft); color:#7ee29a; border:1px solid #1f4a2d}
+  .verdict.bad{background:var(--bad-soft); color:#f59a9a; border:1px solid #5a2626}
+  .verdict svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .card{border:1px solid var(--line); border-radius:var(--radius); padding:12px 16px; background:var(--surface)}
+  .card .lbl{font-size:13px; color:var(--muted); margin-bottom:8px}
+  .ai-summary{background:var(--accent-soft); border:1px solid #1c3a6b; color:#cfe0fb; padding:12px 16px; border-radius:var(--radius); font-size:13.5px; line-height:1.55; margin-top:10px;}
+  .ai-summary .lbl{color:#7ea7d8; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;}
+  table{width:100%; font-size:13px; border-collapse:collapse}
+  td{padding:4px 0; vertical-align:top}
+  td.k{color:var(--muted)}
+  td.v{text-align:right; padding-left:12px}
+  .tag{font-size:11px; opacity:.6}
+
+  /* История прозвонов */
+  .history-section{margin-top:32px}
+  .history-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .history-h h2{font-size:16px;font-weight:600;margin:0;}
+  .history-h .cnt{font-size:11px;color:var(--muted);background:var(--surface);padding:3px 9px;border-radius:10px;border:1px solid var(--line);}
+  .history-h button.refresh{margin-left:auto;font-size:12px;padding:6px 10px;}
+  .h-list{display:flex;flex-direction:column;gap:8px}
+  .h-item{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;cursor:pointer;transition:border-color .12s;}
+  .h-item:hover{border-color:#3a4150}
+  .h-item-head{display:flex;align-items:center;gap:10px;font-size:13px;}
+  .h-item-time{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;}
+  .h-item-vpill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:8px;}
+  .h-item-vpill.ok{background:var(--ok-soft);color:#7ee29a;}
+  .h-item-vpill.bad{background:var(--bad-soft);color:#f59a9a;}
+  .h-item-vpill.declined{background:#2a2f3a;color:var(--muted);}
+  .h-item-reason{color:var(--muted);font-size:12px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .h-item-body{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;}
+  .h-item.open .h-item-body{display:block;}
+  .h-transcript{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .h-line{font-size:12.5px;line-height:1.5;}
+  .h-line .who{display:inline-block;width:80px;color:var(--muted);font-weight:600;}
+  .h-empty{text-align:center;color:var(--hint);font-size:13px;padding:30px 0;}
+
+  .foot{font-size:12px; color:var(--hint); text-align:center; margin-top:20px; line-height:1.6}
+
+  /* Помощь */
+  #_sth_help_btn{position:fixed;bottom:20px;right:20px;width:42px;height:42px;border-radius:50%;
+    background:var(--surface2);color:var(--text);border:1px solid var(--line);font-size:18px;font-weight:700;
+    cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;}
+  #_sth_help_btn:hover{background:#262b36}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topnav">
+    <a href="/">← Портал СТХ</a>
+    <span>·</span>
+    <span>Голосовая валидация (MVP)</span>
+  </div>
+
+  <div class="head">
+    <span class="dot"></span>
+    <h1>СТХ — голосовая валидация кандидата</h1>
+  </div>
+  <div class="sub">Демо-прозвон в браузере · работает в Chrome/Edge сразу, в Safari/Firefox через серверное распознавание</div>
+
+  <div class="meta">
+    Проект: <b>Тандер · Стерлитамак</b> &nbsp;·&nbsp; Должность: <b>Комплектовщик (местный)</b><br>
+    Стоп-факторы: пол муж · возраст 18–45 · гражданство РФ · нет суд. 158/228/105 · день+ночь · физнагрузка
+  </div>
+
+  <div class="warnbox" id="unsupported">
+    В этом браузере распознавание идёт через сервер (Vosk). Голос работает чуть медленнее (~2 сек на ответ). Если что — есть текстовый ввод ниже.
+  </div>
+
+  <div class="panel">
+    <div id="chat">
+      <div class="ph" id="ph">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Нажмите «Позвонить», чтобы начать
+      </div>
+    </div>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="controls">
+    <button id="call" class="primary">
+      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      Позвонить
+    </button>
+    <button id="mic" disabled>
+      <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+      Говорить
+    </button>
+    <button id="repeat" class="small" disabled>
+      <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      Повторить
+    </button>
+    <button id="hangup" class="small" disabled>
+      <svg viewBox="0 0 24 24"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+      Сброс
+    </button>
+  </div>
+
+  <div class="typed">
+    <input id="answer" type="text" placeholder="…или впишите ответ текстом" autocomplete="off" disabled />
+    <button id="send" disabled>Ввод</button>
+  </div>
+
+  <label class="opt">
+    <input type="checkbox" id="automic" checked /> Автоматически слушать после вопроса бота
+  </label>
+
+  <div id="result"></div>
+
+  <!-- ────────── ИСТОРИЯ ПРОЗВОНОВ ────────── -->
+  <div class="history-section">
+    <div class="history-h">
+      <h2>📋 История прозвонов</h2>
+      <span class="cnt" id="histCount">…</span>
+      <button class="refresh small" onclick="loadHistory()">↻ Обновить</button>
+    </div>
+    <div class="h-list" id="histList">
+      <div class="h-empty">Загрузка…</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Прототип первичной валидации. Решение принимает рекрутер.<br>
+    Логика и тексты переносятся в телефонного бота без изменений.
+  </div>
+</div>
+
+<button id="_sth_help_btn" title="Помощь" onclick="alert('Это MVP голосовой валидации кандидата. Бот задаёт вопросы по стоп-факторам, отвечать можно голосом или текстом. Все звонки сохраняются в истории ниже. Браузер Chrome или Edge — распознаёт голос на лету; Safari/Firefox — через сервер (~2 сек задержки).');">?</button>
+
+<script>
+"use strict";
+
+var API = "/tasks/api";
+var PROJECT_ID = "tander-sterlitamak-pack";
+var PROJECT_NAME = "Тандер · Стерлитамак · комплектовщик";
+
+var steps=[
+  {id:"intro",expect:"yesno",bot:"Здравствуйте! Меня зовут Алина, компания СТХ. Вы откликались на вакансию комплектовщика на склад Магнит в Стерлитамаке. Удобно сейчас пару минут ответить на короткие вопросы?",onNo:"Хорошо, тогда я перезвоню в другое время. Хорошего дня!",endOnNo:true,endReason:"Неудобно говорить",endVerdict:"declined"},
+  {id:"gender",crit:"Пол",expect:"gender_male",bot:"Уточню формальность: позиция предполагает мужчин. Подскажите, вы мужчина?",stopMsg:"Поняла вас. На эту позицию сейчас нет подходящих мест, но я передам ваши контакты на другие проекты. Спасибо!"},
+  {id:"age",crit:"Возраст 18-45",expect:"age",min:18,max:45,bot:"Сколько вам полных лет?",stopMsg:"Спасибо за ответ. По этой позиции есть возрастные ограничения, сейчас она вам не подойдёт. Сохраню контакт на другие вакансии."},
+  {id:"citizenship",crit:"Гражданство РФ",expect:"citizen_rf",bot:"Какое у вас гражданство?",stopMsg:"Поняла. На комплектовщика требуется гражданство РФ. Но есть другие склады, где это не критично — передам данные рекрутеру."},
+  {id:"crime",crit:"Судимости 158/228/105",expect:"crime",bot:"На складе есть проверка службы безопасности. Скажите честно: была ли судимость по статьям 158 — кража, 228 — наркотики или 105 — убийство? Другие статьи допустимы.",stopMsg:"Спасибо за честность. По этим статьям служба безопасности склада не пропускает. Не смогу оформить на эту позицию."},
+  {id:"shifts",crit:"День + ночь",expect:"shifts",bot:"График сменный: есть дневные смены с 8 до 20 и ночные с 20 до 8. Вы готовы выходить в том числе в ночь?",stopMsg:"Поняла. Здесь ночные смены обязательны. Поищу что-то только дневное — передам рекрутеру."},
+  {id:"physical",crit:"Физнагрузка",expect:"yesno",bot:"Работа физическая: в начале на ногах, дальше на электророхле. Готовы к нагрузке, нет ограничений по здоровью?",onNo:"Поняла. Работа требует физической активности, к сожалению не подойдёт по здоровью. Берегите себя!",endOnNo:true,endReason:"Ограничения по здоровью"},
+  {id:"lmk",crit:"ЛМК",expect:"yesno",soft:true,bot:"Есть ли у вас действующая медицинская книжка, ЛМК?",onNoFollow:"Не страшно, поможем сделать за 2 дня. Стоимость 4000 рублей удерживается сразу, но после 15 смен полностью компенсируется. Это подходит?"},
+  {id:"start",crit:"Когда выйти",expect:"free",soft:true,bot:"Отлично. Когда вы были бы готовы выйти на первую смену?"},
+  {id:"experience",crit:"Опыт",expect:"free",soft:true,bot:"И последнее: был ли опыт работы на складе или с похожей работой?"}
+];
+
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var synth=window.speechSynthesis;
+var rec=null, ruVoice=null, state={};
+var USE_SERVER_STT = !SR;        // если Web Speech нет — серверный путь
+var mediaRecorder = null;
+var mediaChunks = [];
+var mediaStream = null;
+
+if(USE_SERVER_STT){ document.getElementById('unsupported').style.display='block'; }
+
+function pickVoice(){
+  if(!synth) return;
+  var vs=synth.getVoices();
+  ruVoice = vs.filter(function(v){return /ru[-_]RU/i.test(v.lang)&&/female|алёна|алена|milena|google/i.test(v.name);})[0]
+         || vs.filter(function(v){return /ru/i.test(v.lang);})[0] || null;
+}
+if(synth){ pickVoice(); synth.onvoiceschanged=pickVoice; }
+
+function speak(text,cb){
+  if(!synth){ if(cb)cb(); return; }
+  synth.cancel();
+  var u=new SpeechSynthesisUtterance(text);
+  u.lang='ru-RU'; if(ruVoice)u.voice=ruVoice; u.rate=1.02; u.pitch=1.05;
+  setStatus('Бот говорит…');
+  u.onend=function(){ setStatus(''); if(cb)cb(); };
+  synth.speak(u);
+}
+function setStatus(t){ document.getElementById('status').textContent=t; }
+
+function nowIso(){ return new Date().toISOString().slice(0,19); }
+
+function bubble(text,who){
+  var ph=document.getElementById('ph'); if(ph)ph.remove();
+  var c=document.getElementById('chat');
+  var row=document.createElement('div'); row.className='row '+who;
+  var m=document.createElement('div'); m.className='msg'; m.textContent=text;
+  row.appendChild(m); c.appendChild(row); c.scrollTop=c.scrollHeight;
+  // в транскрипт
+  if(state && state.transcript){
+    state.transcript.push({who:who, text:text, ts:nowIso()});
+  }
+}
+function botSay(t){ bubble(t,'bot'); }
+function userSay(t){ bubble(t,'user'); }
+function norm(s){ return s.toLowerCase().replace(/ё/g,'е').replace(/[.,!?]/g,' ').replace(/\s+/g,' ').trim(); }
+
+var YES=/(^|\s)(да|ага|угу|конечно|разумеется|естественно|готов|готова|можно|удобно|слушаю|говорите|говори|давайте|давай|валяйте|вали|ок|окей|хорошо|хор|норм|подходит|пойдет|идет|согласен|согласна|есть|имеется|имею|верно|так точно|ясно|спрашивайте|задавайте|без проблем)(\s|$)/;
+var NO=/(^|\s)(нет|неа|не-а|не готов|не могу|не хочу|не буду|не подходит|нету|отказ|против|неудобно|занят|занята|перезвоните|позже|потом|не сейчас)(\s|$)/;
+
+function interpret(step,raw){
+  var t=norm(raw);
+  if(step.expect==="yesno"){
+    var n=NO.test(' '+t+' '), p=YES.test(' '+t+' ');
+    if(n&&!p) return {val:"no"};
+    if(p&&!n) return {val:"yes"};
+    return {val:"unclear"};
+  }
+  if(step.expect==="gender_male"){
+    if(/(^|\s)(жен|женщ|девушк|дама)/.test(t)) return {val:"женский",stop:true};
+    if(/(^|\s)(муж|мужч|мужик|парень|пацан|да)/.test(t)) return {val:"мужской"};
+    if(NO.test(' '+t+' ')) return {val:"женский",stop:true};
+    if(YES.test(' '+t+' ')) return {val:"мужской"};
+    return {val:"unclear"};
+  }
+  if(step.expect==="age"){
+    var m=t.match(/\d{1,2}/); if(!m) return {val:"unclear"};
+    var a=parseInt(m[0],10);
+    if(a<step.min||a>step.max) return {val:a,stop:true};
+    return {val:a};
+  }
+  if(step.expect==="citizen_rf"){
+    if(/(рф|россия|российск|россиян|русск|местн)/.test(t)) return {val:"РФ"};
+    if(/(узбек|таджик|киргиз|кыргыз|казах|армен|азербайдж|грузин|украин|белорус|молдав|туркмен|иностран|патент|внж|рвп)/.test(t)) return {val:"не РФ",stop:true};
+    if(YES.test(' '+t+' ')) return {val:"РФ"};
+    return {val:"unclear"};
+  }
+  if(step.expect==="crime"){
+    if(/(158|228|105|кража|воровств|наркот|убийств)/.test(t)) return {val:"стоп-статья",stop:true};
+    if(/(нет|не было|не судим|чист|никогда|обижаете)/.test(t)) return {val:"нет"};
+    if(/(да|была|был|судим|статья|срок|сидел|условн)/.test(t)) return {val:"другая статья"};
+    return {val:"unclear"};
+  }
+  if(step.expect==="shifts"){
+    var od=/(только день|только днем|только дневн|днем могу|лишь день)/.test(t);
+    var nn=/(ноч.{0,6}(не|нельзя|никак)|не.{0,4}ноч|без ноч)/.test(t);
+    var ok=/(ноч|любые|оба|без разницы|все равно|хоть когда)/.test(t);
+    if(od||nn) return {val:"только день",stop:true};
+    if(ok||YES.test(' '+t+' ')) return {val:"день+ночь"};
+    if(NO.test(' '+t+' ')) return {val:"только день",stop:true};
+    return {val:"unclear"};
+  }
+  if(step.expect==="free") return {val:raw.trim()};
+  return {val:"unclear"};
+}
+
+// LLM-fallback: если regex не понял — спросим Qwen
+async function llmClassify(step, raw){
+  var labels;
+  switch(step.expect){
+    case "yesno":       labels = ["yes","no","unclear"]; break;
+    case "gender_male": labels = ["мужской","женский","unclear"]; break;
+    case "citizen_rf":  labels = ["РФ","не РФ","unclear"]; break;
+    case "crime":       labels = ["нет","другая статья","стоп-статья","unclear"]; break;
+    case "shifts":      labels = ["день+ночь","только день","unclear"]; break;
+    default: return null;
+  }
+  try{
+    var r = await fetch(API+"/validator/llm-classify",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({text: raw, labels: labels, question: step.bot})
+    });
+    if(!r.ok) return null;
+    var data = await r.json();
+    var lab = data.label || null;
+    if(!lab || lab === "unclear") return null;
+    // нормализуем под формат interpret()
+    if(step.expect==="yesno") return {val: lab};
+    if(step.expect==="gender_male") return {val: lab, stop: lab==="женский"};
+    if(step.expect==="citizen_rf")  return {val: lab, stop: lab==="не РФ"};
+    if(step.expect==="crime")       return {val: lab, stop: lab==="стоп-статья"};
+    if(step.expect==="shifts")      return {val: lab, stop: lab==="только день"};
+    return {val: lab};
+  }catch(e){ return null; }
+}
+
+function reaskText(step){
+  switch(step.expect){
+    case "yesno": return "Простите, не расслышала — это «да» или «нет»?";
+    case "age": return "Сколько вам полных лет? Можно просто цифрой.";
+    case "citizen_rf": return "Уточните, гражданство России или другой страны?";
+    case "crime": return "Судимости по 158, 228 или 105 — были или нет?";
+    case "shifts": return "В ночные смены выходить готовы?";
+    case "gender_male": return "Извините за формальность — вы мужчина?";
+    default: return "Уточните, пожалуйста, ещё раз?";
+  }
+}
+
+function autoListen(){ if(document.getElementById('automic').checked && !state.stopped) listen(); }
+
+function startCall(){
+  state={
+    i:0, answers:{}, notes:{}, transcript:[],
+    stopped:false, stopReason:null, verdict:null,
+    pending:null, reasked:false,
+    startedAt: nowIso()
+  };
+  document.getElementById('chat').innerHTML='';
+  document.getElementById('result').innerHTML='';
+  document.getElementById('call').disabled=true;
+  document.getElementById('mic').disabled=false;
+  document.getElementById('repeat').disabled=false;
+  document.getElementById('hangup').disabled=false;
+  document.getElementById('answer').disabled=false;
+  document.getElementById('send').disabled=false;
+  ask();
+}
+
+function ask(){
+  var step=steps[state.i];
+  botSay(step.bot);
+  speak(step.bot, autoListen);
+}
+
+// ── РАСПОЗНАВАНИЕ: Web Speech (Chrome/Edge) или MediaRecorder→/transcribe ──
+function listen(){
+  if(USE_SERVER_STT) return listenServer();
+  if(!SR) return;
+  try{ if(rec)rec.abort(); }catch(e){}
+  rec=new SR(); rec.lang='ru-RU'; rec.interimResults=false; rec.maxAlternatives=1;
+  setStatus('Слушаю… говорите');
+  setMic(true);
+  rec.onresult=function(e){ handleAnswer(e.results[0][0].transcript); };
+  rec.onerror=function(){ setStatus('Не расслышала. Нажмите «Говорить» или впишите текстом.'); setMic(false); };
+  rec.onend=function(){ setMic(false); };
+  try{ rec.start(); }catch(e){ setStatus('Микрофон занят, попробуйте ещё раз.'); setMic(false); }
+}
+
+async function listenServer(){
+  // Если уже идёт запись — нажатие = стоп
+  if(mediaRecorder && mediaRecorder.state === "recording"){
+    mediaRecorder.stop();
+    return;
+  }
+  try{
+    if(!mediaStream){
+      mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    }
+    mediaChunks = [];
+    var mimes = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
+    var mime = mimes.find(function(m){ try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;} }) || '';
+    mediaRecorder = mime ? new MediaRecorder(mediaStream,{mimeType:mime}) : new MediaRecorder(mediaStream);
+    mediaRecorder.ondataavailable = function(e){ if(e.data && e.data.size) mediaChunks.push(e.data); };
+    mediaRecorder.onstop = async function(){
+      setMic(false);
+      setStatus('Распознаю на сервере…');
+      var blob = new Blob(mediaChunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+      var fd = new FormData();
+      fd.append('file', blob, 'a.webm');
+      try{
+        var r = await fetch(API + '/validator/transcribe', {method:'POST', body: fd});
+        if(!r.ok){
+          var t = await r.text().catch(()=>r.statusText);
+          setStatus('Распознавание недоступно: '+r.status+'. Впишите ответ текстом.');
+          return;
+        }
+        var data = await r.json();
+        var text = (data.text || '').trim();
+        setStatus('');
+        if(!text){ setStatus('Не расслышала. Попробуйте ещё раз или впишите текстом.'); return; }
+        handleAnswer(text);
+      }catch(e){
+        setStatus('Ошибка распознавания. Впишите ответ текстом.');
+      }
+    };
+    mediaRecorder.start();
+    setMic(true, true);
+    setStatus('Слушаю… нажмите «Стоп» когда закончите.');
+    // авто-стоп через 15 сек на всякий
+    setTimeout(function(){
+      if(mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    }, 15000);
+  }catch(e){
+    setStatus('Не удалось включить микрофон: '+e.message+'. Впишите ответ текстом.');
+    setMic(false);
+  }
+}
+
+function setMic(active, serverMode){
+  var b=document.getElementById('mic');
+  var label = active ? (serverMode ? ' Стоп' : ' Слушаю…') : ' Говорить';
+  b.innerHTML =
+    '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>'
+    + label;
+}
+
+async function handleAnswer(raw){
+  raw=(raw||'').trim(); if(!raw) return;
+  if(state.stopped||state.i>=steps.length) return;
+  userSay(raw);
+  var step=steps[state.i];
+
+  if(state.pending==='lmk_follow'){
+    var rr=interpret({expect:"yesno"},raw);
+    if(rr.val==="unclear"){
+      var rl = await llmClassify({expect:"yesno",bot:steps[state.i].onNoFollow}, raw);
+      if(rl) rr = rl;
+    }
+    state.notes['ЛМК'] = rr.val==="no" ? 'нет, отказался от изготовления' : 'нет, согласен на изготовление за 2 дня';
+    state.pending=null; next(); return;
+  }
+
+  var r=interpret(step,raw);
+
+  // Если regex запутался — пробуем Qwen
+  if(r.val==="unclear"){
+    var rl = await llmClassify(step, raw);
+    if(rl) r = rl;
+  }
+
+  if(r.val==="unclear"){
+    if(!state.reasked){
+      state.reasked=true;
+      var rt=reaskText(step); botSay(rt); speak(rt, autoListen); return;
+    }
+    state.notes[step.crit]='не распознано: '+raw; next(); return;
+  }
+
+  if(step.expect==="yesno"){
+    if(r.val==="no"&&step.endOnNo){
+      botSay(step.onNo); speak(step.onNo);
+      endCall(step.endReason, step.endVerdict || "stopped"); return;
+    }
+    if(r.val==="no"&&step.onNoFollow){ state.notes[step.crit]='нет'; botSay(step.onNoFollow); state.pending='lmk_follow'; speak(step.onNoFollow, autoListen); return; }
+    state.answers[step.crit] = (r.val==="yes") ? "да" : "нет";
+    next(); return;
+  }
+
+  if(r.stop){
+    state.answers[step.crit]=r.val;
+    botSay(step.stopMsg); speak(step.stopMsg);
+    endCall(step.crit+": "+r.val, "stopped"); return;
+  }
+
+  if(step.soft||step.expect==="free"){ state.notes[step.crit]=raw; }
+  else { state.answers[step.crit]=r.val; }
+  next();
+}
+
+function next(){
+  state.i++; state.reasked=false;
+  if(state.i<steps.length){ ask(); } else { finishCall(); }
+}
+
+function endCall(reason, verdict){
+  state.stopped=true;
+  state.stopReason=reason;
+  state.verdict = verdict || "stopped";
+  lock();
+  renderResult(false);
+  saveAndSummarize();
+}
+function finishCall(){
+  state.stopped=true;
+  state.verdict = "passed";
+  lock();
+  var done="Спасибо! Все вопросы заданы, передаю ваши данные рекрутеру, он свяжется с вами. Хорошего дня!";
+  botSay(done); speak(done);
+  renderResult(true);
+  saveAndSummarize();
+}
+function lock(){
+  document.getElementById('mic').disabled=true;
+  document.getElementById('answer').disabled=true;
+  document.getElementById('send').disabled=true;
+  document.getElementById('call').disabled=false;
+}
+
+function renderResult(pass){
+  var r=document.getElementById('result');
+  var rows='';
+  for(var k in state.answers){ if(state.answers.hasOwnProperty(k)) rows+='<tr><td class="k">'+escHtml(k)+'</td><td class="v">'+escHtml(state.answers[k])+'</td></tr>'; }
+  for(var n in state.notes){ if(state.notes.hasOwnProperty(n)) rows+='<tr><td class="k">'+escHtml(n)+' <span class="tag">(заметка)</span></td><td class="v">'+escHtml(state.notes[n])+'</td></tr>'; }
+  var okSvg='<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+  var badSvg='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  r.innerHTML =
+    '<div class="verdict '+(pass?'ok':'bad')+'">'+(pass?okSvg:badSvg)+
+    (pass?'ГОДЕН — передать рекрутеру':'СТОП — '+escHtml(state.stopReason||''))+'</div>'+
+    '<div class="card"><div class="lbl">Итог звонка:</div>'+
+    '<table>'+(rows||'<tr><td class="k">—</td></tr>')+'</table></div>'+
+    '<div id="aiSummary" class="ai-summary" style="display:none;"><div class="lbl">🤖 Вывод для рекрутера</div><div id="aiSummaryText">генерирую…</div></div>';
+  r.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function saveAndSummarize(){
+  state.endedAt = nowIso();
+  // 1) Просим Qwen написать вывод
+  var summary = '';
+  try{
+    var rs = await fetch(API+"/validator/llm-summary",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        transcript: state.transcript,
+        verdict: state.verdict,
+        stop_reason: state.stopReason,
+        project_name: PROJECT_NAME
+      })
+    });
+    if(rs.ok){
+      var ds = await rs.json();
+      summary = (ds.summary||'').trim();
+    }
+  }catch(e){}
+  if(summary){
+    var sb = document.getElementById('aiSummary');
+    if(sb){ sb.style.display='block'; document.getElementById('aiSummaryText').textContent = summary; }
+  } else {
+    var sb2 = document.getElementById('aiSummary');
+    if(sb2){
+      sb2.style.display='block';
+      document.getElementById('aiSummaryText').textContent = '(ИИ временно недоступен — вывод не сгенерирован)';
+    }
+  }
+  // 2) Сохраняем результат
+  try{
+    await fetch(API+"/validator/result",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        project_name: PROJECT_NAME,
+        started_at: state.startedAt,
+        ended_at: state.endedAt,
+        verdict: state.verdict,
+        stop_reason: state.stopReason,
+        answers: Object.assign({}, state.answers, state.notes),
+        transcript: state.transcript,
+        summary: summary,
+        browser: navigator.userAgent.slice(0,120)
+      })
+    });
+    loadHistory();
+  }catch(e){}
+}
+
+// ── ИСТОРИЯ ──
+function escHtml(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtTs(iso){
+  if(!iso) return '';
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  var months=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+  return d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear()+
+    ', '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+async function loadHistory(){
+  var listEl = document.getElementById('histList');
+  var cntEl = document.getElementById('histCount');
+  try{
+    var r = await fetch(API+"/validator/results?limit=50");
+    if(!r.ok){ listEl.innerHTML = '<div class="h-empty">Не удалось загрузить историю ('+r.status+')</div>'; return; }
+    var data = await r.json();
+    var items = data.items || [];
+    cntEl.textContent = (data.total||items.length) + ' всего';
+    if(!items.length){ listEl.innerHTML = '<div class="h-empty">Пока пусто. Сделайте первый прозвон выше.</div>'; return; }
+    listEl.innerHTML = items.map(function(it){
+      var v = it.verdict;
+      var pillCls = v==='passed'?'ok':(v==='declined'?'declined':'bad');
+      var pillTxt = v==='passed'?'годен':(v==='declined'?'отказался':'стоп');
+      var reason = it.stop_reason || (v==='passed'?'прошёл все стоп-факторы':'');
+      var tr = (it.transcript||[]).map(function(m){
+        var who = m.who==='bot' ? 'Бот' : 'Кандидат';
+        return '<div class="h-line"><span class="who">'+who+':</span>'+escHtml(m.text)+'</div>';
+      }).join('');
+      var ans = '';
+      var ak = it.answers || {};
+      for(var k in ak){ if(ak.hasOwnProperty(k)) ans += '<tr><td class="k">'+escHtml(k)+'</td><td class="v">'+escHtml(ak[k])+'</td></tr>'; }
+      var sum = it.summary ? '<div class="ai-summary" style="margin-top:10px;"><div class="lbl">🤖 Вывод для рекрутера</div>'+escHtml(it.summary)+'</div>' : '';
+      return '<div class="h-item" onclick="this.classList.toggle(\'open\')">'+
+        '<div class="h-item-head">'+
+          '<span class="h-item-time">'+fmtTs(it.started_at)+'</span>'+
+          '<span class="h-item-vpill '+pillCls+'">'+pillTxt+'</span>'+
+          '<span class="h-item-reason">'+escHtml(reason)+'</span>'+
+        '</div>'+
+        '<div class="h-item-body">'+
+          (ans?'<table>'+ans+'</table>':'')+
+          (tr?'<div class="h-transcript">'+tr+'</div>':'')+
+          sum+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){
+    listEl.innerHTML = '<div class="h-empty">Ошибка загрузки: '+escHtml(e.message)+'</div>';
+  }
+}
+
+document.getElementById('call').onclick=startCall;
+document.getElementById('mic').onclick=listen;
+document.getElementById('repeat').onclick=function(){ if(state.i<steps.length&&!state.stopped) speak(steps[state.i].bot); };
+document.getElementById('hangup').onclick=function(){
+  if(synth)synth.cancel();
+  if(rec){try{rec.abort();}catch(e){}}
+  if(mediaRecorder && mediaRecorder.state==='recording'){try{mediaRecorder.stop();}catch(e){}}
+  if(state){
+    state.stopped=true;
+    state.verdict = state.verdict || 'declined';
+    state.stopReason = state.stopReason || 'сброс оператором';
+  }
+  lock();
+  setStatus('Звонок сброшен.');
+};
+document.getElementById('send').onclick=function(){ var v=document.getElementById('answer').value; document.getElementById('answer').value=''; handleAnswer(v); };
+document.getElementById('answer').addEventListener('keydown',function(e){ if(e.key==='Enter'){ var v=e.target.value; e.target.value=''; handleAnswer(v); } });
+
+// Загрузить историю на старте
+loadHistory();
+</script>
+</body>
+</html>

@@ -157,6 +157,23 @@ def init_db() -> None:
             view_count INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_analyst_projects_created ON analyst_projects(created_at);
+
+        CREATE TABLE IF NOT EXISTS candidate_validations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT NOT NULL,
+            project_name TEXT,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            verdict TEXT NOT NULL,           -- 'passed' | 'stopped' | 'declined'
+            stop_reason TEXT,
+            answers_json TEXT NOT NULL,      -- {crit: value}
+            transcript_json TEXT NOT NULL,   -- [{who, text, ts}]
+            summary TEXT,                    -- 2-3 фразы от Qwen для рекрутера
+            browser TEXT,
+            ip TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_validations_started ON candidate_validations(started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_validations_verdict ON candidate_validations(verdict, started_at DESC);
         """)
         # Soft-delete migration (idempotent)
         try:
@@ -3156,3 +3173,19 @@ def analyst_projects_delete(pid: str, request: Request):
             raise HTTPException(403, "Not your project")
         conn.execute("DELETE FROM analyst_projects WHERE id=?", (pid,))
     return {"ok": True, "deleted": pid}
+
+
+# ── Регистрация валидатора (validator/) ─────────────────────────────────
+from validator_endpoints import register as _register_validator
+
+def _ai_get_url_for_validator() -> str:
+    if AI_URL_FILE.exists():
+        try:
+            u = json.loads(AI_URL_FILE.read_text(encoding="utf-8")).get("url")
+            if u:
+                return str(u)
+        except Exception:
+            pass
+    return "http://127.0.0.1:21434"
+
+_register_validator(app, db, _ai_get_url_for_validator)

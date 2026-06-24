@@ -33,6 +33,7 @@ jobs:
             --exclude='tasks/api/ai_url.json' \
             --exclude='tasks/api/.venv' \
             --exclude='tasks/api/attachments' \
+            --exclude='tasks/api/vosk-model' \
             --exclude='**/__pycache__' \
             --exclude='sales/node_modules' \
             --exclude='sales/src' \

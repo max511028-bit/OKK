@@ -3,6 +3,7 @@ uvicorn[standard]>=0.27.0
 pydantic>=2.0.0
 httpx>=0.27.0
 python-multipart>=0.0.9
+vosk>=0.3.45
 # Google API для ИИ-Рекрутера
 gspread>=6.0.0
 oauth2client>=4.1.3
