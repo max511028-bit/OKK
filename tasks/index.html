@@ -784,6 +784,8 @@ td {
   position: fixed;
   right: 0; top: 0; bottom: 0;
   width: 420px;
+  min-width: 320px;
+  max-width: 90vw;
   background: var(--surface);
   border-left: 1px solid var(--border);
   box-shadow: -8px 0 32px rgba(0,0,0,0.1);
@@ -793,6 +795,25 @@ td {
   transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
 }
 .side-panel.open { transform: translateX(0); }
+/* Запрещаем transition при ручном drag-ресайзе, иначе панель «догоняет» курсор рывками */
+.side-panel.resizing { transition: none !important; user-select: none; }
+
+/* Хэндл для изменения ширины — узкая полоска на левой границе панели */
+.side-panel-resizer {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 6px;
+  margin-left: -3px;          /* половина за пределами панели — легче «прицелиться» */
+  cursor: ew-resize;
+  background: transparent;
+  transition: background .15s;
+  z-index: 2;
+}
+.side-panel-resizer:hover,
+.side-panel.resizing .side-panel-resizer { background: var(--accent); opacity: 0.5; }
+@media (max-width: 768px) {
+  .side-panel-resizer { display: none; }   /* на мобилке панель fullscreen, ресайз не нужен */
+}
 
 .panel-header {
   padding: 20px 22px;
@@ -2834,6 +2855,7 @@ td {
 <!-- SIDE PANEL -->
 <div class="overlay-blocker" id="overlayBlocker" onclick="closePanel()"></div>
 <div class="side-panel" id="sidePanel">
+  <div class="side-panel-resizer" id="sidePanelResizer" title="Тяни, чтобы изменить ширину"></div>
   <div class="panel-header">
     <button class="panel-close" onclick="closePanel()">✕</button>
     <div class="panel-id" id="panelId"></div>
@@ -4139,9 +4161,72 @@ async function confirmDeleteTask(id){
   }
 }
 
+// ── Ресайз side-panel мышью ──────────────────────────────────────────────
+function _initSidePanelResize(){
+  const panel   = document.getElementById('sidePanel');
+  const handle  = document.getElementById('sidePanelResizer');
+  if(!panel || !handle) return;
+  const KEY = 'sth-tasks-sidepanel-width';
+  // Восстанавливаем сохранённую ширину
+  try {
+    const saved = parseInt(localStorage.getItem(KEY) || '0', 10);
+    if(saved && saved >= 320) panel.style.width = Math.min(saved, window.innerWidth * 0.9) + 'px';
+  } catch(_) {}
+
+  let dragging = false;
+  let startX = 0, startW = 0;
+
+  function onDown(e){
+    dragging = true;
+    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    startW = panel.getBoundingClientRect().width;
+    panel.classList.add('resizing');
+    document.body.style.cursor = 'ew-resize';
+    e.preventDefault();
+  }
+  function onMove(e){
+    if(!dragging) return;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX);
+    const dx = startX - x;                          // тащим влево = шире
+    let w = startW + dx;
+    const min = 320;
+    const max = Math.min(window.innerWidth * 0.9, 1400);
+    w = Math.max(min, Math.min(max, w));
+    panel.style.width = w + 'px';
+  }
+  function onUp(){
+    if(!dragging) return;
+    dragging = false;
+    panel.classList.remove('resizing');
+    document.body.style.cursor = '';
+    try { localStorage.setItem(KEY, String(parseInt(panel.style.width, 10))); } catch(_) {}
+  }
+
+  handle.addEventListener('mousedown',  onDown);
+  handle.addEventListener('touchstart', onDown, {passive:false});
+  window.addEventListener('mousemove',  onMove);
+  window.addEventListener('touchmove',  onMove, {passive:false});
+  window.addEventListener('mouseup',    onUp);
+  window.addEventListener('touchend',   onUp);
+
+  // Двойной клик = сброс к ширине по умолчанию
+  handle.addEventListener('dblclick', () => {
+    panel.style.width = '';      // вернётся к 420px из CSS
+    try { localStorage.removeItem(KEY); } catch(_) {}
+  });
+
+  // Не даём ширине превышать viewport при ресайзе окна
+  window.addEventListener('resize', () => {
+    const cur = panel.getBoundingClientRect().width;
+    const max = window.innerWidth * 0.9;
+    if(cur > max) panel.style.width = max + 'px';
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   await apiLoadAll();
   rerenderAll();
+  _initSidePanelResize();
   // Click-to-sort на заголовках таблицы задач (#tasks)
   document.querySelectorAll('th.sortable').forEach(th => {
     th.addEventListener('click', () => {
