@@ -3857,7 +3857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const fab = document.createElement('button');
   fab.innerHTML='+ Новая задача';
   fab.onclick=()=>openTaskEditor(null);
-  fab.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--accent);color:#fff;border:none;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-lg);z-index:500;font-family:inherit;';
+  fab.style.cssText='position:fixed;bottom:152px;right:24px;background:var(--accent);color:#fff;border:none;padding:14px 22px;border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-lg);z-index:500;font-family:inherit;';
   document.body.appendChild(fab);
   // Override CMD palette "Создать задачу"
   if(typeof CMD_COMMANDS!=='undefined'){
@@ -4482,7 +4482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 <!-- STH_HELP_BTN_START -->
 <style>
-#_sth_help_btn{position:fixed;bottom:24px;right:90px;width:44px;height:44px;border-radius:50%;
+#_sth_help_btn{position:fixed;bottom:90px;right:30px;width:44px;height:44px;border-radius:50%;
   background:#1f2937;color:#fff;border:1px solid rgba(255,255,255,.15);font-size:20px;font-weight:700;
   cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.4);
   display:flex;align-items:center;justify-content:center;transition:transform .15s,background .15s}
@@ -4504,7 +4504,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 #_sth_help_close{float:right;background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;
   margin:-8px -8px 0 0;padding:4px 10px;border-radius:6px}
 #_sth_help_close:hover{background:rgba(255,255,255,.08);color:#fff}
-@media(max-width:640px){#_sth_help_btn{bottom:18px;right:78px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
+@media(max-width:640px){#_sth_help_btn{bottom:80px;right:26px;width:40px;height:40px}#_sth_help_box{padding:18px 16px}}
 </style>
 <button id="_sth_help_btn" title="Помощь по дашборду">?</button>
 <div id="_sth_help_modal"><div id="_sth_help_box"><button id="_sth_help_close">×</button><div id="_sth_help_content">Загрузка…</div></div></div>
