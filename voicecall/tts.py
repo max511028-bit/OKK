@@ -11,6 +11,7 @@ CLI режим — для проверки:
     python voicecall/tts.py "Здравствуйте, тест связи"
 """
 import asyncio
+import hashlib
 import io
 import os
 import sys
@@ -69,15 +70,26 @@ def synthesize_mp3(text: str, voice: str = DEFAULT_VOICE,
     return asyncio.run(_synth_mp3(text, voice, rate, pitch))
 
 
-def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE) -> bytes:
+def _cache_key(text: str, voice: str) -> str:
+    h = hashlib.sha1((voice + "||" + text).encode("utf-8")).hexdigest()[:16]
+    return h
+
+
+def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
+                              use_cache: bool = True) -> bytes:
     """Возвращает PCM 8000Hz mono 16bit (формат для SIP/телефонии).
-    Использует ffmpeg из пакета imageio-ffmpeg (ставится через pip)."""
+    Использует ffmpeg из пакета imageio-ffmpeg. Кэширует результат на
+    диске — повторные вызовы для тех же фраз мгновенные."""
+    if use_cache:
+        cache_path = CACHE_DIR / f"pcm_{_cache_key(text, voice)}.raw"
+        if cache_path.exists():
+            return cache_path.read_bytes()
+
     mp3 = synthesize_mp3(text, voice)
     try:
         import imageio_ffmpeg  # type: ignore
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     except ImportError:
-        # Fallback на системный ffmpeg
         ffmpeg_exe = "ffmpeg"
 
     import subprocess
@@ -90,7 +102,38 @@ def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE) -> bytes:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg fail: {proc.stderr.decode('utf-8', 'replace')[:200]}")
-    return proc.stdout
+    pcm = proc.stdout
+    if use_cache:
+        try:
+            cache_path.write_bytes(pcm)
+        except Exception:
+            pass
+    return pcm
+
+
+def prewarm_scenario(scenario_dict: dict, voice: str = DEFAULT_VOICE,
+                      verbose: bool = True) -> int:
+    """Заранее генерирует и кэширует TTS для всех фраз сценария.
+    Возвращает кол-во новых сгенерированных файлов."""
+    texts = []
+    for st in scenario_dict.get("steps", []):
+        for key in ("bot", "on_no", "on_no_follow", "stop_msg"):
+            v = st.get(key)
+            if v:
+                texts.append(v)
+    closing = scenario_dict.get("closing")
+    if closing:
+        texts.append(closing)
+    new_count = 0
+    for i, t in enumerate(texts, 1):
+        cache_path = CACHE_DIR / f"pcm_{_cache_key(t, voice)}.raw"
+        if cache_path.exists():
+            if verbose: print(f"  [{i}/{len(texts)}] кэш есть: {t[:50]}...")
+            continue
+        if verbose: print(f"  [{i}/{len(texts)}] генерирую: {t[:50]}...")
+        synthesize_telephony_pcm(t, voice, use_cache=True)
+        new_count += 1
+    return new_count
 
 
 def save_wav(pcm_8khz: bytes, path: Path):

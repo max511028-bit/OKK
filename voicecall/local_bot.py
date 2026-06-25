@@ -22,6 +22,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Optional
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -30,9 +31,9 @@ except Exception:
     pass
 
 # Импорты наших модулей
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO
-from tts import synthesize_telephony_pcm, DEFAULT_VOICE
-from stt import StreamingRecognizer
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step
+from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
+from stt import StreamingRecognizer, warmup as stt_warmup
 
 
 def _check_deps():
@@ -64,10 +65,11 @@ def play_pcm_8khz(pcm: bytes):
 
 def listen_until_silence(
     sample_rate: int = 16000,
-    silence_after_speech_sec: float = 1.5,
-    silence_before_speech_sec: float = 8.0,
-    max_total_sec: float = 30.0,
+    silence_after_speech_sec: float = 0.7,    # было 1.5 — режем задержку
+    silence_before_speech_sec: float = 6.0,
+    max_total_sec: float = 20.0,
     print_progress: bool = True,
+    vocab: Optional[list] = None,             # словарь для конкретного шага
 ) -> str:
     """Слушает микрофон. Возвращает распознанный текст.
 
@@ -78,7 +80,7 @@ def listen_until_silence(
     """
     import numpy as np
     import sounddevice as sd
-    rec = StreamingRecognizer(input_sample_rate=sample_rate)
+    rec = StreamingRecognizer(input_sample_rate=sample_rate, vocab=vocab)
     parts = []
     last_partial = ""
     last_change_at = time.time()
@@ -149,22 +151,43 @@ def run(scenario_id: str):
     print(f"╚══ Голос:    {DEFAULT_VOICE}")
     print(f"   Стоп-факторы: {', '.join(scenario.get('stop_factors', []))}")
     print()
-    print("Готовлюсь... (первый запуск инициализирует Vosk-модель, ~3 сек)")
+
+    # ── ПРОГРЕВ ── (один раз при старте — экономит секунды на каждом шаге)
+    print("Прогрев Vosk-модели...")
+    t0 = time.time()
+    stt_warmup()
+    print(f"  ✅ Vosk готов ({time.time()-t0:.1f} сек)")
+
+    print("Прогрев TTS — генерирую все фразы сценария...")
+    t0 = time.time()
+    new_n = prewarm_scenario(scenario, voice=DEFAULT_VOICE, verbose=False)
+    print(f"  ✅ TTS готов (новых: {new_n}, всего {time.time()-t0:.1f} сек)")
+    print()
+    print("══════════════════════════════════════════════")
+    print(" Начинаем — говори в микрофон когда бот замолчит")
+    print("══════════════════════════════════════════════")
+
     sess = DialogSession(scenario)
     action = sess.start()
 
     while True:
         if action.kind in ("speak_then_listen", "speak_then_end"):
             print(f"\n[БОТ]  {action.text}")
-            print("  🔊 синтезирую и говорю...", end="\r", flush=True)
+            # синтез теперь почти мгновенный — берём из кэша
             pcm = synthesize_telephony_pcm(action.text)
-            print(" " * 80, end="\r")
             play_pcm_8khz(pcm)
         if action.kind != "speak_then_listen":
             break
-        # Слушаем ответ
-        print("  🎙 слушаю ваш ответ...", end="\r", flush=True)
-        answer = listen_until_silence()
+        # Vocab под ожидаемый тип ответа — резко поднимает точность Vosk
+        if sess.pending == "lmk_follow":
+            # после «Нет ЛМК?» ждём yes/no про согласие на изготовление
+            vocab = vocab_for_step({"expect": "yesno"})
+        else:
+            cur_step = sess.steps[sess.i] if sess.i < len(sess.steps) else {}
+            vocab = vocab_for_step(cur_step)
+
+        print("  🎙 слушаю...", end="\r", flush=True)
+        answer = listen_until_silence(vocab=vocab)
         if answer:
             print(f"[ТЫ]   {answer}")
         else:

@@ -22,6 +22,7 @@ import sys
 import wave
 import zipfile
 from pathlib import Path
+from typing import Optional
 from urllib.request import urlretrieve
 
 # Vosk-модель small-ru-0.22 обучена на 16 kHz. SIP/телефония даёт 8 kHz.
@@ -94,29 +95,54 @@ def _check_deps():
         sys.exit(1)
 
 
+# Кэшируем загруженную модель — Model() весит и занимает 1-2 сек на загрузку
+_MODEL_CACHE = None
+
+
+def _get_model():
+    global _MODEL_CACHE
+    if _MODEL_CACHE is None:
+        _check_deps()
+        ensure_model()
+        from vosk import Model  # type: ignore
+        try:
+            from vosk import SetLogLevel  # type: ignore
+            SetLogLevel(-1)
+        except Exception:
+            pass
+        _MODEL_CACHE = Model(str(MODEL_DIR))
+    return _MODEL_CACHE
+
+
+def warmup():
+    """Принудительно загрузить модель сейчас (для пред-прогрева в начале сессии)."""
+    _get_model()
+
+
 class StreamingRecognizer:
     """Покадровое распознавание для звонка. Vosk сам определяет где
     конец фразы — feed() вернёт {final: текст} когда фраза завершилась.
 
     input_sample_rate — частота входящего аудио (8000 для SIP, 16000 для
     качественного микрофона). Автоматически апсемплим в 16 kHz который
-    нужен модели."""
+    нужен модели.
 
-    def __init__(self, input_sample_rate: int = 8000):
-        _check_deps()
-        ensure_model()
-        from vosk import Model, KaldiRecognizer  # type: ignore
-        try:
-            from vosk import SetLogLevel  # type: ignore
-            SetLogLevel(-1)
-        except Exception:
-            pass
-        self._model = Model(str(MODEL_DIR))
-        self._rec = KaldiRecognizer(self._model, VOSK_SAMPLE_RATE)
+    vocab — необязательный список слов/фраз. Если задан, Vosk ограничивает
+    словарь только ими (НАМНОГО лучшая точность). Добавь '[unk]' чтобы
+    модель могла обозначать неопознанные слова."""
+
+    def __init__(self, input_sample_rate: int = 8000, vocab: Optional[list] = None):
+        from vosk import KaldiRecognizer  # type: ignore
+        model = _get_model()
+        if vocab:
+            grammar = json.dumps(vocab, ensure_ascii=False)
+            self._rec = KaldiRecognizer(model, VOSK_SAMPLE_RATE, grammar)
+        else:
+            self._rec = KaldiRecognizer(model, VOSK_SAMPLE_RATE)
         self._rec.SetWords(False)
         self._in_sr = input_sample_rate
         self._needs_resample = input_sample_rate != VOSK_SAMPLE_RATE
-        self._resample_state = None  # для audioop.ratecv
+        self._resample_state = None
 
     def _resample(self, chunk: bytes) -> bytes:
         if not self._needs_resample:
