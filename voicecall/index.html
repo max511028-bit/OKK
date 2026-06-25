@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>СТХ — Голосовой обзвон кандидатов</title>
+<style>
+  :root{
+    --bg:#0f1115; --surface:#171a21; --surface2:#1e222b; --line:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa0ab; --hint:#6b7280;
+    --accent:#3b82f6; --accent-soft:#16243d;
+    --ok:#22c55e; --ok-soft:#13301d; --bad:#ef4444; --bad-soft:#34191a;
+    --warn:#f59e0b; --warn-soft:#332408; --pending:#65d6ff; --pending-soft:#10212b;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.5;
+    -webkit-font-smoothing:antialiased; padding:16px;
+  }
+  .wrap{max-width:1100px; margin:0 auto}
+  .topnav{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px;color:var(--muted);}
+  .topnav a{color:var(--muted);text-decoration:none;}
+  .topnav a:hover{color:var(--text);}
+  h1{font-size:22px; font-weight:600; margin:0 0 4px}
+  .sub{font-size:13px; color:var(--muted); margin:0 0 24px}
+
+  .grid{display:grid; gap:16px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
+  .card h2{font-size:16px; font-weight:600; margin:0 0 14px;}
+
+  /* Upload */
+  .drop{
+    border:2px dashed var(--line); border-radius:var(--radius);
+    padding:30px 20px; text-align:center; color:var(--muted);
+    transition:border-color .15s, background .15s; cursor:pointer;
+  }
+  .drop:hover, .drop.drag{border-color:var(--accent); background:var(--accent-soft); color:var(--text);}
+  .drop input{display:none}
+  .drop strong{color:var(--text)}
+
+  .form-row{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px}
+  .form-row label{display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted)}
+  .form-row input, .form-row select{
+    font-family:inherit; font-size:13px; padding:9px 11px; color:var(--text);
+    background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm); outline:none;
+  }
+  .form-row input:focus, .form-row select:focus{border-color:var(--accent)}
+
+  button{
+    font-family:inherit; font-size:13px; color:var(--text); background:var(--surface2);
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:9px 14px; cursor:pointer;
+    transition:background .12s, border-color .12s; display:inline-flex; align-items:center; gap:6px;
+  }
+  button:hover:not(:disabled){background:#262b36; border-color:#3a4150}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover:not(:disabled){background:#2f6fd6}
+  button.danger{background:var(--bad-soft); border-color:#5a2626; color:#f59a9a}
+  button.danger:hover:not(:disabled){background:#3e1818}
+  button.small{font-size:12px; padding:6px 10px}
+
+  /* Preview */
+  .preview{margin-top:14px; padding:12px 14px; background:var(--ok-soft); border:1px solid #1f4a2d;
+           border-radius:var(--radius-sm); font-size:13px; color:#a8e2b8; display:none}
+  .preview.show{display:block}
+  .preview b{color:var(--text)}
+  .preview-table{width:100%; font-size:12px; margin-top:8px; border-collapse:collapse;}
+  .preview-table td{padding:4px 8px; border-bottom:1px solid rgba(255,255,255,.06);}
+  .preview-table td:first-child{color:var(--muted);width:30%}
+
+  .err{margin-top:14px; padding:12px 14px; background:var(--bad-soft); border:1px solid #5a2626;
+       border-radius:var(--radius-sm); font-size:13px; color:#f59a9a; display:none; white-space:pre-wrap;}
+  .err.show{display:block}
+
+  /* Campaigns */
+  .camp{display:grid; gap:10px}
+  .camp-item{background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm);
+             padding:12px 14px; cursor:pointer; transition:border-color .12s}
+  .camp-item:hover{border-color:#3a4150}
+  .camp-item.open{border-color:var(--accent)}
+  .camp-head{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .camp-title{font-weight:600; font-size:14px}
+  .camp-meta{font-size:12px; color:var(--muted)}
+  .camp-stats{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto}
+  .pill{font-size:11px; font-weight:600; padding:3px 8px; border-radius:8px;}
+  .pill.pending{background:var(--pending-soft); color:var(--pending)}
+  .pill.calling{background:var(--warn-soft); color:var(--warn)}
+  .pill.done{background:var(--accent-soft); color:var(--accent)}
+  .pill.passed{background:var(--ok-soft); color:#7ee29a}
+  .pill.stopped{background:var(--bad-soft); color:#f59a9a}
+  .pill.skipped{background:#2a2f3a; color:var(--muted)}
+
+  .camp-body{display:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--line);}
+  .camp-item.open .camp-body{display:block}
+
+  /* Contacts table */
+  .ct-table{width:100%; font-size:12.5px; border-collapse:collapse; margin-top:8px;}
+  .ct-table th{text-align:left; padding:8px 6px; color:var(--muted); font-weight:500;
+               border-bottom:1px solid var(--line); font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+  .ct-table td{padding:8px 6px; border-bottom:1px solid rgba(255,255,255,.04)}
+  .ct-table tr:hover{background:rgba(255,255,255,.02)}
+  .ct-actions{display:flex; gap:4px; justify-content:flex-end}
+
+  .empty{text-align:center; color:var(--hint); font-size:13px; padding:30px 0}
+  .loading{text-align:center; color:var(--muted); padding:20px 0; font-size:13px}
+
+  /* Help button */
+  #_help_btn{position:fixed;bottom:20px;right:20px;width:42px;height:42px;border-radius:50%;
+    background:var(--surface2);color:var(--text);border:1px solid var(--line);font-size:18px;font-weight:700;
+    cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.5);
+    display:flex;align-items:center;justify-content:center;}
+  #_help_btn:hover{background:#262b36}
+
+  @media (max-width: 768px){
+    .form-row{grid-template-columns:1fr}
+    .camp-head{flex-direction:column; align-items:flex-start}
+    .camp-stats{margin-left:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topnav">
+    <a href="/">← Портал СТХ</a> <span>·</span> <span>Голосовой обзвон (MVP)</span>
+  </div>
+
+  <h1>📞 Голосовой обзвон кандидатов</h1>
+  <p class="sub">Загружаешь Excel/CSV с контактами → бот сам прозванивает каждого по сценарию валидации → результаты в истории. Платная только телефония, ~₽1 за звонок.</p>
+
+  <div class="grid">
+
+    <!-- ── Загрузка контактов ── -->
+    <div class="card">
+      <h2>1. Загрузить контакты</h2>
+      <div class="form-row">
+        <label>Название кампании
+          <input id="uName" type="text" placeholder="Авито 25.06 — Тандер Стерлитамак" />
+        </label>
+        <label>Сценарий
+          <select id="uScenario">
+            <option value="tander-sterlitamak-pack">Тандер · Стерлитамак · комплектовщик</option>
+          </select>
+        </label>
+        <label>Источник
+          <select id="uSource">
+            <option value="HH">HeadHunter</option>
+            <option value="Avito">Авито</option>
+            <option value="manual">Ручная загрузка</option>
+            <option value="mix">Смешанный</option>
+          </select>
+        </label>
+      </div>
+
+      <div style="margin-top:14px;">
+        <label class="drop" id="dropZone">
+          <input type="file" id="uFile" accept=".csv,.xlsx,.xlsm" />
+          <strong>📎 Выбрать файл</strong> или перетащи сюда<br>
+          <span style="font-size:11px; color:var(--hint);">Поддерживается .csv, .xlsx — макс 5 МБ. Колонки распознаются автоматически по заголовкам «ФИО», «Телефон», «Источник».</span>
+        </label>
+        <div id="uFileName" style="font-size:12px; color:var(--accent); margin-top:8px; display:none;"></div>
+      </div>
+
+      <div style="margin-top:14px; text-align:right">
+        <button id="uBtn" class="primary" disabled>Загрузить</button>
+      </div>
+
+      <div class="preview" id="uPreview"></div>
+      <div class="err" id="uErr"></div>
+    </div>
+
+    <!-- ── Список кампаний ── -->
+    <div class="card">
+      <h2 style="display:flex;align-items:center;gap:10px">
+        2. Кампании обзвона
+        <button class="small" onclick="loadCampaigns()" style="margin-left:auto">↻ Обновить</button>
+      </h2>
+      <div id="campList" class="camp">
+        <div class="loading">Загрузка...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="sub" style="margin-top:24px; font-size:12px; text-align:center">
+    Когда движок обзвона будет подключён к Novofon — он сам возьмёт «pending» контакты из активной кампании и начнёт обзванивать. Сейчас только загружаем и просматриваем.
+  </p>
+</div>
+
+<button id="_help_btn" onclick="alert('Сюда загружаешь Excel/CSV с кандидатами (имя + телефон). Файлы из HH или Avito подойдут — главное чтобы был заголовок с телефоном.\n\nПосле загрузки контакты попадают в очередь со статусом pending. Когда подключим звонилку, бот будет их прозванивать.\n\nСтатусы: pending (ждёт звонка), calling (звонит сейчас), done (прошёл звонок), skipped (вручную пропущен).');">?</button>
+
+<script>
+"use strict";
+var API = "/tasks/api";
+
+// ── Drag & drop ──
+var dropZone = document.getElementById("dropZone");
+var fileInput = document.getElementById("uFile");
+var fileName = document.getElementById("uFileName");
+var uBtn = document.getElementById("uBtn");
+
+dropZone.addEventListener("dragover", function(e){ e.preventDefault(); dropZone.classList.add("drag"); });
+dropZone.addEventListener("dragleave", function(){ dropZone.classList.remove("drag"); });
+dropZone.addEventListener("drop", function(e){
+  e.preventDefault(); dropZone.classList.remove("drag");
+  if(e.dataTransfer.files.length){ fileInput.files = e.dataTransfer.files; onFileChange(); }
+});
+fileInput.addEventListener("change", onFileChange);
+
+function onFileChange(){
+  var f = fileInput.files[0];
+  if(f){
+    fileName.style.display = "block";
+    fileName.textContent = "📄 " + f.name + " (" + (f.size/1024).toFixed(1) + " КБ)";
+    uBtn.disabled = false;
+  } else {
+    fileName.style.display = "none";
+    uBtn.disabled = true;
+  }
+}
+
+uBtn.addEventListener("click", async function(){
+  var f = fileInput.files[0];
+  if(!f) return;
+  var fd = new FormData();
+  fd.append("file", f);
+  var name = document.getElementById("uName").value.trim();
+  var scenario = document.getElementById("uScenario").value;
+  var source = document.getElementById("uSource").value;
+  var url = API + "/voicecall/upload-contacts?name=" + encodeURIComponent(name)
+    + "&scenario_id=" + encodeURIComponent(scenario)
+    + "&source=" + encodeURIComponent(source);
+
+  var preview = document.getElementById("uPreview");
+  var err = document.getElementById("uErr");
+  preview.classList.remove("show");
+  err.classList.remove("show");
+
+  uBtn.disabled = true; uBtn.textContent = "Загружаю...";
+  try{
+    var r = await fetch(url, { method: "POST", body: fd });
+    var data = await r.json();
+    if(!r.ok){
+      err.textContent = "❌ " + (data.detail || r.statusText);
+      err.classList.add("show");
+    } else {
+      var hd = data.headers_detected || {};
+      var rows = "";
+      (data.preview || []).forEach(function(p){
+        rows += "<tr><td>" + escHtml(p.name || "—") + "</td><td>+" + escHtml(p.phone) + "</td></tr>";
+      });
+      preview.innerHTML =
+        "<b>✅ Загружено " + data.total + " контактов</b><br>" +
+        (data.skipped_bad_phone ? "Пропущено с плохим телефоном: " + data.skipped_bad_phone + "<br>" : "") +
+        "Кампания: <b>" + escHtml(data.campaign_name) + "</b> (id " + data.campaign_id + ")<br>" +
+        "Распознанные колонки: имя=«" + escHtml(hd.name_col || "не найдено") + "», " +
+        "телефон=«" + escHtml(hd.phone_col || "не найдено") + "»" +
+        (rows ? "<table class='preview-table'><tr><td colspan='2'>Превью первых:</td></tr>" + rows + "</table>" : "");
+      preview.classList.add("show");
+      fileInput.value = ""; onFileChange();
+      loadCampaigns();
+    }
+  } catch(e){
+    err.textContent = "❌ Сетевая ошибка: " + e.message;
+    err.classList.add("show");
+  } finally {
+    uBtn.disabled = false; uBtn.textContent = "Загрузить";
+  }
+});
+
+function escHtml(s){
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function fmtTs(iso){
+  if(!iso) return "";
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  return d.getDate()+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()
+    + " " + String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+}
+function fmtPhone(p){
+  // 79991234567 → +7 (999) 123-45-67
+  if(!p || p.length !== 11) return "+"+p;
+  return "+"+p[0]+" ("+p.substr(1,3)+") "+p.substr(4,3)+"-"+p.substr(7,2)+"-"+p.substr(9,2);
+}
+
+// ── Список кампаний ──
+async function loadCampaigns(){
+  var list = document.getElementById("campList");
+  list.innerHTML = "<div class='loading'>Загрузка...</div>";
+  try{
+    var r = await fetch(API + "/voicecall/campaigns");
+    var data = await r.json();
+    var items = data.items || [];
+    if(!items.length){
+      list.innerHTML = "<div class='empty'>Кампаний пока нет. Загрузи первый файл выше.</div>";
+      return;
+    }
+    list.innerHTML = items.map(function(c){
+      return ""
+        + "<div class='camp-item' data-cid='"+c.id+"'>"
+        + "  <div class='camp-head' onclick='toggleCampaign("+c.id+")'>"
+        + "    <div>"
+        + "      <div class='camp-title'>"+escHtml(c.name)+"</div>"
+        + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+"</div>"
+        + "    </div>"
+        + "    <div class='camp-stats'>"
+        +        (c.pending ? "<span class='pill pending'>⏳ "+c.pending+"</span>" : "")
+        +        (c.calling ? "<span class='pill calling'>📞 "+c.calling+"</span>" : "")
+        +        (c.passed  ? "<span class='pill passed'>✓ "+c.passed+"</span>" : "")
+        +        (c.stopped ? "<span class='pill stopped'>✗ "+c.stopped+"</span>" : "")
+        +        (c.skipped ? "<span class='pill skipped'>⊝ "+c.skipped+"</span>" : "")
+        + "    </div>"
+        + "  </div>"
+        + "  <div class='camp-body' id='body-"+c.id+"'></div>"
+        + "</div>";
+    }).join("");
+  } catch(e){
+    list.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
+  }
+}
+
+async function toggleCampaign(cid){
+  var item = document.querySelector(".camp-item[data-cid='"+cid+"']");
+  if(!item) return;
+  var wasOpen = item.classList.contains("open");
+  // закрыть все
+  document.querySelectorAll(".camp-item.open").forEach(function(el){ el.classList.remove("open"); });
+  if(wasOpen) return;
+  item.classList.add("open");
+  await loadContacts(cid);
+}
+
+async function loadContacts(cid){
+  var body = document.getElementById("body-"+cid);
+  if(!body) return;
+  body.innerHTML = "<div class='loading'>Загрузка контактов...</div>";
+  try{
+    var r = await fetch(API + "/voicecall/contacts?campaign_id="+cid+"&limit=1000");
+    var data = await r.json();
+    var items = data.items || [];
+    if(!items.length){
+      body.innerHTML = "<div class='empty'>Контактов нет.</div>";
+      return;
+    }
+    var rows = items.map(function(ct){
+      var statusPill =
+        ct.status === "pending" ? "<span class='pill pending'>⏳ ждёт</span>" :
+        ct.status === "calling" ? "<span class='pill calling'>📞 звоним</span>" :
+        ct.status === "done"    ? (
+          ct.verdict === "passed"  ? "<span class='pill passed'>✓ годен</span>" :
+          ct.verdict === "stopped" ? "<span class='pill stopped'>✗ "+escHtml(ct.stop_reason||"стоп")+"</span>" :
+                                      "<span class='pill skipped'>" + escHtml(ct.verdict||"—") + "</span>"
+        ) :
+        ct.status === "skipped" ? "<span class='pill skipped'>⊝ пропущен</span>" :
+        "<span class='pill'>"+escHtml(ct.status)+"</span>";
+      var actions = ct.status === "pending"
+        ? "<button class='small' onclick='skipContact("+ct.id+")'>Пропустить</button>"
+        : ct.status === "skipped" || ct.status === "done"
+        ? "<button class='small' onclick='retryContact("+ct.id+")'>↻ Заново</button>"
+        : "";
+      return "<tr>"
+        + "<td>"+escHtml(ct.name||"—")+"</td>"
+        + "<td>"+fmtPhone(ct.phone)+"</td>"
+        + "<td>"+escHtml(ct.source||"")+"</td>"
+        + "<td>"+statusPill+"</td>"
+        + "<td>"+(ct.attempts||0)+"</td>"
+        + "<td class='ct-actions'>"+actions+"</td>"
+        + "</tr>";
+    }).join("");
+    body.innerHTML =
+      "<table class='ct-table'>"
+      + "<thead><tr><th>Имя</th><th>Телефон</th><th>Источник</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
+      + "<tbody>"+rows+"</tbody></table>"
+      + "<div style='margin-top:10px; display:flex; justify-content:space-between; align-items:center;'>"
+      + "  <span style='font-size:11px; color:var(--muted)'>Всего: "+data.total+"</span>"
+      + "  <button class='danger small' onclick='deleteCampaign("+cid+")'>🗑 Удалить кампанию</button>"
+      + "</div>";
+  } catch(e){
+    body.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
+  }
+}
+
+async function skipContact(id){
+  if(!confirm("Пропустить этот контакт (не звонить)?")) return;
+  await fetch(API+"/voicecall/contacts/"+id+"/skip", {method:"POST"});
+  loadCampaigns();
+}
+async function retryContact(id){
+  await fetch(API+"/voicecall/contacts/"+id+"/retry", {method:"POST"});
+  loadCampaigns();
+}
+async function deleteCampaign(cid){
+  if(!confirm("Удалить кампанию и все её контакты? Действие необратимо.")) return;
+  var r = await fetch(API+"/voicecall/campaigns/"+cid, {method:"DELETE"});
+  if(r.ok) loadCampaigns();
+  else alert("Не удалось удалить");
+}
+
+// Стартуем
+loadCampaigns();
+</script>
+</body>
+</html>

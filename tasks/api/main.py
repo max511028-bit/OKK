@@ -174,6 +174,37 @@ def init_db() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_validations_started ON candidate_validations(started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_validations_verdict ON candidate_validations(verdict, started_at DESC);
+
+        CREATE TABLE IF NOT EXISTS voicecall_campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            scenario_id TEXT NOT NULL,
+            scenario_name TEXT,
+            created_at TEXT NOT NULL,
+            total INTEGER NOT NULL DEFAULT 0,
+            source TEXT                       -- HH | Avito | manual | mix
+        );
+        CREATE INDEX IF NOT EXISTS idx_campaigns_created ON voicecall_campaigns(created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS voicecall_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            name TEXT,
+            phone TEXT NOT NULL,              -- нормализованный, 7XXXXXXXXXX
+            source TEXT,
+            raw_data_json TEXT,               -- вся строка из Excel/CSV для контекста
+            status TEXT NOT NULL DEFAULT 'pending',  -- pending | calling | done | skipped | failed
+            verdict TEXT,                     -- passed | stopped | declined
+            stop_reason TEXT,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at TEXT,
+            validation_id INTEGER,            -- FK на candidate_validations.id когда дозвонимся
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (campaign_id) REFERENCES voicecall_campaigns(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_vc_contacts_campaign ON voicecall_contacts(campaign_id, status);
+        CREATE INDEX IF NOT EXISTS idx_vc_contacts_status ON voicecall_contacts(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_vc_contacts_phone ON voicecall_contacts(phone);
         """)
         # Soft-delete migration (idempotent)
         try:
@@ -3419,3 +3450,288 @@ async def validator_llm_summary(req: ValidatorSummaryReq):
         raise
     except Exception as e:
         raise HTTPException(503, "LLM error: " + type(e).__name__ + ": " + str(e))
+
+# ════════════════════════════════════════════════════════════════════════
+# VOICECALL — массовый обзвон кандидатов через SIP-бот
+# Публичные эндпоинты (как и /validator/), без auth — внутренний MVP
+# ════════════════════════════════════════════════════════════════════════
+
+import re as _vc_re
+import datetime as _vc_dt
+import io as _vc_io
+
+
+def _vc_normalize_phone(raw: str) -> str:
+    """Приводит русский номер к формату 7XXXXXXXXXX (11 цифр, без +).
+    Возвращает пустую строку если не распознали."""
+    if not raw:
+        return ""
+    digits = "".join(c for c in str(raw) if c.isdigit())
+    if not digits:
+        return ""
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    elif digits.startswith("7") and len(digits) == 11:
+        pass
+    elif len(digits) == 10:
+        digits = "7" + digits
+    else:
+        return ""
+    return digits
+
+
+# Распознавание колонок по ключевым словам в заголовке
+_VC_NAME_KEYS = ("фио", "имя", "кандидат", "name", "full name", "имя кандидата")
+_VC_PHONE_KEYS = ("телефон", "номер телефона", "phone", "номер", "моб", "tel", "контакт")
+_VC_SOURCE_KEYS = ("источник", "source", "канал", "сайт")
+
+
+def _vc_find_col(headers: list, candidates: tuple) -> int:
+    """Ищем колонку по ключевым словам в заголовке. -1 если не нашли."""
+    for i, h in enumerate(headers):
+        if not h:
+            continue
+        h_low = str(h).strip().lower()
+        for cand in candidates:
+            if cand in h_low:
+                return i
+    return -1
+
+
+def _vc_parse_csv(content: bytes) -> tuple[list, list]:
+    """Парсит CSV → (headers, rows)."""
+    import csv as _csv
+    # Пробуем UTF-8, потом cp1251 (часто HH/Avito выгружают в кириллической)
+    text = None
+    for enc in ("utf-8-sig", "utf-8", "cp1251", "windows-1251"):
+        try:
+            text = content.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise HTTPException(400, "Не удалось декодировать CSV (попробовал UTF-8, cp1251)")
+    # Угадываем разделитель
+    sample = text[:2048]
+    if ";" in sample.split("\n", 1)[0]:
+        delim = ";"
+    elif "\t" in sample.split("\n", 1)[0]:
+        delim = "\t"
+    else:
+        delim = ","
+    reader = _csv.reader(_vc_io.StringIO(text), delimiter=delim)
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(400, "CSV пустой")
+    return rows[0], rows[1:]
+
+
+def _vc_parse_xlsx(content: bytes) -> tuple[list, list]:
+    """Парсит XLSX → (headers, rows)."""
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except ImportError:
+        raise HTTPException(500, "openpyxl не установлен на сервере")
+    wb = load_workbook(filename=_vc_io.BytesIO(content), read_only=True, data_only=True)
+    ws = wb.active
+    rows = []
+    for row in ws.iter_rows(values_only=True):
+        rows.append(["" if v is None else str(v).strip() for v in row])
+    if not rows:
+        raise HTTPException(400, "XLSX пустой")
+    return rows[0], rows[1:]
+
+
+class VoicecallCampaign(BaseModel):
+    name: str
+    scenario_id: str = "tander-sterlitamak-pack"
+    source: Optional[str] = "manual"
+
+
+@app.post("/voicecall/upload-contacts")
+async def vc_upload_contacts(
+    file: UploadFile = File(...),
+    name: str = "",
+    scenario_id: str = "tander-sterlitamak-pack",
+    source: str = "manual",
+):
+    """Загрузка Excel/CSV с контактами кандидатов.
+    Парсит, создаёт campaign + contacts, возвращает превью и счётчики."""
+    body = await file.read()
+    if not body:
+        raise HTTPException(400, "Empty file")
+    if len(body) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Файл больше 5 МБ")
+
+    filename = (file.filename or "upload").lower()
+    if filename.endswith(".csv"):
+        headers, rows = _vc_parse_csv(body)
+    elif filename.endswith(".xlsx") or filename.endswith(".xlsm"):
+        headers, rows = _vc_parse_xlsx(body)
+    else:
+        raise HTTPException(400, "Поддерживаются только .csv, .xlsx, .xlsm")
+
+    # Определяем колонки
+    name_col = _vc_find_col(headers, _VC_NAME_KEYS)
+    phone_col = _vc_find_col(headers, _VC_PHONE_KEYS)
+    source_col = _vc_find_col(headers, _VC_SOURCE_KEYS)
+
+    if phone_col < 0:
+        raise HTTPException(
+            400,
+            "Не нашёл колонку с телефоном. Заголовки должны содержать одно из: "
+            + ", ".join(_VC_PHONE_KEYS) + ". Распознанные заголовки: "
+            + ", ".join(str(h) for h in headers[:10])
+        )
+
+    # Парсим строки
+    parsed = []
+    skipped_bad_phone = 0
+    seen_phones = set()
+    for r in rows:
+        if not r or all(not str(c).strip() for c in r):
+            continue
+        phone = _vc_normalize_phone(r[phone_col] if phone_col < len(r) else "")
+        if not phone:
+            skipped_bad_phone += 1
+            continue
+        if phone in seen_phones:
+            continue
+        seen_phones.add(phone)
+        cname = r[name_col].strip() if name_col >= 0 and name_col < len(r) else ""
+        csource = r[source_col].strip() if source_col >= 0 and source_col < len(r) else source
+        raw = {str(headers[i] if i < len(headers) else f"col{i}"): str(r[i] if i < len(r) else "")
+               for i in range(max(len(headers), len(r)))}
+        parsed.append({"name": cname, "phone": phone, "source": csource, "raw": raw})
+
+    if not parsed:
+        raise HTTPException(400, f"Ни одного валидного контакта не распознано. "
+                                 f"Строк всего: {len(rows)}, с плохим телефоном: {skipped_bad_phone}")
+
+    # Создаём campaign и contacts
+    campaign_name = name.strip() or f"Загрузка {_vc_dt.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    now = _vc_dt.datetime.now().isoformat(timespec="seconds")
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO voicecall_campaigns (name, scenario_id, scenario_name, created_at, total, source) "
+            "VALUES (?,?,?,?,?,?)",
+            (campaign_name, scenario_id, scenario_id, now, len(parsed), source),
+        )
+        campaign_id = cur.lastrowid
+        for c in parsed:
+            conn.execute(
+                "INSERT INTO voicecall_contacts (campaign_id, name, phone, source, raw_data_json, "
+                "status, attempts, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (campaign_id, c["name"], c["phone"], c["source"],
+                 json.dumps(c["raw"], ensure_ascii=False), "pending", 0, now),
+            )
+
+    return {
+        "ok": True,
+        "campaign_id": campaign_id,
+        "campaign_name": campaign_name,
+        "total": len(parsed),
+        "skipped_bad_phone": skipped_bad_phone,
+        "headers_detected": {
+            "name_col": (headers[name_col] if name_col >= 0 else None),
+            "phone_col": (headers[phone_col] if phone_col >= 0 else None),
+            "source_col": (headers[source_col] if source_col >= 0 else None),
+        },
+        "preview": parsed[:5],
+    }
+
+
+@app.get("/voicecall/campaigns")
+def vc_list_campaigns(limit: int = 50):
+    limit = max(1, min(int(limit), 200))
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT c.id, c.name, c.scenario_id, c.created_at, c.total, c.source, "
+            "       SUM(CASE WHEN ct.status='pending' THEN 1 ELSE 0 END) AS pending_n, "
+            "       SUM(CASE WHEN ct.status='calling' THEN 1 ELSE 0 END) AS calling_n, "
+            "       SUM(CASE WHEN ct.status='done' THEN 1 ELSE 0 END) AS done_n, "
+            "       SUM(CASE WHEN ct.status='skipped' THEN 1 ELSE 0 END) AS skipped_n, "
+            "       SUM(CASE WHEN ct.verdict='passed' THEN 1 ELSE 0 END) AS passed_n, "
+            "       SUM(CASE WHEN ct.verdict='stopped' THEN 1 ELSE 0 END) AS stopped_n "
+            "FROM voicecall_campaigns c "
+            "LEFT JOIN voicecall_contacts ct ON ct.campaign_id = c.id "
+            "GROUP BY c.id ORDER BY c.created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "id": r["id"], "name": r["name"], "scenario_id": r["scenario_id"],
+            "created_at": r["created_at"], "total": r["total"], "source": r["source"],
+            "pending": int(r["pending_n"] or 0), "calling": int(r["calling_n"] or 0),
+            "done": int(r["done_n"] or 0), "skipped": int(r["skipped_n"] or 0),
+            "passed": int(r["passed_n"] or 0), "stopped": int(r["stopped_n"] or 0),
+        })
+    return {"items": out}
+
+
+@app.get("/voicecall/contacts")
+def vc_list_contacts(
+    campaign_id: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    limit = max(1, min(int(limit), 1000))
+    offset = max(0, int(offset))
+    wh, params = [], []
+    if campaign_id:
+        wh.append("campaign_id = ?")
+        params.append(int(campaign_id))
+    if status:
+        wh.append("status = ?")
+        params.append(status)
+    where = ("WHERE " + " AND ".join(wh)) if wh else ""
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT id, campaign_id, name, phone, source, status, verdict, stop_reason, "
+            f"       attempts, last_attempt_at, validation_id, created_at "
+            f"FROM voicecall_contacts {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM voicecall_contacts {where}", params
+        ).fetchone()[0]
+    return {
+        "items": [dict(r) for r in rows],
+        "total": int(total),
+    }
+
+
+@app.post("/voicecall/contacts/{cid}/skip")
+def vc_skip_contact(cid: int):
+    with db() as conn:
+        r = conn.execute("SELECT id FROM voicecall_contacts WHERE id=?", (cid,)).fetchone()
+        if not r:
+            raise HTTPException(404, "Contact not found")
+        conn.execute("UPDATE voicecall_contacts SET status='skipped' WHERE id=?", (cid,))
+    return {"ok": True}
+
+
+@app.post("/voicecall/contacts/{cid}/retry")
+def vc_retry_contact(cid: int):
+    with db() as conn:
+        r = conn.execute("SELECT id FROM voicecall_contacts WHERE id=?", (cid,)).fetchone()
+        if not r:
+            raise HTTPException(404, "Contact not found")
+        conn.execute(
+            "UPDATE voicecall_contacts SET status='pending', verdict=NULL, stop_reason=NULL "
+            "WHERE id=?", (cid,)
+        )
+    return {"ok": True}
+
+
+@app.delete("/voicecall/campaigns/{cid}")
+def vc_delete_campaign(cid: int):
+    with db() as conn:
+        r = conn.execute("SELECT id FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not r:
+            raise HTTPException(404, "Campaign not found")
+        conn.execute("DELETE FROM voicecall_contacts WHERE campaign_id=?", (cid,))
+        conn.execute("DELETE FROM voicecall_campaigns WHERE id=?", (cid,))
+    return {"ok": True}
