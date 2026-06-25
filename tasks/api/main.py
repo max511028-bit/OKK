@@ -3326,7 +3326,10 @@ def validator_list_results(limit: int = 50, offset: int = 0):
 
 
 @app.post("/validator/transcribe")
-async def validator_transcribe(file: UploadFile = File(...)):
+async def validator_transcribe(file: UploadFile = File(...),
+                                vocab: Optional[str] = None):
+    """Vosk транскрипция аудио → текст. Опциональный vocab — JSON-массив
+    ожидаемых слов для повышения точности (см. dialog.vocab_for_step)."""
     body = await file.read()
     if not body:
         raise HTTPException(400, "Empty audio")
@@ -3352,7 +3355,13 @@ async def validator_transcribe(file: UploadFile = File(...)):
         with _v_wave.open(out_path, "rb") as wf:
             if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 16000:
                 raise HTTPException(500, "Bad audio format after conversion")
-            rec = KaldiRecognizer(model, wf.getframerate())
+            if vocab:
+                try:
+                    rec = KaldiRecognizer(model, wf.getframerate(), vocab)
+                except Exception:
+                    rec = KaldiRecognizer(model, wf.getframerate())
+            else:
+                rec = KaldiRecognizer(model, wf.getframerate())
             rec.SetWords(False)
             while True:
                 data = wf.readframes(4000)
@@ -3735,3 +3744,189 @@ def vc_delete_campaign(cid: int):
         conn.execute("DELETE FROM voicecall_contacts WHERE campaign_id=?", (cid,))
         conn.execute("DELETE FROM voicecall_campaigns WHERE id=?", (cid,))
     return {"ok": True}
+
+# ════════════════════════════════════════════════════════════════════════
+# VOICECALL TEST — браузерный тестовый прозвон с серверным TTS+STT+Dialog
+# ════════════════════════════════════════════════════════════════════════
+
+import sys as _vt_sys
+import os as _vt_os
+import uuid as _vt_uuid
+import hashlib as _vt_hash
+import asyncio as _vt_asyncio
+from fastapi.responses import FileResponse as _vt_FileResponse
+
+# Прокидываем sys.path до voicecall/ — там лежат dialog.py и сценарии.
+# В проде путь /var/www/okk/voicecall/, у нас __file__ = /var/www/okk/tasks/api/main.py
+_VT_VOICECALL_DIR = _vt_os.path.normpath(
+    _vt_os.path.join(_vt_os.path.dirname(_vt_os.path.abspath(__file__)),
+                     "..", "..", "voicecall")
+)
+if _VT_VOICECALL_DIR not in _vt_sys.path:
+    _vt_sys.path.insert(0, _VT_VOICECALL_DIR)
+
+try:
+    from dialog import (
+        DialogSession as _VT_DialogSession,
+        load_scenario as _vt_load_scenario,
+        vocab_for_step as _vt_vocab_for_step,
+    )
+    _VT_DIALOG_OK = True
+    _VT_DIALOG_ERR = None
+except Exception as _vt_e:
+    _VT_DIALOG_OK = False
+    _VT_DIALOG_ERR = type(_vt_e).__name__ + ": " + str(_vt_e)
+
+# В памяти процесса: активные сессии теста.
+_VT_SESSIONS = {}  # session_id -> {sess, scenario, started_at, transcript}
+
+_VT_TTS_CACHE_DIR = _vt_os.path.join(_vt_os.path.dirname(_vt_os.path.abspath(__file__)),
+                                     "tts_cache")
+_vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
+
+
+def _vt_vocab_or_yesno(sess) -> Optional[list]:
+    """Подбираем словарь под текущий ожидаемый ответ."""
+    if not _VT_DIALOG_OK:
+        return None
+    if sess.pending == "lmk_follow":
+        return _vt_vocab_for_step({"expect": "yesno"})
+    cur = sess.steps[sess.i] if sess.i < len(sess.steps) else {}
+    return _vt_vocab_for_step(cur)
+
+
+@app.post("/voicecall/test/start")
+def vc_test_start(scenario_id: str = "tander-sterlitamak-pack"):
+    """Запускает новую тестовую сессию. Возвращает первый вопрос бота
+    и vocab для распознавания ответа."""
+    if not _VT_DIALOG_OK:
+        raise HTTPException(503, f"Dialog engine unavailable: {_VT_DIALOG_ERR}")
+    try:
+        scenario = _vt_load_scenario(scenario_id)
+    except Exception as e:
+        raise HTTPException(404, f"Сценарий не найден: {e}")
+    sess = _VT_DialogSession(scenario)
+    sid = _vt_uuid.uuid4().hex[:12]
+    import datetime as _dt
+    _VT_SESSIONS[sid] = {
+        "sess": sess,
+        "scenario": scenario,
+        "started_at": _dt.datetime.now().isoformat(timespec="seconds"),
+    }
+    action = sess.start()
+    return {
+        "session_id": sid,
+        "scenario_name": scenario.get("name"),
+        "bot_text": action.text,
+        "vocab": _vt_vocab_or_yesno(sess),
+        "ended": False,
+    }
+
+
+class VCTestAnswerReq(BaseModel):
+    text: str
+
+
+@app.post("/voicecall/test/{sid}/answer")
+async def vc_test_answer(sid: str, req: VCTestAnswerReq):
+    """Принимает уже распознанный текст ответа, продвигает диалог,
+    возвращает следующее действие бота (или вердикт)."""
+    if sid not in _VT_SESSIONS:
+        raise HTTPException(404, "Сессия не найдена или истекла. Начни заново.")
+    state = _VT_SESSIONS[sid]
+    sess = state["sess"]
+    action = sess.submit_answer(req.text or "")
+    ended = action.end_verdict is not None
+
+    if not ended:
+        return {
+            "bot_text": action.text,
+            "vocab": _vt_vocab_or_yesno(sess),
+            "ended": False,
+        }
+
+    # ── Звонок окончен ─────────────────────────────────────────────────
+    import datetime as _dt
+    summary_text = ""
+    try:
+        body = {
+            "model": "qwen3:8b",
+            "messages": [{
+                "role": "user",
+                "content": (
+                    "Расшифровка короткого скрининг-звонка кандидату на позицию "
+                    f"«{state['scenario'].get('name','')}». Итог: {action.end_verdict}"
+                    + ((". Причина: " + action.end_reason) if action.end_reason else "")
+                    + "\n\n"
+                    + "\n".join((("Бот" if m.get("who")=="bot" else "Кандидат") +
+                                  ": " + str(m.get("text",""))) for m in action.transcript)
+                    + "\n\nНапиши 2-3 короткие фразы РЕКРУТЕРУ: что заметил по "
+                      "кандидату, на что обратить внимание. Без эмодзи."
+                )
+            }],
+            "stream": False, "think": False,
+            "options": {"temperature": 0.5, "num_predict": 200},
+        }
+        url = _ai_get_url_for_validator() + "/api/chat"
+        async with httpx.AsyncClient(timeout=20) as cli:
+            r = await cli.post(url, json=body)
+            if r.status_code == 200:
+                summary_text = (r.json().get("message") or {}).get("content", "").strip()
+    except Exception:
+        pass
+
+    # Сохраняем в БД (та же таблица что у браузерного валидатора)
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    full_answers = dict(action.answers)
+    full_answers.update(action.notes)
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO candidate_validations "
+            "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
+            "answers_json, transcript_json, summary, browser, ip) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                state["scenario"].get("id", "unknown"),
+                state["scenario"].get("name"),
+                state["started_at"], now,
+                action.end_verdict, action.end_reason,
+                json.dumps(full_answers, ensure_ascii=False),
+                json.dumps(action.transcript, ensure_ascii=False),
+                summary_text, "browser-voicecall-test", "",
+            ),
+        )
+    # Чистим сессию
+    _VT_SESSIONS.pop(sid, None)
+
+    return {
+        "bot_text": action.text,
+        "ended": True,
+        "verdict": action.end_verdict,
+        "stop_reason": action.end_reason,
+        "answers": action.answers,
+        "notes": action.notes,
+        "transcript": action.transcript,
+        "summary": summary_text,
+    }
+
+
+@app.get("/voicecall/tts")
+async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural"):
+    """Серверный TTS через edge-tts. Кэширует MP3 на диск.
+    Голоса: ru-RU-SvetlanaNeural (женский), ru-RU-DmitryNeural (мужской)."""
+    if not text or len(text) > 5000:
+        raise HTTPException(400, "Bad text")
+    key = _vt_hash.sha1((voice + "||" + text).encode("utf-8")).hexdigest()[:16]
+    cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"{key}.mp3")
+    if not _vt_os.path.exists(cache_path):
+        try:
+            import edge_tts  # type: ignore
+        except ImportError:
+            raise HTTPException(503, "edge-tts не установлен на сервере (см. requirements.txt)")
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(cache_path)
+        except Exception as e:
+            raise HTTPException(503, f"edge-tts error: {type(e).__name__}: {e}")
+    return _vt_FileResponse(cache_path, media_type="audio/mpeg",
+                             headers={"Cache-Control": "public, max-age=86400"})

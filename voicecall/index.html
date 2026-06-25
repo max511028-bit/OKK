@@ -133,6 +133,29 @@
 
   <div class="grid">
 
+    <!-- ── Тестовый прозвон в браузере ── -->
+    <div class="card">
+      <h2>🎙 Тестовый прозвон (попробовать бота прямо здесь)</h2>
+      <p style="font-size:13px; color:var(--muted); margin:0 0 14px;">
+        Полный диалог как в реальном звонке: бот говорит голосом Светланы, ты отвечаешь в микрофон,
+        ИИ распознаёт ответы. Работает в Chrome/Edge/Firefox. Можно перебивать бота.
+        Запись звонка сохраняется в общую историю.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <button id="testStartBtn" class="primary">🎙 Начать тестовый звонок</button>
+        <button id="testStopBtn" class="danger" disabled>⏹ Прервать</button>
+        <span id="testStatus" style="font-size:13px; color:var(--muted);"></span>
+      </div>
+
+      <div id="testTranscript" style="margin-top:14px; max-height:0; overflow:hidden; transition:max-height .3s;">
+        <div style="background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 14px; min-height:160px; max-height:380px; overflow-y:auto;" id="testTranscriptInner">
+          <div style="color:var(--hint); text-align:center; font-size:13px;">Транскрипт появится здесь по ходу разговора...</div>
+        </div>
+      </div>
+
+      <div id="testResult" style="margin-top:14px; display:none;"></div>
+    </div>
+
     <!-- ── Загрузка контактов ── -->
     <div class="card">
       <h2>1. Загрузить контакты</h2>
@@ -399,6 +422,275 @@ async function deleteCampaign(cid){
   if(r.ok) loadCampaigns();
   else alert("Не удалось удалить");
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ТЕСТОВЫЙ ПРОЗВОН В БРАУЗЕРЕ
+// Бот говорит через серверный edge-TTS, мы слушаем через MediaRecorder,
+// серверный Vosk транскрибирует с vocab-подсказками.
+// ═══════════════════════════════════════════════════════════════════
+
+var TEST = {
+  sessionId: null,
+  audio: null,           // <audio> для воспроизведения реплик бота
+  recorder: null,        // MediaRecorder
+  stream: null,          // MediaStream от микрофона
+  chunks: [],            // аудио-чанки текущего ответа
+  audioCtx: null,        // AudioContext для уровня микрофона (барджин)
+  analyser: null,
+  bargeMonitorId: null,  // setInterval для проверки уровня микро
+  vocab: null,           // текущий словарь от сервера
+  ended: false,
+};
+
+var tStartBtn = document.getElementById("testStartBtn");
+var tStopBtn  = document.getElementById("testStopBtn");
+var tStatus   = document.getElementById("testStatus");
+var tWrap     = document.getElementById("testTranscript");
+var tInner    = document.getElementById("testTranscriptInner");
+var tResult   = document.getElementById("testResult");
+
+function tSetStatus(s){ tStatus.textContent = s || ""; }
+function tBubble(who, text){
+  if(tInner.children.length === 1 && tInner.children[0].style.color){
+    tInner.innerHTML = "";  // убираем placeholder
+  }
+  var div = document.createElement("div");
+  div.style.cssText = "margin-bottom:10px; padding:8px 12px; border-radius:8px; max-width:85%; font-size:13px; line-height:1.45;";
+  if(who === "bot"){
+    div.style.background = "var(--bot)";
+    div.style.color = "var(--text)";
+    div.style.borderBottomLeftRadius = "3px";
+  } else {
+    div.style.background = "var(--user)";
+    div.style.color = "var(--user-text)";
+    div.style.borderBottomRightRadius = "3px";
+    div.style.marginLeft = "auto";
+  }
+  div.textContent = (who === "bot" ? "🤖 " : "🧑 ") + text;
+  tInner.appendChild(div);
+  tInner.scrollTop = tInner.scrollHeight;
+}
+
+async function tInitMic(){
+  if(TEST.stream) return TEST.stream;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    throw new Error("Браузер не даёт доступ к микрофону. Открой через HTTPS и разреши.");
+  }
+  TEST.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true } });
+  TEST.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  var src = TEST.audioCtx.createMediaStreamSource(TEST.stream);
+  TEST.analyser = TEST.audioCtx.createAnalyser();
+  TEST.analyser.fftSize = 1024;
+  src.connect(TEST.analyser);
+  return TEST.stream;
+}
+
+function tMicLevel(){
+  if(!TEST.analyser) return 0;
+  var buf = new Uint8Array(TEST.analyser.frequencyBinCount);
+  TEST.analyser.getByteTimeDomainData(buf);
+  // RMS
+  var sum = 0;
+  for(var i=0; i<buf.length; i++){
+    var v = (buf[i] - 128) / 128;
+    sum += v*v;
+  }
+  return Math.sqrt(sum / buf.length); // 0..1
+}
+
+async function tPlayBotText(text){
+  return new Promise(function(resolve){
+    var url = API + "/voicecall/tts?text=" + encodeURIComponent(text);
+    var audio = new Audio(url);
+    TEST.audio = audio;
+    audio.onended = function(){ TEST.audio = null; resolve(); };
+    audio.onerror = function(){ TEST.audio = null; resolve(); };
+    audio.play().catch(function(){ resolve(); });
+  });
+}
+
+function tStartBargeMonitor(){
+  // Слушаем уровень микрофона пока бот говорит — если громко, обрываем
+  if(TEST.bargeMonitorId) clearInterval(TEST.bargeMonitorId);
+  var loudCount = 0;
+  var startedAt = Date.now();
+  TEST.bargeMonitorId = setInterval(function(){
+    if(!TEST.audio) { clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; return; }
+    // Первые 600мс не реагируем — даём звуку стартовать
+    if(Date.now() - startedAt < 600) return;
+    var lvl = tMicLevel();
+    if(lvl > 0.06){           // ~разговорный голос близко к мик
+      loudCount++;
+      if(loudCount >= 4){     // 4*50мс = 200мс устойчивого голоса
+        if(TEST.audio){ TEST.audio.pause(); TEST.audio = null; }
+        clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null;
+        tSetStatus("⚡ перебил бота — слушаю...");
+      }
+    } else {
+      loudCount = 0;
+    }
+  }, 50);
+}
+
+async function tRecordAndTranscribe(){
+  TEST.chunks = [];
+  var mime = "audio/webm;codecs=opus";
+  if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/webm"; }
+  if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/mp4"; }
+  TEST.recorder = new MediaRecorder(TEST.stream, { mimeType: mime });
+  TEST.recorder.ondataavailable = function(e){ if(e.data && e.data.size) TEST.chunks.push(e.data); };
+  TEST.recorder.start(100);   // чанки по 100мс
+  tSetStatus("🎙 говорите...");
+
+  // Слушаем до тишины: воспринимаем когда уровень упал ниже порога на N мс подряд
+  var startedAt = Date.now();
+  var speechSeen = false;
+  var lastLoudAt = Date.now();
+  var checkInterval = 50;
+  await new Promise(function(resolve){
+    var iv = setInterval(function(){
+      var lvl = tMicLevel();
+      var now = Date.now();
+      if(lvl > 0.04){
+        speechSeen = true;
+        lastLoudAt = now;
+      }
+      // Условия завершения:
+      // 1. Говорил, и потом тишина 0.8 сек подряд
+      if(speechSeen && (now - lastLoudAt > 800)){ clearInterval(iv); resolve(); return; }
+      // 2. Не говорил совсем 6 секунд
+      if(!speechSeen && (now - startedAt > 6000)){ clearInterval(iv); resolve(); return; }
+      // 3. Общий таймаут 20 секунд
+      if(now - startedAt > 20000){ clearInterval(iv); resolve(); return; }
+    }, checkInterval);
+  });
+
+  TEST.recorder.stop();
+  await new Promise(function(r){ TEST.recorder.onstop = r; });
+  tSetStatus("🧠 распознаю...");
+
+  if(!TEST.chunks.length){ return ""; }
+  var blob = new Blob(TEST.chunks, { type: mime });
+  var fd = new FormData();
+  fd.append("file", blob, "answer.webm");
+  var u = API + "/validator/transcribe";
+  if(TEST.vocab){ u += "?vocab=" + encodeURIComponent(JSON.stringify(TEST.vocab)); }
+  try{
+    var r = await fetch(u, { method: "POST", body: fd });
+    if(!r.ok) return "";
+    var d = await r.json();
+    return (d.text || "").trim();
+  } catch(e){ return ""; }
+}
+
+async function tStart(){
+  tStartBtn.disabled = true; tStopBtn.disabled = false;
+  tResult.style.display = "none";
+  tInner.innerHTML = "<div style='color:var(--hint); text-align:center; font-size:13px;'>Включаю микрофон...</div>";
+  tWrap.style.maxHeight = "440px";
+  TEST.ended = false;
+
+  try{
+    await tInitMic();
+  } catch(e){
+    tInner.innerHTML = "<div style='color:var(--bad); padding:20px; text-align:center;'>" + escHtml(e.message) + "</div>";
+    tStartBtn.disabled = false; tStopBtn.disabled = true;
+    return;
+  }
+  tInner.innerHTML = "";
+  tSetStatus("🚀 стартую сессию...");
+
+  try{
+    var r = await fetch(API + "/voicecall/test/start", { method: "POST" });
+    if(!r.ok){
+      var t = await r.text().catch(function(){ return r.statusText; });
+      throw new Error("HTTP " + r.status + ": " + t.slice(0, 200));
+    }
+    var data = await r.json();
+    TEST.sessionId = data.session_id;
+    TEST.vocab = data.vocab;
+
+    // Цикл диалога
+    var botText = data.bot_text;
+    while(!TEST.ended){
+      tBubble("bot", botText);
+      tSetStatus("🔊 говорит бот (можно перебить)");
+      var playPromise = tPlayBotText(botText);
+      tStartBargeMonitor();
+      await playPromise;
+      if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
+
+      var userText = await tRecordAndTranscribe();
+      if(userText){
+        tBubble("user", userText);
+      } else {
+        tBubble("user", "(молчание)");
+      }
+
+      tSetStatus("📤 отправляю...");
+      var ar = await fetch(API + "/voicecall/test/" + TEST.sessionId + "/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: userText || "" })
+      });
+      if(!ar.ok){
+        var et = await ar.text().catch(function(){ return ar.statusText; });
+        throw new Error("answer HTTP " + ar.status + ": " + et.slice(0, 200));
+      }
+      var ad = await ar.json();
+      botText = ad.bot_text;
+      TEST.vocab = ad.vocab;
+
+      if(ad.ended){
+        if(botText){ tBubble("bot", botText); await tPlayBotText(botText); }
+        tShowResult(ad);
+        TEST.ended = true;
+        break;
+      }
+    }
+  } catch(e){
+    tBubble("bot", "❌ Ошибка: " + e.message);
+  } finally {
+    tSetStatus("");
+    tStartBtn.disabled = false; tStopBtn.disabled = true;
+  }
+}
+
+function tShowResult(ad){
+  var pillClass = ad.verdict === "passed" ? "passed" :
+                  ad.verdict === "declined" ? "skipped" : "stopped";
+  var pillText = ad.verdict === "passed" ? "✓ ГОДЕН" :
+                 ad.verdict === "declined" ? "Отказался" : "✗ СТОП";
+  var html = "<div class='card' style='background:var(--surface2);'>" +
+    "<h2 style='margin-top:0'><span class='pill " + pillClass + "'>" + pillText + "</span>";
+  if(ad.stop_reason){ html += " <span style='font-size:13px; color:var(--muted); font-weight:normal;'>" + escHtml(ad.stop_reason) + "</span>"; }
+  html += "</h2>";
+  if(ad.summary){
+    html += "<div style='background:var(--accent-soft); border:1px solid #1c3a6b; padding:10px 14px; border-radius:8px; margin:10px 0; font-size:13px; color:#cfe0fb;'>" +
+            "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br>" + escHtml(ad.summary) + "</div>";
+  }
+  var rows = "";
+  for(var k in (ad.answers || {})){ rows += "<tr><td style='color:var(--muted); padding:3px 8px;'>" + escHtml(k) + "</td><td style='padding:3px 8px; text-align:right;'>" + escHtml(ad.answers[k]) + "</td></tr>"; }
+  for(var n in (ad.notes || {})){ rows += "<tr><td style='color:var(--muted); padding:3px 8px;'>" + escHtml(n) + " <span style='opacity:.6; font-size:11px;'>(заметка)</span></td><td style='padding:3px 8px; text-align:right;'>" + escHtml(ad.notes[n]) + "</td></tr>"; }
+  if(rows){
+    html += "<table style='width:100%; font-size:13px; border-collapse:collapse;'>" + rows + "</table>";
+  }
+  html += "<div style='font-size:11px; color:var(--muted); margin-top:10px;'>Сохранено в общую историю прозвонов</div></div>";
+  tResult.innerHTML = html;
+  tResult.style.display = "block";
+}
+
+function tStop(){
+  if(TEST.audio){ try{ TEST.audio.pause(); }catch(e){} TEST.audio = null; }
+  if(TEST.recorder && TEST.recorder.state === "recording"){ try{ TEST.recorder.stop(); }catch(e){} }
+  if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
+  TEST.ended = true;
+  tSetStatus("⏹ остановлено");
+  tStartBtn.disabled = false; tStopBtn.disabled = true;
+}
+
+tStartBtn.addEventListener("click", tStart);
+tStopBtn.addEventListener("click", tStop);
 
 // Стартуем
 loadCampaigns();

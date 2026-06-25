@@ -5,6 +5,7 @@ httpx>=0.27.0
 python-multipart>=0.0.9
 vosk>=0.3.45
 openpyxl>=3.1.0
+edge-tts>=6.1.10
 # Google API для ИИ-Рекрутера
 gspread>=6.0.0
 oauth2client>=4.1.3
