@@ -3,3 +3,6 @@
 
 # Pure-Python SIP клиент — ставится без компиляторов
 pyVoIP>=1.6.5
+
+# audioop удалён из stdlib в Python 3.13+, ставим backport чтобы pyVoIP работал
+audioop-lts>=0.2.0; python_version >= "3.13"
