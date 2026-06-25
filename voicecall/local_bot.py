@@ -63,6 +63,96 @@ def play_pcm_8khz(pcm: bytes):
     sd.wait()
 
 
+def play_with_interruption(pcm: bytes,
+                            interrupt_threshold_mult: float = 2.5,
+                            interrupt_min_rms: float = 1200.0,
+                            interrupt_sustain_ms: int = 250,
+                            baseline_warmup_ms: int = 600) -> bool:
+    """Играет TTS-аудио и параллельно слушает микрофон. Если детектирует
+    громкий сигнал на микрофоне (явно громче эхо из колонок) — обрывает
+    воспроизведение и возвращает True.
+
+    Это barge-in: можно начать говорить когда бот ещё не дозакончил.
+
+    Параметры:
+      interrupt_threshold_mult — во сколько раз громкость должна превысить
+        baseline чтобы засчитать как прерывание (2.5 = в 2.5 раза громче)
+      interrupt_min_rms        — минимальный абсолютный уровень (защита от
+        слишком тихого baseline на старте)
+      interrupt_sustain_ms     — сколько мс должно быть громко подряд
+        (фильтр от мгновенных хлопков/щелчков)
+      baseline_warmup_ms       — сколько мс в начале НЕ детектим прерывание
+        (даём эхо колонок «прогреться» в baseline)
+    """
+    import numpy as np
+    import sounddevice as sd
+    if not pcm:
+        return False
+
+    samples = np.frombuffer(pcm, dtype=np.int16)
+    sd.play(samples, samplerate=8000, blocking=False)
+
+    # Микрофон 16kHz, чанки по 50мс
+    mic_sr = 16000
+    chunk_samples = int(mic_sr * 0.05)  # 50мс
+    mic = sd.RawInputStream(samplerate=mic_sr, channels=1, dtype="int16",
+                            blocksize=chunk_samples)
+    mic.start()
+    baseline_samples = []   # для оценки уровня эхо во время воспроизведения
+    loud_sustained_ms = 0   # счётчик «громко подряд»
+    started = time.time()
+    interrupted = False
+
+    try:
+        while True:
+            # Проверяем, играет ли ещё аудио
+            try:
+                still_playing = sd.get_stream().active
+            except Exception:
+                still_playing = False
+            if not still_playing:
+                break
+
+            try:
+                data, _ = mic.read(chunk_samples)
+            except Exception:
+                break
+            np_data = np.frombuffer(bytes(data), dtype=np.int16).astype(np.float32)
+            rms = float(np.sqrt(np.mean(np_data ** 2))) if np_data.size else 0.0
+
+            elapsed_ms = (time.time() - started) * 1000
+            # Прогрев: первые 600мс просто копим baseline эхо
+            if elapsed_ms < baseline_warmup_ms:
+                baseline_samples.append(rms)
+                continue
+            # Поддерживаем baseline скользящим средним
+            baseline_samples.append(rms)
+            if len(baseline_samples) > 30:
+                baseline_samples.pop(0)
+            baseline = max(float(np.median(baseline_samples)), 200.0)
+
+            if rms > baseline * interrupt_threshold_mult and rms > interrupt_min_rms:
+                loud_sustained_ms += 50
+                if loud_sustained_ms >= interrupt_sustain_ms:
+                    interrupted = True
+                    try: sd.stop()
+                    except Exception: pass
+                    break
+            else:
+                loud_sustained_ms = 0
+    finally:
+        try:
+            mic.stop()
+            mic.close()
+        except Exception:
+            pass
+
+    if not interrupted:
+        try: sd.wait()
+        except Exception: pass
+    return interrupted
+
+
 def listen_until_silence(
     sample_rate: int = 16000,
     silence_after_speech_sec: float = 0.7,    # было 1.5 — режем задержку
@@ -173,14 +263,18 @@ def run(scenario_id: str):
     while True:
         if action.kind in ("speak_then_listen", "speak_then_end"):
             print(f"\n[БОТ]  {action.text}")
-            # синтез теперь почти мгновенный — берём из кэша
             pcm = synthesize_telephony_pcm(action.text)
-            play_pcm_8khz(pcm)
+            if action.kind == "speak_then_end":
+                # На финальной фразе барджин не нужен — просто играем до конца
+                play_pcm_8khz(pcm)
+            else:
+                interrupted = play_with_interruption(pcm)
+                if interrupted:
+                    print("  ⚡ перебил бота — слушаю...")
         if action.kind != "speak_then_listen":
             break
         # Vocab под ожидаемый тип ответа — резко поднимает точность Vosk
         if sess.pending == "lmk_follow":
-            # после «Нет ЛМК?» ждём yes/no про согласие на изготовление
             vocab = vocab_for_step({"expect": "yesno"})
         else:
             cur_step = sess.steps[sess.i] if sess.i < len(sess.steps) else {}
