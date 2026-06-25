@@ -1,4 +1,4 @@
-# STH voicecall — установщик зависимостей на Windows-ПК
+﻿# STH voicecall — установщик зависимостей на Windows-ПК
 # Запуск:
 #   powershell -ExecutionPolicy Bypass -File voicecall\install_windows.ps1
 
