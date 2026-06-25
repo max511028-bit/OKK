@@ -3911,22 +3911,56 @@ async def vc_test_answer(sid: str, req: VCTestAnswerReq):
 
 
 @app.get("/voicecall/tts")
-async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural"):
-    """Серверный TTS через edge-tts. Кэширует MP3 на диск.
-    Голоса: ru-RU-SvetlanaNeural (женский), ru-RU-DmitryNeural (мужской)."""
+async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
+                  rate: str = "+10%"):
+    """Серверный TTS через edge-tts → ffmpeg trim silence → MP3.
+    Голоса: ru-RU-SvetlanaNeural (Светлана), ru-RU-DmitryNeural (Дмитрий).
+    rate: +0%, +10%, +20% (медленнее: -10%, -20%)."""
     if not text or len(text) > 5000:
         raise HTTPException(400, "Bad text")
-    key = _vt_hash.sha1((voice + "||" + text).encode("utf-8")).hexdigest()[:16]
+    # Нормализуем rate
+    rate = rate.strip()
+    if not rate.startswith(("+", "-")):
+        rate = "+" + rate
+    if not rate.endswith("%"):
+        rate = rate + "%"
+    key = _vt_hash.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
     cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"{key}.mp3")
     if not _vt_os.path.exists(cache_path):
         try:
             import edge_tts  # type: ignore
         except ImportError:
             raise HTTPException(503, "edge-tts не установлен на сервере (см. requirements.txt)")
+        tmp_raw = cache_path + ".raw.mp3"
         try:
-            communicate = edge_tts.Communicate(text, voice)
-            await communicate.save(cache_path)
+            communicate = edge_tts.Communicate(text, voice, rate=rate)
+            await communicate.save(tmp_raw)
         except Exception as e:
             raise HTTPException(503, f"edge-tts error: {type(e).__name__}: {e}")
+        # Обрезаем хвостовую тишину (edge-tts вставляет ~300-500мс) +
+        # начальную если есть. Без этого после фразы ощутимая пауза перед
+        # тем как бот переходит к слушанию.
+        try:
+            import imageio_ffmpeg  # type: ignore
+            ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            ff_exe = "ffmpeg"
+        try:
+            proc = _v_sp.run([
+                ff_exe, "-y", "-loglevel", "error", "-i", tmp_raw,
+                "-af", ("silenceremove=start_periods=1:start_duration=0.05:"
+                        "start_threshold=-45dB:stop_periods=-1:"
+                        "stop_duration=0.15:stop_threshold=-40dB"),
+                "-codec:a", "libmp3lame", "-q:a", "4", cache_path,
+            ], capture_output=True, timeout=15)
+            if proc.returncode != 0 or not _vt_os.path.exists(cache_path):
+                # ffmpeg отвалился — отдаём как есть
+                _vt_os.rename(tmp_raw, cache_path)
+            else:
+                try: _vt_os.unlink(tmp_raw)
+                except Exception: pass
+        except Exception:
+            try: _vt_os.rename(tmp_raw, cache_path)
+            except Exception: pass
     return _vt_FileResponse(cache_path, media_type="audio/mpeg",
                              headers={"Cache-Control": "public, max-age=86400"})

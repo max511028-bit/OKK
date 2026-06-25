@@ -137,13 +137,41 @@
     <div class="card">
       <h2>🎙 Тестовый прозвон (попробовать бота прямо здесь)</h2>
       <p style="font-size:13px; color:var(--muted); margin:0 0 14px;">
-        Полный диалог как в реальном звонке: бот говорит голосом Светланы, ты отвечаешь в микрофон,
+        Полный диалог как в реальном звонке: бот говорит, ты отвечаешь в микрофон,
         ИИ распознаёт ответы. Работает в Chrome/Edge/Firefox. Можно перебивать бота.
         Запись звонка сохраняется в общую историю.
       </p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Голос
+          <select id="testVoice" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
+            <option value="ru-RU-SvetlanaNeural">Светлана (женский)</option>
+            <option value="ru-RU-DmitryNeural">Дмитрий (мужской)</option>
+          </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Скорость
+          <select id="testRate" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
+            <option value="-10%">Медленнее (-10%)</option>
+            <option value="+0%">Нормально</option>
+            <option value="+10%" selected>Быстрее (+10%)</option>
+            <option value="+20%">Ещё быстрее (+20%)</option>
+            <option value="+30%">Очень быстро (+30%)</option>
+          </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Чувствительность барджина
+          <select id="testBargeSens" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
+            <option value="0.04">Высокая (легко перебить)</option>
+            <option value="0.06" selected>Средняя</option>
+            <option value="0.10">Низкая (только громкий голос)</option>
+            <option value="off">Выключен</option>
+          </select>
+        </label>
+      </div>
+
       <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
         <button id="testStartBtn" class="primary">🎙 Начать тестовый звонок</button>
         <button id="testStopBtn" class="danger" disabled>⏹ Прервать</button>
+        <button id="testDebugBtn" class="small" style="margin-left:auto;">🐛 Дебаг-лог</button>
         <span id="testStatus" style="font-size:13px; color:var(--muted);"></span>
       </div>
 
@@ -151,6 +179,16 @@
         <div style="background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 14px; min-height:160px; max-height:380px; overflow-y:auto;" id="testTranscriptInner">
           <div style="color:var(--hint); text-align:center; font-size:13px;">Транскрипт появится здесь по ходу разговора...</div>
         </div>
+      </div>
+
+      <!-- Дебаг-лог: для скриншотов когда что-то не так -->
+      <div id="testDebugWrap" style="margin-top:12px; display:none;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <strong style="font-size:12px; color:var(--muted);">Дебаг-лог:</strong>
+          <button class="small" onclick="navigator.clipboard.writeText(TEST.logs.map(function(l){return l.line;}).join('\n')); this.textContent='✓ скопировано';">Скопировать</button>
+          <button class="small" onclick="TEST.logs=[]; document.getElementById('testDebugBody').innerHTML='';">Очистить</button>
+        </div>
+        <pre id="testDebugBody" style="background:#0a0c11; border:1px solid var(--line); border-radius:6px; padding:10px 12px; max-height:240px; overflow-y:auto; font-family:'JetBrains Mono', Consolas, monospace; font-size:11px; line-height:1.5; color:#cbd5e1; margin:0; white-space:pre-wrap; word-break:break-word;"></pre>
       </div>
 
       <div id="testResult" style="margin-top:14px; display:none;"></div>
@@ -431,16 +469,44 @@ async function deleteCampaign(cid){
 
 var TEST = {
   sessionId: null,
-  audio: null,           // <audio> для воспроизведения реплик бота
-  recorder: null,        // MediaRecorder
-  stream: null,          // MediaStream от микрофона
-  chunks: [],            // аудио-чанки текущего ответа
-  audioCtx: null,        // AudioContext для уровня микрофона (барджин)
+  audio: null,
+  audioResolve: null,    // ← храним функцию resolve чтобы корректно
+                         //   завершить промис при перебивании или ошибке
+  recorder: null,
+  stream: null,
+  chunks: [],
+  audioCtx: null,
   analyser: null,
-  bargeMonitorId: null,  // setInterval для проверки уровня микро
-  vocab: null,           // текущий словарь от сервера
+  bargeMonitorId: null,
+  vocab: null,
   ended: false,
+  voice: "ru-RU-SvetlanaNeural",
+  rate: "+10%",
+  bargeSens: 0.06,       // 0 = выкл
+  logs: [],
 };
+
+function tLog(msg, level){
+  level = level || "info";
+  var ts = new Date().toLocaleTimeString("ru-RU", {hour12:false}) +
+           "." + String(new Date().getMilliseconds()).padStart(3,"0");
+  var line = "[" + ts + "] " + msg;
+  TEST.logs.push({line: line, level: level});
+  var body = document.getElementById("testDebugBody");
+  if(body){
+    var d = document.createElement("div");
+    d.style.color = level === "err"  ? "#f87171" :
+                    level === "warn" ? "#f59e0b" :
+                    level === "ok"   ? "#86efac" : "#cbd5e1";
+    d.textContent = line;
+    body.appendChild(d);
+    body.scrollTop = body.scrollHeight;
+  }
+  // и в браузерную консоль, чтобы можно было скопировать сразу оттуда
+  if(level === "err") console.error(line);
+  else if(level === "warn") console.warn(line);
+  else console.log(line);
+}
 
 var tStartBtn = document.getElementById("testStartBtn");
 var tStopBtn  = document.getElementById("testStopBtn");
@@ -498,32 +564,65 @@ function tMicLevel(){
   return Math.sqrt(sum / buf.length); // 0..1
 }
 
+// Жёстко гасим текущее аудио и резолвим зависший промис (если был)
+function tStopAudio(reason){
+  if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
+  if(TEST.audio){
+    try{ TEST.audio.pause(); TEST.audio.currentTime = 0; TEST.audio.src = ""; }catch(e){}
+    try{ TEST.audio.load(); }catch(e){}
+    TEST.audio = null;
+  }
+  if(TEST.audioResolve){
+    var r = TEST.audioResolve;
+    TEST.audioResolve = null;
+    tLog("audio resolve forced: " + (reason || "?"), "warn");
+    r(reason || "stopped");
+  }
+}
+
 async function tPlayBotText(text){
+  // Если что-то уже играло — гасим. На случай гонки между шагами.
+  tStopAudio("new-play");
   return new Promise(function(resolve){
-    var url = API + "/voicecall/tts?text=" + encodeURIComponent(text);
+    var url = API + "/voicecall/tts?text=" + encodeURIComponent(text)
+            + "&voice=" + encodeURIComponent(TEST.voice)
+            + "&rate="  + encodeURIComponent(TEST.rate);
     var audio = new Audio(url);
     TEST.audio = audio;
-    audio.onended = function(){ TEST.audio = null; resolve(); };
-    audio.onerror = function(){ TEST.audio = null; resolve(); };
-    audio.play().catch(function(){ resolve(); });
+    TEST.audioResolve = resolve;
+    tLog("audio.play start: \"" + text.slice(0, 60) + "...\"");
+    audio.onended = function(){
+      tLog("audio.onended (natural)", "ok");
+      if(TEST.audio === audio) TEST.audio = null;
+      if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("ended"); }
+    };
+    audio.onerror = function(e){
+      tLog("audio.onerror: " + (audio.error ? audio.error.message : "?"), "err");
+      if(TEST.audio === audio) TEST.audio = null;
+      if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("error"); }
+    };
+    audio.play().catch(function(e){
+      tLog("audio.play() rejected: " + e.message, "err");
+      if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("rejected"); }
+    });
   });
 }
 
 function tStartBargeMonitor(){
-  // Слушаем уровень микрофона пока бот говорит — если громко, обрываем
   if(TEST.bargeMonitorId) clearInterval(TEST.bargeMonitorId);
+  if(TEST.bargeSens <= 0){ tLog("barge-in disabled"); return; }
+  var threshold = TEST.bargeSens;
   var loudCount = 0;
   var startedAt = Date.now();
   TEST.bargeMonitorId = setInterval(function(){
-    if(!TEST.audio) { clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; return; }
-    // Первые 600мс не реагируем — даём звуку стартовать
-    if(Date.now() - startedAt < 600) return;
+    if(!TEST.audio){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; return; }
+    if(Date.now() - startedAt < 600) return;  // warmup
     var lvl = tMicLevel();
-    if(lvl > 0.06){           // ~разговорный голос близко к мик
+    if(lvl > threshold){
       loudCount++;
-      if(loudCount >= 4){     // 4*50мс = 200мс устойчивого голоса
-        if(TEST.audio){ TEST.audio.pause(); TEST.audio = null; }
-        clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null;
+      if(loudCount >= 4){   // 4*50мс = 200мс устойчивого голоса
+        tLog("BARGE-IN detected (mic lvl " + lvl.toFixed(3) + " > " + threshold + ")", "warn");
+        tStopAudio("barge-in");
         tSetStatus("⚡ перебил бота — слушаю...");
       }
     } else {
@@ -537,50 +636,90 @@ async function tRecordAndTranscribe(){
   var mime = "audio/webm;codecs=opus";
   if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/webm"; }
   if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/mp4"; }
-  TEST.recorder = new MediaRecorder(TEST.stream, { mimeType: mime });
+  tLog("recorder.start mime=" + mime);
+  try{
+    TEST.recorder = new MediaRecorder(TEST.stream, { mimeType: mime });
+  }catch(e){
+    tLog("MediaRecorder ctor failed: " + e.message, "err");
+    return "";
+  }
   TEST.recorder.ondataavailable = function(e){ if(e.data && e.data.size) TEST.chunks.push(e.data); };
-  TEST.recorder.start(100);   // чанки по 100мс
+  TEST.recorder.start(100);
   tSetStatus("🎙 говорите...");
 
-  // Слушаем до тишины: воспринимаем когда уровень упал ниже порога на N мс подряд
   var startedAt = Date.now();
   var speechSeen = false;
   var lastLoudAt = Date.now();
-  var checkInterval = 50;
+  var bargeFromInterrupt = TEST.bargeMonitorId === null;
+  // Если мы только что перебили бота — пользователь уже говорит, не ждём «начала речи»
+  if(bargeFromInterrupt){
+    speechSeen = true;
+    lastLoudAt = Date.now();
+  }
   await new Promise(function(resolve){
     var iv = setInterval(function(){
       var lvl = tMicLevel();
       var now = Date.now();
       if(lvl > 0.04){
+        if(!speechSeen) tLog("speech started (lvl " + lvl.toFixed(3) + ")");
         speechSeen = true;
         lastLoudAt = now;
       }
-      // Условия завершения:
-      // 1. Говорил, и потом тишина 0.8 сек подряд
-      if(speechSeen && (now - lastLoudAt > 800)){ clearInterval(iv); resolve(); return; }
-      // 2. Не говорил совсем 6 секунд
-      if(!speechSeen && (now - startedAt > 6000)){ clearInterval(iv); resolve(); return; }
-      // 3. Общий таймаут 20 секунд
-      if(now - startedAt > 20000){ clearInterval(iv); resolve(); return; }
-    }, checkInterval);
+      if(speechSeen && (now - lastLoudAt > 800)){
+        clearInterval(iv);
+        tLog("silence after speech > 800ms — stop recording");
+        resolve(); return;
+      }
+      if(!speechSeen && (now - startedAt > 6000)){
+        clearInterval(iv);
+        tLog("no speech 6s — stop recording", "warn");
+        resolve(); return;
+      }
+      if(now - startedAt > 20000){
+        clearInterval(iv);
+        tLog("recording timeout 20s — stop", "warn");
+        resolve(); return;
+      }
+    }, 50);
   });
 
-  TEST.recorder.stop();
-  await new Promise(function(r){ TEST.recorder.onstop = r; });
-  tSetStatus("🧠 распознаю...");
+  try{
+    if(TEST.recorder.state === "recording"){
+      var stoppedP = new Promise(function(r){ TEST.recorder.onstop = r; });
+      TEST.recorder.stop();
+      await stoppedP;
+    }
+  }catch(e){ tLog("recorder.stop error: " + e.message, "err"); }
 
-  if(!TEST.chunks.length){ return ""; }
+  tLog("recorder stopped, chunks=" + TEST.chunks.length);
+  if(!TEST.chunks.length){
+    tLog("0 chunks — пользователь молчал", "warn");
+    return "";
+  }
   var blob = new Blob(TEST.chunks, { type: mime });
+  tLog("blob size=" + blob.size + " bytes, mime=" + mime);
+
+  tSetStatus("🧠 распознаю...");
   var fd = new FormData();
   fd.append("file", blob, "answer.webm");
   var u = API + "/validator/transcribe";
   if(TEST.vocab){ u += "?vocab=" + encodeURIComponent(JSON.stringify(TEST.vocab)); }
   try{
+    tLog("POST " + u.split("?")[0] + (TEST.vocab ? " (with vocab " + TEST.vocab.length + " words)" : ""));
     var r = await fetch(u, { method: "POST", body: fd });
-    if(!r.ok) return "";
+    if(!r.ok){
+      var et = await r.text().catch(function(){ return r.statusText; });
+      tLog("transcribe HTTP " + r.status + ": " + et.slice(0,200), "err");
+      return "";
+    }
     var d = await r.json();
-    return (d.text || "").trim();
-  } catch(e){ return ""; }
+    var txt = (d.text || "").trim();
+    tLog("transcribed: \"" + txt + "\"", txt ? "ok" : "warn");
+    return txt;
+  } catch(e){
+    tLog("transcribe fetch failed: " + e.message, "err");
+    return "";
+  }
 }
 
 async function tStart(){
@@ -590,9 +729,19 @@ async function tStart(){
   tWrap.style.maxHeight = "440px";
   TEST.ended = false;
 
+  // Считываем настройки из UI
+  TEST.voice = document.getElementById("testVoice").value;
+  TEST.rate  = document.getElementById("testRate").value;
+  var bs = document.getElementById("testBargeSens").value;
+  TEST.bargeSens = (bs === "off") ? 0 : parseFloat(bs);
+  tLog("=== SESSION START ===", "ok");
+  tLog("voice=" + TEST.voice + " rate=" + TEST.rate + " bargeSens=" + TEST.bargeSens);
+
   try{
     await tInitMic();
+    tLog("microphone OK", "ok");
   } catch(e){
+    tLog("microphone fail: " + e.message, "err");
     tInner.innerHTML = "<div style='color:var(--bad); padding:20px; text-align:center;'>" + escHtml(e.message) + "</div>";
     tStartBtn.disabled = false; tStopBtn.disabled = true;
     return;
@@ -601,6 +750,7 @@ async function tStart(){
   tSetStatus("🚀 стартую сессию...");
 
   try{
+    tLog("POST /voicecall/test/start");
     var r = await fetch(API + "/voicecall/test/start", { method: "POST" });
     if(!r.ok){
       var t = await r.text().catch(function(){ return r.statusText; });
@@ -609,16 +759,18 @@ async function tStart(){
     var data = await r.json();
     TEST.sessionId = data.session_id;
     TEST.vocab = data.vocab;
+    tLog("session " + TEST.sessionId + " started, scenario=\"" + (data.scenario_name||"?") + "\"", "ok");
 
-    // Цикл диалога
     var botText = data.bot_text;
     while(!TEST.ended){
       tBubble("bot", botText);
       tSetStatus("🔊 говорит бот (можно перебить)");
       var playPromise = tPlayBotText(botText);
       tStartBargeMonitor();
-      await playPromise;
+      var playResult = await playPromise;
+      tLog("play resolved with: " + playResult);
       if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
+      if(TEST.ended) break;
 
       var userText = await tRecordAndTranscribe();
       if(userText){
@@ -626,8 +778,10 @@ async function tStart(){
       } else {
         tBubble("user", "(молчание)");
       }
+      if(TEST.ended) break;
 
       tSetStatus("📤 отправляю...");
+      tLog("POST /voicecall/test/" + TEST.sessionId + "/answer text=\"" + userText + "\"");
       var ar = await fetch(API + "/voicecall/test/" + TEST.sessionId + "/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -638,6 +792,7 @@ async function tStart(){
         throw new Error("answer HTTP " + ar.status + ": " + et.slice(0, 200));
       }
       var ad = await ar.json();
+      tLog("got next bot_text, ended=" + ad.ended);
       botText = ad.bot_text;
       TEST.vocab = ad.vocab;
 
@@ -645,12 +800,15 @@ async function tStart(){
         if(botText){ tBubble("bot", botText); await tPlayBotText(botText); }
         tShowResult(ad);
         TEST.ended = true;
+        tLog("=== SESSION ENDED verdict=" + ad.verdict + " ===", "ok");
         break;
       }
     }
   } catch(e){
+    tLog("ERROR in main loop: " + e.message, "err");
     tBubble("bot", "❌ Ошибка: " + e.message);
   } finally {
+    tStopAudio("cleanup");
     tSetStatus("");
     tStartBtn.disabled = false; tStopBtn.disabled = true;
   }
@@ -681,16 +839,24 @@ function tShowResult(ad){
 }
 
 function tStop(){
-  if(TEST.audio){ try{ TEST.audio.pause(); }catch(e){} TEST.audio = null; }
-  if(TEST.recorder && TEST.recorder.state === "recording"){ try{ TEST.recorder.stop(); }catch(e){} }
-  if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
+  tLog("=== STOP requested by user ===", "warn");
   TEST.ended = true;
+  tStopAudio("user-stop");
+  if(TEST.recorder && TEST.recorder.state === "recording"){
+    try{ TEST.recorder.stop(); }catch(e){}
+  }
   tSetStatus("⏹ остановлено");
   tStartBtn.disabled = false; tStopBtn.disabled = true;
 }
 
 tStartBtn.addEventListener("click", tStart);
 tStopBtn.addEventListener("click", tStop);
+
+// Toggle дебаг-лога
+document.getElementById("testDebugBtn").addEventListener("click", function(){
+  var w = document.getElementById("testDebugWrap");
+  w.style.display = (w.style.display === "none") ? "block" : "none";
+});
 
 // Стартуем
 loadCampaigns();
