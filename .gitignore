@@ -37,6 +37,7 @@ dist/
 voicecall/tts_cache/
 voicecall/assets/*.wav
 voicecall/__pycache__/
+voicecall/vosk-model/
 
 # IDE / OS
 .vscode/
