@@ -33,6 +33,11 @@ dist/
 # Локальные launcher-папки
 %LOCALAPPDATA%/sth-ai-launcher/
 
+# Voicecall локальные артефакты (генерируемые, не нужны в репо)
+voicecall/tts_cache/
+voicecall/assets/*.wav
+voicecall/__pycache__/
+
 # IDE / OS
 .vscode/
 .idea/

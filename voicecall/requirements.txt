@@ -6,3 +6,9 @@ pyVoIP>=1.6.5
 
 # audioop удалён из stdlib в Python 3.13+, ставим backport чтобы pyVoIP работал
 audioop-lts>=0.2.0; python_version >= "3.13"
+
+# TTS — нейросетевой голос Microsoft Edge (русские DmitryNeural / DariyaNeural)
+edge-tts>=6.1.10
+
+# ffmpeg-бинарник для конверсии mp3→pcm 8kHz для SIP-телефонии
+imageio-ffmpeg>=0.5.1
