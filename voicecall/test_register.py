@@ -8,6 +8,13 @@
 import sys
 import time
 
+# Чиним вывод эмодзи/кириллицы на Windows (Python 3.13+ всё ещё может падать в cp1251)
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from _sip_config import get_local_ip, load_env, require
 
 try:

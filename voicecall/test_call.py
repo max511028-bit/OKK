@@ -19,6 +19,13 @@ import time
 import wave
 from pathlib import Path
 
+# Чиним вывод эмодзи/кириллицы на Windows
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from _sip_config import get_local_ip, load_env, require
 
 try:

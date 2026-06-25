@@ -27,15 +27,29 @@ def load_env() -> dict:
 
 
 def get_local_ip() -> str:
-    """Локальный IP в LAN — нужен pyVoIP'у для RTP. 0.0.0.0 не годится за NAT."""
+    """Локальный IP в LAN — нужен pyVoIP'у для RTP. 0.0.0.0 не годится за NAT.
+    Игнорируем docker/WSL bridge'ы (172.x), берём только обычный LAN (192.168.x / 10.x)."""
+    # 1) Стандартный трюк — какой IP роутится наружу
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    candidate = None
     try:
         s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        candidate = s.getsockname()[0]
     except Exception:
-        return "127.0.0.1"
+        pass
     finally:
         s.close()
+
+    # Если попался docker/WSL bridge — ищем настоящий LAN IP через hostname
+    if candidate and candidate.startswith(("172.17.", "172.18.", "172.19.", "172.20.")):
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                ip = info[4][0]
+                if ip.startswith(("192.168.", "10.")) and not ip.startswith("127."):
+                    return ip
+        except Exception:
+            pass
+    return candidate or "127.0.0.1"
 
 
 def require(env: dict, key: str) -> str:
