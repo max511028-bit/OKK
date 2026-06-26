@@ -568,7 +568,9 @@ function tMicLevel(){
 function tStopAudio(reason){
   if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
   if(TEST.audio){
-    try{ TEST.audio.pause(); TEST.audio.currentTime = 0; TEST.audio.src = ""; }catch(e){}
+    // Заглушаем onerror — иначе чистка src="" даст ложный MEDIA_ELEMENT_ERROR
+    try{ TEST.audio.onerror = null; }catch(e){}
+    try{ TEST.audio.pause(); TEST.audio.currentTime = 0; TEST.audio.removeAttribute("src"); }catch(e){}
     try{ TEST.audio.load(); }catch(e){}
     TEST.audio = null;
   }
@@ -631,12 +633,12 @@ function tStartBargeMonitor(){
   }, 50);
 }
 
-async function tRecordAndTranscribe(){
+async function tRecordAndTranscribe(wasBargeIn){
   TEST.chunks = [];
   var mime = "audio/webm;codecs=opus";
   if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/webm"; }
   if(!MediaRecorder.isTypeSupported(mime)){ mime = "audio/mp4"; }
-  tLog("recorder.start mime=" + mime);
+  tLog("recorder.start mime=" + mime + (wasBargeIn ? " [after barge-in]" : ""));
   try{
     TEST.recorder = new MediaRecorder(TEST.stream, { mimeType: mime });
   }catch(e){
@@ -650,9 +652,8 @@ async function tRecordAndTranscribe(){
   var startedAt = Date.now();
   var speechSeen = false;
   var lastLoudAt = Date.now();
-  var bargeFromInterrupt = TEST.bargeMonitorId === null;
-  // Если мы только что перебили бота — пользователь уже говорит, не ждём «начала речи»
-  if(bargeFromInterrupt){
+  // ТОЛЬКО при реальном barge-in кандидат уже говорит — иначе ждём начала речи
+  if(wasBargeIn){
     speechSeen = true;
     lastLoudAt = Date.now();
   }
@@ -786,7 +787,7 @@ async function tStart(){
         ttsFailCount = 0;
       }
 
-      var userText = await tRecordAndTranscribe();
+      var userText = await tRecordAndTranscribe(playResult === "barge-in");
       if(userText){
         tBubble("user", userText);
       } else {
@@ -794,13 +795,15 @@ async function tStart(){
       }
       if(TEST.ended) break;
 
-      tSetStatus("📤 отправляю...");
+      tSetStatus("🧠 анализирую ответ... (может занять до 10 сек на неоднозначных)");
       tLog("POST /voicecall/test/" + TEST.sessionId + "/answer text=\"" + userText + "\"");
+      var answerT0 = Date.now();
       var ar = await fetch(API + "/voicecall/test/" + TEST.sessionId + "/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: userText || "" })
       });
+      tLog("answer responded in " + (Date.now() - answerT0) + "ms");
       if(!ar.ok){
         var et = await ar.text().catch(function(){ return ar.statusText; });
         throw new Error("answer HTTP " + ar.status + ": " + et.slice(0, 200));
