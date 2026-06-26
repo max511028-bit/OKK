@@ -50,6 +50,53 @@ def _norm(s: str) -> str:
     return s
 
 
+# Карта русских числительных 0-99
+_NUM_WORDS = {
+    "ноль": 0,
+    "один": 1, "одна": 1, "одно": 1,
+    "два": 2, "две": 2, "три": 3, "четыре": 4, "пять": 5,
+    "шесть": 6, "семь": 7, "восемь": 8, "девять": 9,
+    "десять": 10, "одиннадцать": 11, "двенадцать": 12,
+    "тринадцать": 13, "четырнадцать": 14, "пятнадцать": 15,
+    "шестнадцать": 16, "семнадцать": 17, "восемнадцать": 18,
+    "девятнадцать": 19,
+    "двадцать": 20, "тридцать": 30, "сорок": 40,
+    "пятьдесят": 50, "шестьдесят": 60, "семьдесят": 70,
+    "восемьдесят": 80, "девяносто": 90, "сто": 100,
+}
+
+
+def parse_age_from_text(raw: str) -> Optional[int]:
+    """Извлекает возраст из текста. Сначала ищет цифры, потом слова.
+    «двадцать девять» → 29, «27 лет» → 27, «мне сорок» → 40.
+    Возвращает None если не нашёл."""
+    if not raw:
+        return None
+    # 1) Цифры
+    m = re.search(r"\d{1,3}", raw)
+    if m:
+        return int(m.group(0))
+    # 2) Слова
+    words = _norm(raw).split()
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if w not in _NUM_WORDS:
+            i += 1
+            continue
+        val = _NUM_WORDS[w]
+        # десятки + единицы: «двадцать девять» = 29
+        if val in (20, 30, 40, 50, 60, 70, 80, 90):
+            if i + 1 < len(words):
+                next_w = words[i + 1]
+                if next_w in _NUM_WORDS:
+                    next_val = _NUM_WORDS[next_w]
+                    if 1 <= next_val <= 9:
+                        val += next_val
+        return val
+    return None
+
+
 def interpret(step: dict, raw: str) -> dict:
     """Regex-парсер ответа кандидата. Возвращает {val, stop?}.
     val == "unclear" если не понял — тогда вызывают LLM fallback."""
@@ -87,10 +134,9 @@ def interpret(step: dict, raw: str) -> dict:
         return {"val": "unclear"}
 
     if expect == "age":
-        m = re.search(r"\d{1,3}", t)
-        if not m:
+        a = parse_age_from_text(raw)
+        if a is None:
             return {"val": "unclear"}
-        a = int(m.group(0))
         if a < step.get("min", 18) or a > step.get("max", 45):
             return {"val": a, "stop": True}
         return {"val": a}
