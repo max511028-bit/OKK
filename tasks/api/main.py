@@ -4077,6 +4077,83 @@ def admin_vosk_install_log():
         return {"log": f"(read error: {e})", "exists": True}
 
 
+@app.post("/admin/vosk-upload")
+async def admin_vosk_upload(file: UploadFile = File(...)):
+    """Принимает .zip с Vosk-моделью (vosk-model-small-ru-0.22.zip),
+    распаковывает в /var/www/okk/tasks/api/vosk-model. Запасной путь
+    когда alphacephei.com не качается с VPS — пользователь скачивает
+    локально, грузит curl-ом сюда (45 МБ за пару секунд)."""
+    import zipfile as _zf
+    import shutil as _sh
+    import tempfile as _tmp
+
+    body = await file.read()
+    if not body:
+        raise HTTPException(400, "Пустой файл")
+    if len(body) > 200 * 1024 * 1024:
+        raise HTTPException(413, f"Слишком большой: {len(body)} > 200 МБ")
+
+    model_dir = "/var/www/okk/tasks/api/vosk-model"
+    log = [f"received {len(body)} bytes"]
+
+    # Сохраняем во временный файл
+    fd, zip_path = _tmp.mkstemp(suffix=".zip", prefix="vosk-upload-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(body)
+        log.append(f"saved to {zip_path}")
+
+        # Распаковка
+        extract_to = "/tmp/vosk-upload-extract"
+        if os.path.exists(extract_to):
+            _sh.rmtree(extract_to)
+        os.makedirs(extract_to, exist_ok=True)
+        with _zf.ZipFile(zip_path) as zf:
+            zf.extractall(extract_to)
+        log.append("extracted")
+
+        # Находим корневую папку модели внутри (обычно vosk-model-small-ru-0.22)
+        entries = os.listdir(extract_to)
+        if len(entries) == 1 and os.path.isdir(os.path.join(extract_to, entries[0])):
+            src = os.path.join(extract_to, entries[0])
+        else:
+            # Файлы лежат прямо в корне zip
+            src = extract_to
+
+        must_have = ("am", "conf", "graph")
+        for sub in must_have:
+            if not os.path.isdir(os.path.join(src, sub)):
+                raise HTTPException(400, f"Не Vosk-модель: внутри нет папки {sub}")
+
+        # Сносим старую модель если есть, перемещаем новую
+        if os.path.exists(model_dir):
+            _sh.rmtree(model_dir)
+        _sh.move(src, model_dir)
+        log.append(f"moved to {model_dir}")
+
+        # Сбрасываем кэш модели в воркере
+        global _vosk_model, _vosk_load_error
+        _vosk_model = None
+        _vosk_load_error = None
+
+        # Чистим
+        try:
+            if os.path.exists(extract_to): _sh.rmtree(extract_to)
+        except Exception: pass
+
+        contents = sorted(os.listdir(model_dir))
+        return {
+            "ok": True,
+            "status": "installed",
+            "path": model_dir,
+            "contents": contents,
+            "log": log,
+        }
+    finally:
+        try: os.unlink(zip_path)
+        except Exception: pass
+
+
 @app.get("/admin/vosk-status")
 def admin_vosk_status():
     """Статус Vosk модели на VPS."""

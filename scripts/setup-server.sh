@@ -47,7 +47,8 @@ location /tasks/api/ {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_read_timeout 60s;
-    client_max_body_size 30m;     # для загрузки ТЗ-файлов до 25 МБ + запас
+    client_max_body_size 100m;    # ТЗ-файлы (до 25 МБ) + загрузка Vosk-модели (~45 МБ) + запас
+    proxy_request_buffering off;  # стримим upload без буферизации (для больших файлов)
 }
 NGINX_EOF
 
