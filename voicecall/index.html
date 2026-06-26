@@ -762,6 +762,7 @@ async function tStart(){
     tLog("session " + TEST.sessionId + " started, scenario=\"" + (data.scenario_name||"?") + "\"", "ok");
 
     var botText = data.bot_text;
+    var ttsFailCount = 0;
     while(!TEST.ended){
       tBubble("bot", botText);
       tSetStatus("🔊 говорит бот (можно перебить)");
@@ -771,6 +772,19 @@ async function tStart(){
       tLog("play resolved with: " + playResult);
       if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
       if(TEST.ended) break;
+
+      // Если TTS сыпется — не идём по сценарию как зомби. После 2 подряд — стоп.
+      if(playResult === "error" || playResult === "rejected"){
+        ttsFailCount++;
+        if(ttsFailCount >= 2){
+          throw new Error("TTS не отдаёт аудио (2 фразы подряд). Открой " +
+                          "https://portalsth.ru/tasks/api/voicecall/tts?text=test " +
+                          "в браузере и пришли что вернулось.");
+        }
+        tLog("TTS fail #" + ttsFailCount + ", продолжаю — может одна фраза не сгенерилась", "warn");
+      } else {
+        ttsFailCount = 0;
+      }
 
       var userText = await tRecordAndTranscribe();
       if(userText){

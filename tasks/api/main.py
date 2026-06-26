@@ -3924,6 +3924,12 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
         rate = "+" + rate
     if not rate.endswith("%"):
         rate = rate + "%"
+    # На каждый вызов гарантируем существование папки — иначе FileNotFoundError
+    # если module-level makedirs() не отработал в окружении systemd
+    try:
+        _vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(500, f"Cannot create tts_cache dir: {e}")
     key = _vt_hash.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
     cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"{key}.mp3")
     if not _vt_os.path.exists(cache_path):

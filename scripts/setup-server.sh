@@ -196,22 +196,54 @@ if [ -f "$TASKS_DIR/main.py" ]; then
     apt-get install -y -qq unzip
   fi
 
-  # Vosk-модель для русского распознавания (small, ~45 МБ — нормально для коротких ответов)
+  # Vosk-модель для русского распознавания (small, ~45 МБ — нормально для коротких ответов).
+  # Проверяем не просто существование папки, а наличие обязательных подпапок —
+  # пустая/недокачанная папка vosk-model раньше вводила нас в заблуждение.
   VOSK_DIR="$TASKS_DIR/vosk-model"
-  if [ ! -d "$VOSK_DIR" ]; then
+  VOSK_OK=0
+  if [ -d "$VOSK_DIR/am" ] && [ -d "$VOSK_DIR/conf" ] && [ -d "$VOSK_DIR/graph" ]; then
+    VOSK_OK=1
+    echo "[validator] Vosk model already present at $VOSK_DIR"
+  fi
+  if [ "$VOSK_OK" = "0" ]; then
     echo "[validator] downloading Vosk RU small model..."
+    rm -rf "$VOSK_DIR"
     cd /tmp
     rm -rf vosk-model-small-ru-0.22 vosk-model-small-ru-0.22.zip
-    if wget -q "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"; then
-      unzip -q vosk-model-small-ru-0.22.zip
-      mv vosk-model-small-ru-0.22 "$VOSK_DIR"
-      rm -f vosk-model-small-ru-0.22.zip
-      echo "[validator] Vosk model installed at $VOSK_DIR"
+    # Несколько ретраев + verbose чтобы видеть в логах CI что происходит
+    DL_OK=0
+    for try in 1 2 3; do
+      if wget --tries=3 --timeout=60 -O vosk-model-small-ru-0.22.zip \
+              "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"; then
+        DL_OK=1
+        break
+      else
+        echo "[validator] wget try $try failed, retrying..."
+        sleep 3
+      fi
+    done
+    if [ "$DL_OK" = "1" ] && [ -s vosk-model-small-ru-0.22.zip ]; then
+      if unzip -q vosk-model-small-ru-0.22.zip; then
+        mv vosk-model-small-ru-0.22 "$VOSK_DIR"
+        rm -f vosk-model-small-ru-0.22.zip
+        if [ -d "$VOSK_DIR/am" ] && [ -d "$VOSK_DIR/conf" ] && [ -d "$VOSK_DIR/graph" ]; then
+          echo "[validator] ✅ Vosk model installed at $VOSK_DIR"
+        else
+          echo "[validator] ❌ скачали, но внутри $VOSK_DIR нет am/conf/graph — поломанный архив?"
+          ls -la "$VOSK_DIR" || true
+        fi
+      else
+        echo "[validator] ❌ unzip failed"
+      fi
     else
-      echo "[validator] WARN: не удалось скачать Vosk-модель, валидатор будет ругаться при попытке распознать аудио"
+      echo "[validator] ❌ не удалось скачать Vosk-модель за 3 попытки. Транскрипция работать не будет."
     fi
     cd -
   fi
+
+  # Создаём папку tts_cache заранее с правильными правами — чтобы не упал TTS
+  mkdir -p "$TASKS_DIR/tts_cache"
+  chmod 755 "$TASKS_DIR/tts_cache"
 
   # Use a virtualenv to avoid system package conflicts (PEP 668)
   VENV="$TASKS_DIR/.venv"
