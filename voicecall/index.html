@@ -590,9 +590,14 @@ async function tPlayBotText(text){
             + "&voice=" + encodeURIComponent(TEST.voice)
             + "&rate="  + encodeURIComponent(TEST.rate);
     var audio = new Audio(url);
+    audio.preload = "auto";
     TEST.audio = audio;
     TEST.audioResolve = resolve;
-    tLog("audio.play start: \"" + text.slice(0, 60) + "...\"");
+    var fetchStart = Date.now();
+    tLog("audio fetch start: \"" + text.slice(0, 50) + "...\"");
+    audio.onplaying = function(){
+      tLog("audio PLAYING (fetched in " + (Date.now() - fetchStart) + "ms)", "ok");
+    };
     audio.onended = function(){
       tLog("audio.onended (natural)", "ok");
       if(TEST.audio === audio) TEST.audio = null;
@@ -840,10 +845,15 @@ function tShowResult(ad){
     "<h2 style='margin-top:0'><span class='pill " + pillClass + "'>" + pillText + "</span>";
   if(ad.stop_reason){ html += " <span style='font-size:13px; color:var(--muted); font-weight:normal;'>" + escHtml(ad.stop_reason) + "</span>"; }
   html += "</h2>";
-  if(ad.summary){
-    html += "<div style='background:var(--accent-soft); border:1px solid #1c3a6b; padding:10px 14px; border-radius:8px; margin:10px 0; font-size:13px; color:#cfe0fb;'>" +
-            "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br>" + escHtml(ad.summary) + "</div>";
-  }
+
+  // Блок «Вывод для рекрутера» — если summary ещё не готов (генерится в фоне),
+  // показываем плейсхолдер и поллим раз в 2 сек.
+  var summaryHtml = ad.summary
+    ? "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br>" + escHtml(ad.summary)
+    : "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br><span style='color:var(--muted); font-style:italic;'>⏳ ИИ дописывает вывод... (обычно 1-3 секунды)</span>";
+  html += "<div id='testSummaryBlock' style='background:var(--accent-soft); border:1px solid #1c3a6b; padding:10px 14px; border-radius:8px; margin:10px 0; font-size:13px; color:#cfe0fb;'>" +
+          summaryHtml + "</div>";
+
   var rows = "";
   for(var k in (ad.answers || {})){ rows += "<tr><td style='color:var(--muted); padding:3px 8px;'>" + escHtml(k) + "</td><td style='padding:3px 8px; text-align:right;'>" + escHtml(ad.answers[k]) + "</td></tr>"; }
   for(var n in (ad.notes || {})){ rows += "<tr><td style='color:var(--muted); padding:3px 8px;'>" + escHtml(n) + " <span style='opacity:.6; font-size:11px;'>(заметка)</span></td><td style='padding:3px 8px; text-align:right;'>" + escHtml(ad.notes[n]) + "</td></tr>"; }
@@ -853,6 +863,38 @@ function tShowResult(ad){
   html += "<div style='font-size:11px; color:var(--muted); margin-top:10px;'>Сохранено в общую историю прозвонов</div></div>";
   tResult.innerHTML = html;
   tResult.style.display = "block";
+
+  // Запускаем polling summary если он ещё не готов
+  if(!ad.summary && ad.validation_id){
+    tPollSummary(ad.validation_id, 0);
+  }
+}
+
+function tPollSummary(validationId, attempt){
+  if(attempt > 20){  // макс 20*2 = 40 сек, дальше сдаёмся
+    var b = document.getElementById("testSummaryBlock");
+    if(b){
+      b.innerHTML = "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br>" +
+                    "<span style='color:var(--bad);'>ИИ не успел сгенерировать вывод за 40 секунд. Возможно Ollama тормозит.</span>";
+    }
+    return;
+  }
+  setTimeout(function(){
+    fetch(API + "/voicecall/test/summary/" + validationId)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.ready && d.summary){
+          tLog("summary received after " + ((attempt+1)*2) + "s", "ok");
+          var b = document.getElementById("testSummaryBlock");
+          if(b){
+            b.innerHTML = "<strong style='color:#7ea7d8;'>🤖 Вывод для рекрутера:</strong><br>" + escHtml(d.summary);
+          }
+        } else {
+          tPollSummary(validationId, attempt + 1);
+        }
+      })
+      .catch(function(){ tPollSummary(validationId, attempt + 1); });
+  }, 2000);
 }
 
 function tStop(){

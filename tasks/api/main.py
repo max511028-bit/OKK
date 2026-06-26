@@ -3866,40 +3866,15 @@ async def vc_test_answer(sid: str, req: VCTestAnswerReq):
 
     # ── Звонок окончен ─────────────────────────────────────────────────
     import datetime as _dt
-    summary_text = ""
-    try:
-        body = {
-            "model": "qwen3:8b",
-            "messages": [{
-                "role": "user",
-                "content": (
-                    "Расшифровка короткого скрининг-звонка кандидату на позицию "
-                    f"«{state['scenario'].get('name','')}». Итог: {action.end_verdict}"
-                    + ((". Причина: " + action.end_reason) if action.end_reason else "")
-                    + "\n\n"
-                    + "\n".join((("Бот" if m.get("who")=="bot" else "Кандидат") +
-                                  ": " + str(m.get("text",""))) for m in action.transcript)
-                    + "\n\nНапиши 2-3 короткие фразы РЕКРУТЕРУ: что заметил по "
-                      "кандидату, на что обратить внимание. Без эмодзи."
-                )
-            }],
-            "stream": False, "think": False,
-            "options": {"temperature": 0.5, "num_predict": 200},
-        }
-        url = _ai_get_url_for_validator() + "/api/chat"
-        async with httpx.AsyncClient(timeout=20) as cli:
-            r = await cli.post(url, json=body)
-            if r.status_code == 200:
-                summary_text = (r.json().get("message") or {}).get("content", "").strip()
-    except Exception:
-        pass
+    import asyncio as _vt_asyncio
 
-    # Сохраняем в БД (та же таблица что у браузерного валидатора)
+    # Сразу сохраняем результат БЕЗ summary — отвечаем фронту моментально.
+    # Summary генерится в фоне и допишется в БД позже.
     now = _dt.datetime.now().isoformat(timespec="seconds")
     full_answers = dict(action.answers)
     full_answers.update(action.notes)
     with db() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO candidate_validations "
             "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
             "answers_json, transcript_json, summary, browser, ip) "
@@ -3911,11 +3886,18 @@ async def vc_test_answer(sid: str, req: VCTestAnswerReq):
                 action.end_verdict, action.end_reason,
                 json.dumps(full_answers, ensure_ascii=False),
                 json.dumps(action.transcript, ensure_ascii=False),
-                summary_text, "browser-voicecall-test", "",
+                None, "browser-voicecall-test", "",  # summary = NULL пока
             ),
         )
+        validation_id = cur.lastrowid
+
     # Чистим сессию
     _VT_SESSIONS.pop(sid, None)
+
+    # Стартуем генерацию summary в фоне (не блокируем ответ фронту)
+    _vt_asyncio.create_task(_vc_test_generate_summary_bg(
+        validation_id, state["scenario"].get("name", ""), action
+    ))
 
     return {
         "bot_text": action.text,
@@ -3925,8 +3907,78 @@ async def vc_test_answer(sid: str, req: VCTestAnswerReq):
         "answers": action.answers,
         "notes": action.notes,
         "transcript": action.transcript,
-        "summary": summary_text,
+        "validation_id": validation_id,
+        "summary": None,  # будет позже через /voicecall/test/summary/{id}
     }
+
+
+async def _vc_test_generate_summary_bg(validation_id: int,
+                                        scenario_name: str,
+                                        action) -> None:
+    """Фоновая генерация Qwen-summary после завершения звонка.
+    Использует qwen3:1.7b — баланс между скоростью (1-2с) и качеством."""
+    transcript_text = "\n".join(
+        (("Бот" if m.get("who") == "bot" else "Кандидат") + ": " + str(m.get("text", "")))
+        for m in action.transcript
+    )
+    reason = ((". Причина: " + action.end_reason) if action.end_reason else "")
+    prompt = (
+        f"Расшифровка короткого скрининг-звонка кандидату на позицию «{scenario_name}». "
+        f"Итог: {action.end_verdict}{reason}\n\n"
+        f"{transcript_text}\n\n"
+        f"Напиши 2-3 короткие фразы РЕКРУТЕРУ: что заметил по кандидату, на что "
+        f"обратить внимание. Без эмодзи."
+    )
+    # Перебираем модели по возрастанию размера — сначала быстрая
+    model_candidates = [
+        ("qwen3:1.7b", 8.0),
+        ("qwen3:8b",   15.0),
+    ]
+    url = _ai_get_url_for_validator() + "/api/chat"
+    summary_text = ""
+    for model_name, timeout_s in model_candidates:
+        body = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False, "think": False,
+            "options": {"temperature": 0.5, "num_predict": 200},
+        }
+        try:
+            async with httpx.AsyncClient(timeout=timeout_s) as cli:
+                r = await cli.post(url, json=body)
+                if r.status_code == 404:
+                    continue  # модель не установлена
+                if r.status_code != 200:
+                    continue
+                summary_text = (r.json().get("message") or {}).get("content", "").strip()
+                if summary_text:
+                    break
+        except Exception:
+            continue
+    # Дописываем в БД (может быть пустая строка если все модели сломались)
+    try:
+        with db() as conn:
+            conn.execute(
+                "UPDATE candidate_validations SET summary=? WHERE id=?",
+                (summary_text or "(ИИ не сгенерировал вывод)", validation_id),
+            )
+    except Exception:
+        pass
+
+
+@app.get("/voicecall/test/summary/{validation_id}")
+def vc_test_get_summary(validation_id: int):
+    """Возвращает summary конкретного завершённого звонка. Polling-эндпоинт
+    для фронта — после ended=true он может дёргать сюда раз в 2 сек пока
+    summary не появится."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT summary FROM candidate_validations WHERE id=?",
+            (validation_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Validation not found")
+    return {"summary": row["summary"], "ready": row["summary"] is not None}
 
 
 @app.get("/voicecall/tts")
