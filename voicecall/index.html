@@ -469,9 +469,9 @@ async function deleteCampaign(cid){
 
 var TEST = {
   sessionId: null,
-  audio: null,
-  audioResolve: null,    // ← храним функцию resolve чтобы корректно
-                         //   завершить промис при перебивании или ошибке
+  audio: null,             // persistent <audio> элемент, см. tInitAudioElement
+  audioResolve: null,      // resolve функция текущего play-промиса
+  audioUnlocked: false,    // мобила требует play() в sync click handler
   recorder: null,
   stream: null,
   chunks: [],
@@ -482,9 +482,32 @@ var TEST = {
   ended: false,
   voice: "ru-RU-SvetlanaNeural",
   rate: "+10%",
-  bargeSens: 0.06,       // 0 = выкл
+  bargeSens: 0.06,
   logs: [],
 };
+
+// 1-секундный «беззвучный» MP3 в base64 — играем его в click handler
+// чтобы разблокировать autoplay на мобильных браузерах
+var SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA////////////////////////////////////////////////////////////AAAAAExhdmM1OC41NAAAAAAAAAAAAAAAACQEsAAAAAAAAAJxRWaH9wAAAAAAAAAAAAAAAAAAAAAAAAAA//sQxAAB8AABpAAAACAAADSAAAAETEFNRTMuMTAwVVU=";
+
+function tUnlockAudioOnce(){
+  // ОБЯЗАТЕЛЬНО синхронно в click handler — иначе мобила не пустит autoplay
+  if(TEST.audioUnlocked) return;
+  try{
+    if(!TEST.audio){
+      TEST.audio = new Audio();
+      TEST.audio.setAttribute("playsinline", "");  // iOS hint
+      TEST.audio.preload = "auto";
+    }
+    TEST.audio.src = SILENT_MP3;
+    var p = TEST.audio.play();
+    if(p && p.catch) p.catch(function(){});
+    TEST.audioUnlocked = true;
+    tLog("audio unlocked for session (mobile autoplay bypass)");
+  }catch(e){
+    tLog("audio unlock failed: " + e.message, "warn");
+  }
+}
 
 function tLog(msg, level){
   level = level || "info";
@@ -564,15 +587,13 @@ function tMicLevel(){
   return Math.sqrt(sum / buf.length); // 0..1
 }
 
-// Жёстко гасим текущее аудио и резолвим зависший промис (если был)
+// Останавливаем воспроизведение и резолвим зависший промис.
+// НЕ уничтожаем элемент — он разблокирован в click handler и переиспользуется.
 function tStopAudio(reason){
   if(TEST.bargeMonitorId){ clearInterval(TEST.bargeMonitorId); TEST.bargeMonitorId = null; }
   if(TEST.audio){
-    // Заглушаем onerror — иначе чистка src="" даст ложный MEDIA_ELEMENT_ERROR
-    try{ TEST.audio.onerror = null; }catch(e){}
-    try{ TEST.audio.pause(); TEST.audio.currentTime = 0; TEST.audio.removeAttribute("src"); }catch(e){}
-    try{ TEST.audio.load(); }catch(e){}
-    TEST.audio = null;
+    try{ TEST.audio.onerror = null; }catch(e){}  // защита от Empty src error
+    try{ TEST.audio.pause(); }catch(e){}
   }
   if(TEST.audioResolve){
     var r = TEST.audioResolve;
@@ -583,35 +604,50 @@ function tStopAudio(reason){
 }
 
 async function tPlayBotText(text){
-  // Если что-то уже играло — гасим. На случай гонки между шагами.
-  tStopAudio("new-play");
+  // Гасим резолв если что-то висит (но НЕ удаляем элемент — переиспользуем)
+  if(TEST.audioResolve){
+    var oldR = TEST.audioResolve;
+    TEST.audioResolve = null;
+    try{ oldR("new-play"); }catch(e){}
+  }
   return new Promise(function(resolve){
     var url = API + "/voicecall/tts?text=" + encodeURIComponent(text)
             + "&voice=" + encodeURIComponent(TEST.voice)
             + "&rate="  + encodeURIComponent(TEST.rate);
-    var audio = new Audio(url);
-    audio.preload = "auto";
-    TEST.audio = audio;
+    // Используем ТОТ ЖЕ Audio элемент что разблокирован в click handler
+    var audio = TEST.audio;
+    if(!audio){
+      tLog("audio element not initialized — creating now (autoplay может не сработать на мобиле)", "warn");
+      audio = new Audio();
+      audio.setAttribute("playsinline", "");
+      audio.preload = "auto";
+      TEST.audio = audio;
+    }
     TEST.audioResolve = resolve;
     var fetchStart = Date.now();
     tLog("audio fetch start: \"" + text.slice(0, 50) + "...\"");
+
+    // Чистим обработчики от предыдущей фразы
     audio.onplaying = function(){
       tLog("audio PLAYING (fetched in " + (Date.now() - fetchStart) + "ms)", "ok");
     };
     audio.onended = function(){
       tLog("audio.onended (natural)", "ok");
-      if(TEST.audio === audio) TEST.audio = null;
       if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("ended"); }
     };
     audio.onerror = function(e){
-      tLog("audio.onerror: " + (audio.error ? audio.error.message : "?"), "err");
-      if(TEST.audio === audio) TEST.audio = null;
+      var msg = audio.error ? (audio.error.message || ("code " + audio.error.code)) : "?";
+      tLog("audio.onerror: " + msg, "err");
       if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("error"); }
     };
-    audio.play().catch(function(e){
-      tLog("audio.play() rejected: " + e.message, "err");
-      if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("rejected"); }
-    });
+    audio.src = url;
+    var p = audio.play();
+    if(p && p.catch){
+      p.catch(function(e){
+        tLog("audio.play() rejected: " + e.name + ": " + e.message, "err");
+        if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("rejected"); }
+      });
+    }
   });
 }
 
@@ -911,7 +947,14 @@ function tStop(){
   tStartBtn.disabled = false; tStopBtn.disabled = true;
 }
 
-tStartBtn.addEventListener("click", tStart);
+tStartBtn.addEventListener("click", function(ev){
+  // КРИТИЧЕСКИ ВАЖНО для мобильных браузеров:
+  // unlock аудио ДОЛЖЕН быть синхронно в click handler — до любых await.
+  // Иначе мобильные браузеры (особенно iOS) блокируют autoplay позже.
+  tUnlockAudioOnce();
+  // Дальше уже async — но autoplay уже разрешён до конца сессии
+  tStart();
+});
 tStopBtn.addEventListener("click", tStop);
 
 // Toggle дебаг-лога
