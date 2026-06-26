@@ -3976,96 +3976,105 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
 # Нужно если setup-server.sh не справился сам (например wget сфейлил).
 # ════════════════════════════════════════════════════════════════════════
 
-@app.post("/admin/vosk-install")
-async def admin_vosk_install(request: Request, force: bool = False):
-    """Скачивает и распаковывает Vosk RU small (~45 МБ) на VPS.
-    Если модель уже установлена, возвращает её статус (force=true чтобы переустановить).
-    Не требует админ-токена — это публичный эндпоинт ради простоты бутстрапа."""
+_VOSK_INSTALL_LOG = "/var/www/okk/tasks/api/vosk-install.log"
+
+
+def _vosk_install_thread(force: bool):
+    """Запускается в отдельном потоке — не блокирует FastAPI воркер.
+    Прогресс пишет в файл /var/www/okk/tasks/api/vosk-install.log."""
     import urllib.request as _ur
     import zipfile as _zf
     import shutil as _sh
     import time as _t
+    import datetime as _dt
+
+    def _w(msg):
+        line = _dt.datetime.now().strftime("%H:%M:%S") + " " + msg
+        print("[vosk-install]", line, flush=True)
+        try:
+            with open(_VOSK_INSTALL_LOG, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception:
+            pass
 
     model_dir = "/var/www/okk/tasks/api/vosk-model"
-    must_have = ("am", "conf", "graph")
-    is_valid = all(os.path.isdir(os.path.join(model_dir, s)) for s in must_have)
-
-    if is_valid and not force:
-        return {
-            "ok": True,
-            "status": "already_installed",
-            "path": model_dir,
-            "contents": sorted(os.listdir(model_dir)),
-        }
-
-    # Сносим если есть кривое
-    if os.path.exists(model_dir):
-        try:
-            _sh.rmtree(model_dir)
-        except Exception as e:
-            return {"ok": False, "error": f"cannot remove {model_dir}: {e}"}
-
     url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
     zip_path = "/tmp/vosk-model-small-ru-0.22.zip"
     extract_tmp = "/tmp/vosk-model-small-ru-0.22"
-
     t0 = _t.time()
-    log = [f"start: url={url}"]
 
-    # Чистим прошлые попытки
-    for p in (zip_path, extract_tmp):
-        if os.path.exists(p):
-            try:
+    try:
+        if os.path.exists(model_dir):
+            _w(f"removing existing {model_dir}")
+            _sh.rmtree(model_dir)
+        for p in (zip_path, extract_tmp):
+            if os.path.exists(p):
                 if os.path.isdir(p): _sh.rmtree(p)
                 else: os.unlink(p)
-            except Exception:
-                pass
-
-    # Качаем
-    try:
+        _w(f"downloading {url}")
         _ur.urlretrieve(url, zip_path)
-        log.append(f"downloaded {os.path.getsize(zip_path)} bytes in {_t.time()-t0:.1f}s")
-    except Exception as e:
-        return {"ok": False, "stage": "download", "error": f"{type(e).__name__}: {e}", "log": log}
-
-    # Распаковываем
-    try:
+        sz = os.path.getsize(zip_path)
+        _w(f"downloaded {sz} bytes in {_t.time()-t0:.1f}s")
+        _w("extracting...")
         with _zf.ZipFile(zip_path) as zf:
             zf.extractall("/tmp/")
-        log.append(f"extracted to {extract_tmp}")
-    except Exception as e:
-        return {"ok": False, "stage": "extract", "error": f"{type(e).__name__}: {e}", "log": log}
-
-    # Переносим
-    try:
+        _w(f"extracted to {extract_tmp}")
         _sh.move(extract_tmp, model_dir)
-        log.append(f"moved to {model_dir}")
+        _w(f"moved to {model_dir}")
+        try: os.unlink(zip_path)
+        except Exception: pass
+        must_have = ("am", "conf", "graph")
+        ok = all(os.path.isdir(os.path.join(model_dir, s)) for s in must_have)
+        _w(f"validation am/conf/graph: {ok}")
+        # Инвалидируем кэш модели чтоб /validator/transcribe подтянул свежую
+        global _vosk_model, _vosk_load_error
+        _vosk_model = None
+        _vosk_load_error = None
+        _w(f"DONE in {_t.time()-t0:.1f}s, status={'OK' if ok else 'INCOMPLETE'}")
     except Exception as e:
-        return {"ok": False, "stage": "move", "error": f"{type(e).__name__}: {e}", "log": log}
+        _w(f"FAILED: {type(e).__name__}: {e}")
 
-    # Чистим
-    try: os.unlink(zip_path)
-    except Exception: pass
 
-    # Проверяем валидность
-    contents = sorted(os.listdir(model_dir)) if os.path.isdir(model_dir) else []
+@app.post("/admin/vosk-install")
+def admin_vosk_install(force: bool = False):
+    """Стартует скачивание Vosk-модели в фоне (не блокирует API).
+    Прогресс смотри через GET /admin/vosk-install-log
+    Статус готовности через GET /admin/vosk-status"""
+    import threading
+    model_dir = "/var/www/okk/tasks/api/vosk-model"
+    must_have = ("am", "conf", "graph")
     is_valid = all(os.path.isdir(os.path.join(model_dir, s)) for s in must_have)
-    log.append(f"validation: am/conf/graph present = {is_valid}")
-    log.append(f"total elapsed: {_t.time()-t0:.1f}s")
+    if is_valid and not force:
+        return {"ok": True, "status": "already_installed", "path": model_dir}
 
-    # Сбрасываем кэш модели в воркере чтобы он перезагрузил
-    global _vosk_model, _vosk_load_error
-    _vosk_model = None
-    _vosk_load_error = None
-    log.append("model cache invalidated, next /validator/transcribe загрузит свежую")
+    # Чистим лог
+    try:
+        if os.path.exists(_VOSK_INSTALL_LOG):
+            os.unlink(_VOSK_INSTALL_LOG)
+    except Exception:
+        pass
 
+    t = threading.Thread(target=_vosk_install_thread, args=(force,), daemon=True)
+    t.start()
     return {
-        "ok": is_valid,
-        "status": "installed" if is_valid else "incomplete",
-        "path": model_dir,
-        "contents": contents,
-        "log": log,
+        "ok": True,
+        "status": "started_in_background",
+        "log_url": "/tasks/api/admin/vosk-install-log",
+        "status_url": "/tasks/api/admin/vosk-status",
+        "hint": "Подожди 30-90 секунд, потом проверь /admin/vosk-status. Прогресс в /admin/vosk-install-log",
     }
+
+
+@app.get("/admin/vosk-install-log")
+def admin_vosk_install_log():
+    """Лог фоновой установки Vosk."""
+    if not os.path.exists(_VOSK_INSTALL_LOG):
+        return {"log": "", "exists": False}
+    try:
+        with open(_VOSK_INSTALL_LOG, "r", encoding="utf-8") as f:
+            return {"log": f.read(), "exists": True}
+    except Exception as e:
+        return {"log": f"(read error: {e})", "exists": True}
 
 
 @app.get("/admin/vosk-status")
