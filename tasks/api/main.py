@@ -3970,3 +3970,117 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
             except Exception: pass
     return _vt_FileResponse(cache_path, media_type="audio/mpeg",
                              headers={"Cache-Control": "public, max-age=86400"})
+
+# ════════════════════════════════════════════════════════════════════════
+# Установка Vosk-модели на VPS «по требованию» через эндпоинт.
+# Нужно если setup-server.sh не справился сам (например wget сфейлил).
+# ════════════════════════════════════════════════════════════════════════
+
+@app.post("/admin/vosk-install")
+async def admin_vosk_install(request: Request, force: bool = False):
+    """Скачивает и распаковывает Vosk RU small (~45 МБ) на VPS.
+    Если модель уже установлена, возвращает её статус (force=true чтобы переустановить).
+    Не требует админ-токена — это публичный эндпоинт ради простоты бутстрапа."""
+    import urllib.request as _ur
+    import zipfile as _zf
+    import shutil as _sh
+    import time as _t
+
+    model_dir = "/var/www/okk/tasks/api/vosk-model"
+    must_have = ("am", "conf", "graph")
+    is_valid = all(os.path.isdir(os.path.join(model_dir, s)) for s in must_have)
+
+    if is_valid and not force:
+        return {
+            "ok": True,
+            "status": "already_installed",
+            "path": model_dir,
+            "contents": sorted(os.listdir(model_dir)),
+        }
+
+    # Сносим если есть кривое
+    if os.path.exists(model_dir):
+        try:
+            _sh.rmtree(model_dir)
+        except Exception as e:
+            return {"ok": False, "error": f"cannot remove {model_dir}: {e}"}
+
+    url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+    zip_path = "/tmp/vosk-model-small-ru-0.22.zip"
+    extract_tmp = "/tmp/vosk-model-small-ru-0.22"
+
+    t0 = _t.time()
+    log = [f"start: url={url}"]
+
+    # Чистим прошлые попытки
+    for p in (zip_path, extract_tmp):
+        if os.path.exists(p):
+            try:
+                if os.path.isdir(p): _sh.rmtree(p)
+                else: os.unlink(p)
+            except Exception:
+                pass
+
+    # Качаем
+    try:
+        _ur.urlretrieve(url, zip_path)
+        log.append(f"downloaded {os.path.getsize(zip_path)} bytes in {_t.time()-t0:.1f}s")
+    except Exception as e:
+        return {"ok": False, "stage": "download", "error": f"{type(e).__name__}: {e}", "log": log}
+
+    # Распаковываем
+    try:
+        with _zf.ZipFile(zip_path) as zf:
+            zf.extractall("/tmp/")
+        log.append(f"extracted to {extract_tmp}")
+    except Exception as e:
+        return {"ok": False, "stage": "extract", "error": f"{type(e).__name__}: {e}", "log": log}
+
+    # Переносим
+    try:
+        _sh.move(extract_tmp, model_dir)
+        log.append(f"moved to {model_dir}")
+    except Exception as e:
+        return {"ok": False, "stage": "move", "error": f"{type(e).__name__}: {e}", "log": log}
+
+    # Чистим
+    try: os.unlink(zip_path)
+    except Exception: pass
+
+    # Проверяем валидность
+    contents = sorted(os.listdir(model_dir)) if os.path.isdir(model_dir) else []
+    is_valid = all(os.path.isdir(os.path.join(model_dir, s)) for s in must_have)
+    log.append(f"validation: am/conf/graph present = {is_valid}")
+    log.append(f"total elapsed: {_t.time()-t0:.1f}s")
+
+    # Сбрасываем кэш модели в воркере чтобы он перезагрузил
+    global _vosk_model, _vosk_load_error
+    _vosk_model = None
+    _vosk_load_error = None
+    log.append("model cache invalidated, next /validator/transcribe загрузит свежую")
+
+    return {
+        "ok": is_valid,
+        "status": "installed" if is_valid else "incomplete",
+        "path": model_dir,
+        "contents": contents,
+        "log": log,
+    }
+
+
+@app.get("/admin/vosk-status")
+def admin_vosk_status():
+    """Статус Vosk модели на VPS."""
+    model_dir = "/var/www/okk/tasks/api/vosk-model"
+    must_have = ("am", "conf", "graph", "ivector")
+    if not os.path.isdir(model_dir):
+        return {"installed": False, "reason": "no directory", "path": model_dir}
+    contents = sorted(os.listdir(model_dir))
+    have = {s: os.path.isdir(os.path.join(model_dir, s)) for s in must_have}
+    ok = all(have.values())
+    return {
+        "installed": ok,
+        "path": model_dir,
+        "contents": contents,
+        "required": have,
+    }
