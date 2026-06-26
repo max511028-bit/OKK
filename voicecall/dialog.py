@@ -57,11 +57,22 @@ def interpret(step: dict, raw: str) -> dict:
     expect = step.get("expect")
 
     if expect == "yesno":
-        n, p = bool(_NO.search(t)), bool(_YES.search(t))
-        if n and not p:
-            return {"val": "no"}
-        if p and not n:
+        # Умная логика: если есть и да, и нет — берём ПЕРВУЮ позицию,
+        # потому что обычно люди говорят основной ответ в начале, потом
+        # добавляют филлеры/самокоррекцию. Vosk часто добавляет «нет»
+        # после «да готов» из шумовой части — игнорим.
+        m_yes = _YES.search(t)
+        m_no = _NO.search(t)
+        if m_yes and not m_no:
             return {"val": "yes"}
+        if m_no and not m_yes:
+            return {"val": "no"}
+        if m_yes and m_no:
+            # Сравниваем позиции — кто раньше, тот и победил
+            if m_yes.start() < m_no.start():
+                return {"val": "yes"}
+            else:
+                return {"val": "no"}
         return {"val": "unclear"}
 
     if expect == "gender_male":
@@ -108,12 +119,21 @@ def interpret(step: dict, raw: str) -> dict:
             return {"val": "только день", "stop": True}
         if re.search(r"(ноч.{0,6}(не|нельзя|никак)|не.{0,4}ноч|без ноч)", t):
             return {"val": "только день", "stop": True}
+        # Если упомянули ночь без отрицания — готов к ночам
         if re.search(r"(ноч|любые|оба|без разницы|все равно|хоть когда)", t):
             return {"val": "день+ночь"}
-        if _YES.search(t):
+        # Yes/no с первой-позиции-побеждает (как в yesno expect)
+        m_yes = _YES.search(t)
+        m_no = _NO.search(t)
+        if m_yes and not m_no:
             return {"val": "день+ночь"}
-        if _NO.search(t):
+        if m_no and not m_yes:
             return {"val": "только день", "stop": True}
+        if m_yes and m_no:
+            if m_yes.start() < m_no.start():
+                return {"val": "день+ночь"}
+            else:
+                return {"val": "только день", "stop": True}
         return {"val": "unclear"}
 
     if expect == "free":

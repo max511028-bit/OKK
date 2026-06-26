@@ -3390,32 +3390,51 @@ async def validator_llm_classify(req: ValidatorClassifyReq):
         "Классифицируй ответ строго в одну из меток: " + ", ".join(allowed) + ".\n"
         "ВАЖНО: ответь ОДНИМ СЛОВОМ из списка, без пояснений."
     )
-    body = {
-        "model": "qwen3:8b",
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False, "think": False,
-        "options": {"temperature": 0.1, "num_predict": 16},
-    }
+    # Перебираем модели по возрастанию размера — сначала пробуем самую быструю.
+    # Это резко ускоряет классификацию (qwen3:0.6b — ~300мс vs qwen3:8b — 5-10с).
+    # Если маленькой модели на ПК нет, Ollama вернёт 404 → пробуем следующую.
+    model_candidates = [
+        ("qwen3:0.6b", 3.0),   # 500 МБ, ~200-500мс на классификацию
+        ("qwen3:1.7b", 4.0),   # 1.4 ГБ, ~500мс-1с
+        ("qwen3:8b",   4.5),   # 5.2 ГБ, последний ресорт
+    ]
     url = _ai_get_url_for_validator() + "/api/chat"
-    try:
-        async with httpx.AsyncClient(timeout=10) as cli:
-            r = await cli.post(url, json=body)
-            if r.status_code != 200:
-                raise HTTPException(503, "LLM HTTP " + str(r.status_code))
-            data = r.json()
-        raw = (data.get("message") or {}).get("content", "").strip().lower()
-        chosen = None
-        for lab in allowed:
-            if lab.lower() in raw:
-                chosen = lab
-                break
-        if chosen is None:
-            chosen = "unclear" if "unclear" in [l.lower() for l in allowed] else allowed[-1]
-        return {"label": chosen, "raw": raw}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(503, "LLM error: " + type(e).__name__ + ": " + str(e))
+    last_err = None
+    for model_name, timeout_s in model_candidates:
+        body = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False, "think": False,
+            "options": {"temperature": 0.1, "num_predict": 16},
+        }
+        try:
+            async with httpx.AsyncClient(timeout=timeout_s) as cli:
+                r = await cli.post(url, json=body)
+                if r.status_code == 404:
+                    # Модель не установлена — пробуем следующую
+                    last_err = f"{model_name}: not pulled"
+                    continue
+                if r.status_code != 200:
+                    last_err = f"{model_name}: HTTP {r.status_code}"
+                    continue
+                data = r.json()
+            raw = (data.get("message") or {}).get("content", "").strip().lower()
+            chosen = None
+            for lab in allowed:
+                if lab.lower() in raw:
+                    chosen = lab
+                    break
+            if chosen is None:
+                chosen = "unclear" if "unclear" in [l.lower() for l in allowed] else allowed[-1]
+            return {"label": chosen, "raw": raw, "model": model_name}
+        except httpx.TimeoutException:
+            last_err = f"{model_name}: timeout ({timeout_s}s)"
+            continue
+        except Exception as e:
+            last_err = f"{model_name}: {type(e).__name__}: {e}"
+            continue
+    # Все модели не сработали — возвращаем unclear чтобы фронт переспросил
+    return {"label": "unclear", "raw": "", "model": None, "error": last_err}
 
 
 @app.post("/validator/llm-summary")
