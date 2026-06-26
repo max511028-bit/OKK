@@ -3815,9 +3815,9 @@ def _vt_vocab_or_yesno(sess) -> Optional[list]:
 
 
 @app.post("/voicecall/test/start")
-def vc_test_start(scenario_id: str = "tander-sterlitamak-pack",
-                   voice: str = "ru-RU-SvetlanaNeural",
-                   rate: str = "+10%"):
+async def vc_test_start(scenario_id: str = "tander-sterlitamak-pack",
+                         voice: str = "ru-RU-SvetlanaNeural",
+                         rate: str = "+10%"):
     """Запускает новую тестовую сессию. Возвращает первый вопрос бота
     и vocab для распознавания ответа.
     Параллельно стартует фоновый прогрев TTS для всех фраз сценария —
