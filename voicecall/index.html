@@ -756,8 +756,11 @@ async function tStart(){
   tSetStatus("🚀 стартую сессию...");
 
   try{
-    tLog("POST /voicecall/test/start");
-    var r = await fetch(API + "/voicecall/test/start", { method: "POST" });
+    tLog("POST /voicecall/test/start (с прогревом TTS в фоне)");
+    var startUrl = API + "/voicecall/test/start"
+                 + "?voice=" + encodeURIComponent(TEST.voice)
+                 + "&rate=" + encodeURIComponent(TEST.rate);
+    var r = await fetch(startUrl, { method: "POST" });
     if(!r.ok){
       var t = await r.text().catch(function(){ return r.statusText; });
       throw new Error("HTTP " + r.status + ": " + t.slice(0, 200));

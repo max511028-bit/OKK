@@ -3815,9 +3815,14 @@ def _vt_vocab_or_yesno(sess) -> Optional[list]:
 
 
 @app.post("/voicecall/test/start")
-def vc_test_start(scenario_id: str = "tander-sterlitamak-pack"):
+def vc_test_start(scenario_id: str = "tander-sterlitamak-pack",
+                   voice: str = "ru-RU-SvetlanaNeural",
+                   rate: str = "+10%"):
     """Запускает новую тестовую сессию. Возвращает первый вопрос бота
-    и vocab для распознавания ответа."""
+    и vocab для распознавания ответа.
+    Параллельно стартует фоновый прогрев TTS для всех фраз сценария —
+    к моменту когда бот доходит до них, аудио уже в кэше (10-17 мс
+    вместо 2-4 сек)."""
     if not _VT_DIALOG_OK:
         raise HTTPException(503, f"Dialog engine unavailable: {_VT_DIALOG_ERR}")
     try:
@@ -3833,6 +3838,13 @@ def vc_test_start(scenario_id: str = "tander-sterlitamak-pack"):
         "started_at": _dt.datetime.now().isoformat(timespec="seconds"),
     }
     action = sess.start()
+
+    # Фоновый прогрев TTS для всех фраз сценария — НЕ блокирует ответ.
+    # Первый bot_text синтезируется первым, остальные параллельно.
+    rate_norm = _vc_normalize_tts_rate(rate)
+    import asyncio as _vt_asyncio
+    _vt_asyncio.create_task(_vc_prewarm_scenario_tts(scenario, voice, rate_norm))
+
     return {
         "session_id": sid,
         "scenario_name": scenario.get("name"),
@@ -3840,6 +3852,35 @@ def vc_test_start(scenario_id: str = "tander-sterlitamak-pack"):
         "vocab": _vt_vocab_or_yesno(sess),
         "ended": False,
     }
+
+
+async def _vc_prewarm_scenario_tts(scenario: dict, voice: str, rate: str) -> None:
+    """Прогревает кэш TTS для всех фраз сценария. Запускается в фоне
+    при старте сессии. Каждая фраза генерится последовательно (чтобы не
+    забивать edge-tts параллельными соединениями)."""
+    phrases = []
+    for st in scenario.get("steps", []):
+        for key in ("bot", "on_no", "on_no_follow", "stop_msg"):
+            v = st.get(key)
+            if v: phrases.append(v)
+    closing = scenario.get("closing")
+    if closing: phrases.append(closing)
+    # Стандартные re-ask фразы тоже прогреем
+    for ph in (
+        "Простите, не расслышала — это «да» или «нет»?",
+        "Сколько вам полных лет? Можно просто цифрой.",
+        "Уточните, гражданство России или другой страны?",
+        "Судимости по 158, 228 или 105 — были или нет?",
+        "В ночные смены выходить готовы?",
+        "Извините за формальность — вы мужчина?",
+        "Уточните, пожалуйста, ещё раз?",
+    ):
+        phrases.append(ph)
+    for ph in phrases:
+        try:
+            await _vc_tts_generate(ph, voice, rate)
+        except Exception:
+            pass  # ошибка прогрева не должна валить сессию
 
 
 class VCTestAnswerReq(BaseModel):
@@ -3982,6 +4023,63 @@ def vc_test_get_summary(validation_id: int):
 
 
 @app.get("/voicecall/tts")
+def _vc_normalize_tts_rate(rate: str) -> str:
+    rate = (rate or "").strip()
+    if not rate.startswith(("+", "-")):
+        rate = "+" + rate
+    if not rate.endswith("%"):
+        rate = rate + "%"
+    return rate
+
+
+async def _vc_tts_generate(text: str, voice: str, rate: str) -> str:
+    """Генерирует TTS-файл (если ещё нет в кэше) и возвращает путь к нему.
+    Используется и из эндпоинта /voicecall/tts, и из фонового прогрева."""
+    try:
+        _vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
+    except Exception as e:
+        raise RuntimeError(f"Cannot create tts_cache dir: {e}")
+    key = _vt_hash.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
+    cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"{key}.mp3")
+    if _vt_os.path.exists(cache_path):
+        return cache_path  # уже в кэше
+
+    try:
+        import edge_tts  # type: ignore
+    except ImportError:
+        raise RuntimeError("edge-tts не установлен")
+    tmp_raw = cache_path + ".raw.mp3"
+    try:
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
+        await communicate.save(tmp_raw)
+    except Exception as e:
+        raise RuntimeError(f"edge-tts error: {type(e).__name__}: {e}")
+
+    # silenceremove через ffmpeg
+    try:
+        import imageio_ffmpeg  # type: ignore
+        ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        ff_exe = "ffmpeg"
+    try:
+        proc = _v_sp.run([
+            ff_exe, "-y", "-loglevel", "error", "-i", tmp_raw,
+            "-af", ("silenceremove=start_periods=1:start_duration=0.05:"
+                    "start_threshold=-45dB:stop_periods=-1:"
+                    "stop_duration=0.15:stop_threshold=-40dB"),
+            "-codec:a", "libmp3lame", "-q:a", "4", cache_path,
+        ], capture_output=True, timeout=15)
+        if proc.returncode != 0 or not _vt_os.path.exists(cache_path):
+            _vt_os.rename(tmp_raw, cache_path)
+        else:
+            try: _vt_os.unlink(tmp_raw)
+            except Exception: pass
+    except Exception:
+        try: _vt_os.rename(tmp_raw, cache_path)
+        except Exception: pass
+    return cache_path
+
+
 async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
                   rate: str = "+10%"):
     """Серверный TTS через edge-tts → ffmpeg trim silence → MP3.
@@ -3989,56 +4087,11 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
     rate: +0%, +10%, +20% (медленнее: -10%, -20%)."""
     if not text or len(text) > 5000:
         raise HTTPException(400, "Bad text")
-    # Нормализуем rate
-    rate = rate.strip()
-    if not rate.startswith(("+", "-")):
-        rate = "+" + rate
-    if not rate.endswith("%"):
-        rate = rate + "%"
-    # На каждый вызов гарантируем существование папки — иначе FileNotFoundError
-    # если module-level makedirs() не отработал в окружении systemd
+    rate = _vc_normalize_tts_rate(rate)
     try:
-        _vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
-    except Exception as e:
-        raise HTTPException(500, f"Cannot create tts_cache dir: {e}")
-    key = _vt_hash.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
-    cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"{key}.mp3")
-    if not _vt_os.path.exists(cache_path):
-        try:
-            import edge_tts  # type: ignore
-        except ImportError:
-            raise HTTPException(503, "edge-tts не установлен на сервере (см. requirements.txt)")
-        tmp_raw = cache_path + ".raw.mp3"
-        try:
-            communicate = edge_tts.Communicate(text, voice, rate=rate)
-            await communicate.save(tmp_raw)
-        except Exception as e:
-            raise HTTPException(503, f"edge-tts error: {type(e).__name__}: {e}")
-        # Обрезаем хвостовую тишину (edge-tts вставляет ~300-500мс) +
-        # начальную если есть. Без этого после фразы ощутимая пауза перед
-        # тем как бот переходит к слушанию.
-        try:
-            import imageio_ffmpeg  # type: ignore
-            ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            ff_exe = "ffmpeg"
-        try:
-            proc = _v_sp.run([
-                ff_exe, "-y", "-loglevel", "error", "-i", tmp_raw,
-                "-af", ("silenceremove=start_periods=1:start_duration=0.05:"
-                        "start_threshold=-45dB:stop_periods=-1:"
-                        "stop_duration=0.15:stop_threshold=-40dB"),
-                "-codec:a", "libmp3lame", "-q:a", "4", cache_path,
-            ], capture_output=True, timeout=15)
-            if proc.returncode != 0 or not _vt_os.path.exists(cache_path):
-                # ffmpeg отвалился — отдаём как есть
-                _vt_os.rename(tmp_raw, cache_path)
-            else:
-                try: _vt_os.unlink(tmp_raw)
-                except Exception: pass
-        except Exception:
-            try: _vt_os.rename(tmp_raw, cache_path)
-            except Exception: pass
+        cache_path = await _vc_tts_generate(text, voice, rate)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
     return _vt_FileResponse(cache_path, media_type="audio/mpeg",
                              headers={"Cache-Control": "public, max-age=86400"})
 
