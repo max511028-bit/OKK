@@ -145,8 +145,17 @@
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
         <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Голос
           <select id="testVoice" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
-            <option value="ru-RU-SvetlanaNeural">Светлана (женский)</option>
-            <option value="ru-RU-DmitryNeural">Дмитрий (мужской)</option>
+            <optgroup label="Силеро (нейросеть, естественнее)">
+              <option value="silero:kseniya" selected>Силеро · Ксения (ж)</option>
+              <option value="silero:baya">Силеро · Байя (ж)</option>
+              <option value="silero:xenia">Силеро · Ксения2 (ж)</option>
+              <option value="silero:eugene">Силеро · Евгений (м)</option>
+              <option value="silero:aidar">Силеро · Айдар (м)</option>
+            </optgroup>
+            <optgroup label="Edge TTS (Microsoft, базовое)">
+              <option value="ru-RU-SvetlanaNeural">Edge · Светлана (ж)</option>
+              <option value="ru-RU-DmitryNeural">Edge · Дмитрий (м)</option>
+            </optgroup>
           </select>
         </label>
         <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Скорость
@@ -486,22 +495,35 @@ var TEST = {
   logs: [],
 };
 
-// 1-секундный «беззвучный» MP3 в base64 — играем его в click handler
-// чтобы разблокировать autoplay на мобильных браузерах
-var SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tAwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA////////////////////////////////////////////////////////////AAAAAExhdmM1OC41NAAAAAAAAAAAAAAAACQEsAAAAAAAAAJxRWaH9wAAAAAAAAAAAAAAAAAAAAAAAAAA//sQxAAB8AABpAAAACAAADSAAAAETEFNRTMuMTAwVVU=";
-
 function tUnlockAudioOnce(){
   // ОБЯЗАТЕЛЬНО синхронно в click handler — иначе мобила не пустит autoplay
   if(TEST.audioUnlocked) return;
   try{
+    // 1) AudioContext unlock — не трогает <audio> элемент, надёжнее
+    if(!TEST.audioCtx){
+      TEST.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(TEST.audioCtx.state === "suspended"){
+      TEST.audioCtx.resume().catch(function(){});
+    }
+    // Один тихий сэмпл через AudioContext — разблокирует аудио в браузере
+    try{
+      var buf = TEST.audioCtx.createBuffer(1, 1, TEST.audioCtx.sampleRate);
+      var src = TEST.audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(TEST.audioCtx.destination);
+      src.start(0);
+    }catch(e){}
+    // 2) Создаём <audio> элемент и «разогреваем» через play() с пустым src.
+    //    Браузер выдаст NotSupportedError но user gesture зафиксируется.
     if(!TEST.audio){
       TEST.audio = new Audio();
-      TEST.audio.setAttribute("playsinline", "");  // iOS hint
+      TEST.audio.setAttribute("playsinline", "");
       TEST.audio.preload = "auto";
     }
-    TEST.audio.src = SILENT_MP3;
     var p = TEST.audio.play();
-    if(p && p.catch) p.catch(function(){});
+    if(p && p.catch) p.catch(function(){});  // ожидаемо упадёт, не страшно
+    TEST.audio.pause();
     TEST.audioUnlocked = true;
     tLog("audio unlocked for session (mobile autoplay bypass)");
   }catch(e){
@@ -640,7 +662,11 @@ async function tPlayBotText(text){
       tLog("audio.onerror: " + msg, "err");
       if(TEST.audioResolve === resolve){ TEST.audioResolve = null; resolve("error"); }
     };
+    // ВАЖНО: pause + load перед новым src — иначе на мобиле остаётся
+    // «грязное» состояние от предыдущего источника, и новый MP3 не парсится
+    try{ audio.pause(); }catch(e){}
     audio.src = url;
+    try{ audio.load(); }catch(e){}
     var p = audio.play();
     if(p && p.catch){
       p.catch(function(e){

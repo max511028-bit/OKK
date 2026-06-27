@@ -4032,9 +4032,52 @@ def _vc_normalize_tts_rate(rate: str) -> str:
     return rate
 
 
+# Silero бот-сервер на ПК пользователя — пробрасывается через SSH-туннель
+_SILERO_LOCAL_URL = "http://127.0.0.1:25001"
+
+
+def _vc_is_silero_voice(voice: str) -> bool:
+    """Голоса Silero: kseniya, baya, xenia, eugene, aidar.
+    Распознаём по префиксу 'silero:' или по точному имени."""
+    if voice.startswith("silero:"):
+        return True
+    return voice in ("kseniya", "baya", "xenia", "eugene", "aidar")
+
+
+async def _vc_tts_generate_silero(text: str, voice: str) -> str:
+    """Скачивает WAV от Silero (через туннель), кеширует на диск."""
+    try:
+        _vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
+    except Exception as e:
+        raise RuntimeError(f"Cannot create tts_cache dir: {e}")
+    voice_clean = voice.split(":", 1)[-1]  # silero:kseniya → kseniya
+    key = _vt_hash.sha1(("silero||" + voice_clean + "||" + text).encode("utf-8")).hexdigest()[:16]
+    cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"silero_{key}.wav")
+    if _vt_os.path.exists(cache_path):
+        return cache_path
+    # Качаем через локальный туннель к ПК пользователя
+    import urllib.parse as _up
+    url = f"{_SILERO_LOCAL_URL}/tts?text={_up.quote(text)}&voice={_up.quote(voice_clean)}&sample_rate=24000"
+    try:
+        async with httpx.AsyncClient(timeout=15) as cli:
+            r = await cli.get(url)
+            if r.status_code != 200:
+                raise RuntimeError(f"silero HTTP {r.status_code}: {r.text[:200]}")
+            with open(cache_path, "wb") as f:
+                f.write(r.content)
+    except httpx.TimeoutException:
+        raise RuntimeError("silero: timeout — туннель не отвечает, проверь /voicecall/silero-status")
+    except Exception as e:
+        raise RuntimeError(f"silero: {type(e).__name__}: {e}")
+    return cache_path
+
+
 async def _vc_tts_generate(text: str, voice: str, rate: str) -> str:
     """Генерирует TTS-файл (если ещё нет в кэше) и возвращает путь к нему.
-    Используется и из эндпоинта /voicecall/tts, и из фонового прогрева."""
+    Используется и из эндпоинта /voicecall/tts, и из фонового прогрева.
+    Маршрутизация: если voice — Silero, идём по Silero-пути; иначе Edge-TTS."""
+    if _vc_is_silero_voice(voice):
+        return await _vc_tts_generate_silero(text, voice)
     try:
         _vt_os.makedirs(_VT_TTS_CACHE_DIR, exist_ok=True)
     except Exception as e:
@@ -4092,8 +4135,27 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
         cache_path = await _vc_tts_generate(text, voice, rate)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
-    return _vt_FileResponse(cache_path, media_type="audio/mpeg",
+    media_type = "audio/wav" if cache_path.endswith(".wav") else "audio/mpeg"
+    return _vt_FileResponse(cache_path, media_type=media_type,
                              headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/voicecall/silero-status")
+async def vc_silero_status():
+    """Проверка что Silero-сервер на ПК пользователя доступен через туннель."""
+    try:
+        async with httpx.AsyncClient(timeout=3) as cli:
+            r = await cli.get(f"{_SILERO_LOCAL_URL}/health")
+            if r.status_code == 200:
+                return {"online": True, "details": r.json(),
+                         "url": _SILERO_LOCAL_URL}
+            return {"online": False, "error": f"HTTP {r.status_code}",
+                     "url": _SILERO_LOCAL_URL}
+    except Exception as e:
+        return {"online": False,
+                 "error": f"{type(e).__name__}: {e}",
+                 "url": _SILERO_LOCAL_URL,
+                 "hint": "Проверь что silero_server.py запущен на ПК + туннель up"}
 
 # ════════════════════════════════════════════════════════════════════════
 # Установка Vosk-модели на VPS «по требованию» через эндпоинт.

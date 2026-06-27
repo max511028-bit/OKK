@@ -41,7 +41,7 @@ while ($true) {
         Write-Log "precleanup: forwarding failed $consecutiveForwardFails times in a row, killing stale tunnels on VPS"
         try {
             # один короткий ssh-вызов: найти sshd, держащие 127.0.0.1:21434, и убить их
-            $cleanupCmd = "pids=`$(ss -lntp 2>/dev/null | awk '/127.0.0.1:21434/ {print `$NF}' | grep -oP 'pid=\K[0-9]+' | sort -u); [ -n `"`$pids`" ] && kill -9 `$pids 2>/dev/null; sleep 1; echo done"
+            $cleanupCmd = "pids=`$(ss -lntp 2>/dev/null | awk '/127.0.0.1:(21434|25001)/ {print `$NF}' | grep -oP 'pid=\K[0-9]+' | sort -u); [ -n `"`$pids`" ] && kill -9 `$pids 2>/dev/null; sleep 1; echo done"
             & $sshExe '-i' $key '-o' 'ConnectTimeout=10' '-o' 'StrictHostKeyChecking=accept-new' '-o' "UserKnownHostsFile=C:\ProgramData\sth\known_hosts" $vps $cleanupCmd 2>&1 | Out-Null
             $consecutiveForwardFails = 0
             Write-Log "precleanup: done"
@@ -61,6 +61,7 @@ while ($true) {
         '-o', 'StrictHostKeyChecking=accept-new',
         '-o', 'UserKnownHostsFile=C:\ProgramData\sth\known_hosts',
         '-R', '21434:127.0.0.1:11434',
+        '-R', '25001:127.0.0.1:5001',
         $vps
     )
     try {
