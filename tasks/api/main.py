@@ -4140,6 +4140,36 @@ async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
                              headers={"Cache-Control": "public, max-age=86400"})
 
 
+@app.post("/admin/tunnel-cleanup")
+def admin_tunnel_cleanup():
+    """Прибивает зомби-sshd процессы которые висят на портах туннеля
+    (21434 для Ollama, 25001 для Silero). После перезапуска SSH-клиента
+    свежий туннель не может занять порты — этот эндпоинт чистит."""
+    import subprocess as _sp
+    result = {"killed_pids": [], "ports_freed": [], "log": []}
+    for port in (21434, 25001):
+        try:
+            proc = _sp.run(
+                ["bash", "-c",
+                 f"ss -lntp 2>/dev/null | awk '/127.0.0.1:{port} / {{print $NF}}' | "
+                 f"grep -oP 'pid=\\K[0-9]+' | sort -u"],
+                capture_output=True, timeout=5, text=True
+            )
+            pids = [p.strip() for p in proc.stdout.split() if p.strip()]
+            result["log"].append(f"port {port}: pids={pids}")
+            if pids:
+                kill_proc = _sp.run(
+                    ["kill", "-9"] + pids,
+                    capture_output=True, timeout=5, text=True
+                )
+                result["killed_pids"].extend(pids)
+                result["ports_freed"].append(port)
+                result["log"].append(f"  killed: rc={kill_proc.returncode}")
+        except Exception as e:
+            result["log"].append(f"port {port}: error {type(e).__name__}: {e}")
+    return result
+
+
 @app.get("/voicecall/silero-status")
 async def vc_silero_status():
     """Проверка что Silero-сервер на ПК пользователя доступен через туннель."""
