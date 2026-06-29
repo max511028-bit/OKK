@@ -61,6 +61,27 @@
   .empty{text-align:center; color:var(--hint); font-size:13px; padding:30px 0}
   .loading{text-align:center; color:var(--muted); padding:20px 0; font-size:13px}
   .err{color:var(--bad); font-size:12px; margin-top:8px;}
+
+  /* Редактор шагов */
+  .ed-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;}
+  .ed-name{flex:1; min-width:200px; font-size:16px; font-weight:600;}
+  .step{background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin-bottom:12px;}
+  .step-top{display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .step-num{font-size:12px; font-weight:700; color:var(--accent); background:var(--accent-soft); padding:2px 8px; border-radius:6px;}
+  .step-ctrl{margin-left:auto; display:flex; gap:4px;}
+  .step-ctrl button{padding:4px 8px; font-size:13px;}
+  .fld{margin-bottom:10px;}
+  .fld label{display:block; font-size:11px; color:var(--muted); margin-bottom:4px;}
+  .fld input[type=text], .fld textarea, .fld select{
+    width:100%; font-family:inherit; font-size:13px; padding:8px 10px;
+    background:var(--bg); border:1px solid var(--line); border-radius:6px; color:var(--text); outline:none;
+  }
+  .fld textarea{min-height:54px; resize:vertical; line-height:1.4;}
+  .fld input:focus, .fld textarea:focus, .fld select:focus{border-color:var(--accent)}
+  .fld-row{display:flex; gap:10px; flex-wrap:wrap;}
+  .fld-row > .fld{flex:1; min-width:120px;}
+  .chk{display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text); margin-right:14px; cursor:pointer;}
+  .hint{font-size:11px; color:var(--hint); margin-top:3px;}
 </style>
 </head>
 <body>
@@ -93,6 +114,30 @@
       <button class="small" onclick="loadList()">↻ Обновить</button>
     </div>
     <div id="list" class="lib"><div class="loading">Загрузка...</div></div>
+  </div>
+
+  <!-- Редактор шагов (после клика «Редактировать») -->
+  <div class="card" id="editorCard" style="display:none;">
+    <div class="ed-head">
+      <button class="small" onclick="edBack()">← К библиотеке</button>
+      <input type="text" class="ed-name" id="edName" placeholder="Название скрипта">
+      <span class="pill" id="edStatus"></span>
+    </div>
+
+    <div class="fld">
+      <label>Финальная фраза (что бот говорит в конце успешного звонка)</label>
+      <textarea id="edClosing" placeholder="Спасибо! Все вопросы заданы, до свидания."></textarea>
+    </div>
+
+    <div id="edSteps"></div>
+
+    <button class="small" onclick="edAddStep()" style="margin:6px 0 16px;">+ Добавить шаг</button>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px;">
+      <button class="primary" onclick="edSave()">💾 Сохранить черновик</button>
+      <button onclick="edPublish()" style="background:var(--ok-soft);border-color:#1f4a2d;color:#7ee29a;">📢 Опубликовать</button>
+      <span id="edMsg" style="font-size:13px;color:var(--muted);align-self:center;"></span>
+    </div>
   </div>
 
 </div>
@@ -161,7 +206,7 @@ async function loadList(){
         + "    <div class='lib-stats'>" + pill + "</div>"
         + "  </div>"
         + "  <div style='margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;'>"
-        + "    <button class='small' disabled title='Будет на следующем этапе'>✎ Редактировать</button>"
+        + "    <button class='small primary' onclick=\"edOpen('" + escHtml(s.id) + "')\">✎ Редактировать</button>"
         + "    <button class='small' onclick=\"copyScript('" + escHtml(s.id) + "')\">⧉ Копия</button>"
         + "    <button class='small danger' onclick=\"deleteScript('" + escHtml(s.id) + "')\">🗑 Удалить</button>"
         + "  </div>"
@@ -200,6 +245,242 @@ async function deleteScript(sid){
     if(!r.ok){ alert("Не удалось удалить: HTTP " + r.status); return; }
     loadList();
   }catch(e){ alert("Ошибка: " + e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// РЕДАКТОР ШАГОВ (Этап 3)
+// ═══════════════════════════════════════════════════════════════════
+// ED.steps — массив UI-шагов. Каждый: {bot, type, ...параметры}.
+// UI-типы: yesno | age | shifts | free.
+var ED = { id: null, steps: [] };
+
+// Маппинг серверного шага (разные expect) → UI-тип для редактора.
+function srvStepToUi(s){
+  var ex = s.expect || "free";
+  var ui = { bot: s.bot || "", crit: s.crit || "", end_verdict: s.end_verdict || "stopped" };
+  if (ex === "age"){
+    ui.type = "age"; ui.min = s.min != null ? s.min : 18; ui.max = s.max != null ? s.max : 45;
+    ui.stop_msg = s.stop_msg || "";
+  } else if (ex === "shifts"){
+    ui.type = "shifts"; ui.accepted = s.accepted || ["день+ночь"]; ui.stop_msg = s.stop_msg || "";
+  } else if (ex === "free"){
+    ui.type = "free";
+  } else {
+    // yesno и старые спец-типы (gender_male/citizen_rf/crime) → показываем как Да/Нет
+    ui.type = "yesno";
+    if (s.end_on_yes){ ui.stop_on = "yes"; }
+    else if (s.end_on_no || ex === "gender_male" || ex === "citizen_rf"){ ui.stop_on = "no"; }
+    else if (ex === "crime"){ ui.stop_on = "yes"; }
+    else { ui.stop_on = "none"; }
+    ui.stop_msg = s.stop_msg || s.on_no || s.on_yes || "";
+    if (s.on_no_follow) ui.on_no_follow = s.on_no_follow;
+  }
+  return ui;
+}
+
+// UI-шаг → серверный формат (что понимает dialog.py).
+function uiStepToSrv(u, idx){
+  var s = { id: "step" + (idx+1), bot: u.bot || "", crit: u.crit || ("Шаг " + (idx+1)) };
+  if (u.type === "age"){
+    s.expect = "age"; s.min = parseInt(u.min)||18; s.max = parseInt(u.max)||45;
+    s.stop_msg = u.stop_msg || "";
+  } else if (u.type === "shifts"){
+    s.expect = "shifts"; s.accepted = u.accepted && u.accepted.length ? u.accepted : ["день+ночь"];
+    s.stop_msg = u.stop_msg || ""; s.end_verdict = u.end_verdict || "stopped";
+  } else if (u.type === "free"){
+    s.expect = "free"; s.soft = true;
+  } else { // yesno
+    s.expect = "yesno";
+    if (u.stop_on === "yes"){ s.end_on_yes = true; s.on_yes = u.stop_msg || ""; s.end_verdict = u.end_verdict || "stopped"; }
+    else if (u.stop_on === "no"){ s.end_on_no = true; s.on_no = u.stop_msg || ""; s.end_verdict = u.end_verdict || "stopped"; }
+    else { s.soft = true; }  // не стоп-фактор
+    if (u.on_no_follow) s.on_no_follow = u.on_no_follow;
+  }
+  return s;
+}
+
+async function edOpen(sid){
+  try{
+    var r = await fetch(API + "/voicecall/scripts/" + encodeURIComponent(sid));
+    if(!r.ok){ alert("Не удалось загрузить: HTTP " + r.status); return; }
+    var d = await r.json();
+    ED.id = d.id;
+    ED.steps = (d.steps || []).map(srvStepToUi);
+    document.getElementById("edName").value = d.name || "";
+    document.getElementById("edClosing").value = d.closing || "";
+    document.getElementById("edStatus").className = "pill " + (d.status || "draft");
+    document.getElementById("edStatus").textContent = d.status === "published" ? "✓ опубликован" : "✎ черновик";
+    document.getElementById("edMsg").textContent = "";
+    document.getElementById("libCard").style.display = "none";
+    document.getElementById("editorCard").style.display = "block";
+    edRender();
+    window.scrollTo(0,0);
+  }catch(e){ alert("Ошибка: " + e.message); }
+}
+
+function edBack(){
+  document.getElementById("editorCard").style.display = "none";
+  document.getElementById("libCard").style.display = "block";
+  loadList();
+}
+
+function edRender(){
+  var box = document.getElementById("edSteps");
+  if(!ED.steps.length){
+    box.innerHTML = "<div class='empty'>Шагов нет. Нажми «+ Добавить шаг».</div>";
+    return;
+  }
+  box.innerHTML = ED.steps.map(function(u, i){ return edStepHtml(u, i); }).join("");
+}
+
+function edStepHtml(u, i){
+  var typeOptions = [
+    ["yesno", "Да / Нет"],
+    ["age", "Возраст"],
+    ["shifts", "Смены"],
+    ["free", "Свободный ответ"],
+  ].map(function(t){
+    return "<option value='" + t[0] + "'" + (u.type===t[0]?" selected":"") + ">" + t[1] + "</option>";
+  }).join("");
+
+  var h = "<div class='step'>"
+    + "<div class='step-top'>"
+    + "  <span class='step-num'>Шаг " + (i+1) + "</span>"
+    + "  <div class='step-ctrl'>"
+    + "    <button onclick='edMove(" + i + ",-1)' title='Вверх'" + (i===0?" disabled":"") + ">↑</button>"
+    + "    <button onclick='edMove(" + i + ",1)' title='Вниз'" + (i===ED.steps.length-1?" disabled":"") + ">↓</button>"
+    + "    <button class='danger' onclick='edDelStep(" + i + ")' title='Удалить'>🗑</button>"
+    + "  </div>"
+    + "</div>"
+    + "<div class='fld'><label>Что говорит бот</label>"
+    + "  <textarea onchange='edSet(" + i + ",\"bot\",this.value)'>" + escHtml(u.bot) + "</textarea></div>"
+    + "<div class='fld-row'>"
+    + "  <div class='fld'><label>Краткое название (для отчёта)</label>"
+    + "    <input type='text' value='" + escHtml(u.crit||"") + "' onchange='edSet(" + i + ",\"crit\",this.value)' placeholder='напр. Возраст'></div>"
+    + "  <div class='fld'><label>Тип ответа</label>"
+    + "    <select onchange='edSetType(" + i + ",this.value)'>" + typeOptions + "</select></div>"
+    + "</div>";
+
+  // Параметры под тип
+  if(u.type === "yesno"){
+    h += "<div class='fld'><label>Стоп-фактор</label>"
+      + "<select onchange='edSet(" + i + ",\"stop_on\",this.value)'>"
+      + "<option value='none'" + (u.stop_on==="none"||!u.stop_on?" selected":"") + ">Не стоп — просто записать ответ</option>"
+      + "<option value='no'" + (u.stop_on==="no"?" selected":"") + ">Стоп если ответ «НЕТ»</option>"
+      + "<option value='yes'" + (u.stop_on==="yes"?" selected":"") + ">Стоп если ответ «ДА»</option>"
+      + "</select>"
+      + "<div class='hint'>Пример: «Вы гражданин РФ?» → стоп при НЕТ. «Была судимость?» → стоп при ДА.</div></div>";
+    if(u.stop_on === "yes" || u.stop_on === "no"){
+      h += edStopFields(u, i);
+    }
+  } else if(u.type === "age"){
+    h += "<div class='fld-row'>"
+      + "<div class='fld'><label>Возраст от</label><input type='text' value='" + (u.min!=null?u.min:18) + "' onchange='edSet(" + i + ",\"min\",this.value)'></div>"
+      + "<div class='fld'><label>до</label><input type='text' value='" + (u.max!=null?u.max:45) + "' onchange='edSet(" + i + ",\"max\",this.value)'></div>"
+      + "</div>" + edStopFields(u, i);
+  } else if(u.type === "shifts"){
+    var acc = u.accepted || ["день+ночь"];
+    h += "<div class='fld'><label>Какие графики подходят (если ответ не из них → стоп)</label><div>"
+      + edChk("только день", acc, i) + edChk("только ночь", acc, i) + edChk("день+ночь", acc, i)
+      + "</div></div>" + edStopFields(u, i);
+  } else if(u.type === "free"){
+    h += "<div class='hint'>Свободный ответ просто записывается в отчёт, не проверяется.</div>";
+  }
+
+  h += "</div>";
+  return h;
+}
+
+function edStopFields(u, i){
+  return "<div class='fld'><label>Фраза при стопе (что бот скажет если кандидат не подходит)</label>"
+    + "<textarea onchange='edSet(" + i + ",\"stop_msg\",this.value)'>" + escHtml(u.stop_msg||"") + "</textarea></div>";
+}
+
+function edChk(val, acc, i){
+  var checked = acc.indexOf(val) >= 0 ? " checked" : "";
+  return "<label class='chk'><input type='checkbox'" + checked
+    + " onchange='edToggleShift(" + i + ",\"" + val + "\",this.checked)'> " + val + "</label>";
+}
+
+function edSet(i, key, val){ ED.steps[i][key] = val; }
+
+function edSetType(i, t){
+  ED.steps[i].type = t;
+  if(t === "shifts" && !ED.steps[i].accepted) ED.steps[i].accepted = ["день+ночь"];
+  if(t === "yesno" && !ED.steps[i].stop_on) ED.steps[i].stop_on = "none";
+  edRender();
+}
+
+function edToggleShift(i, val, on){
+  var acc = ED.steps[i].accepted || [];
+  var idx = acc.indexOf(val);
+  if(on && idx < 0) acc.push(val);
+  if(!on && idx >= 0) acc.splice(idx, 1);
+  ED.steps[i].accepted = acc;
+}
+
+function edMove(i, dir){
+  var j = i + dir;
+  if(j < 0 || j >= ED.steps.length) return;
+  var t = ED.steps[i]; ED.steps[i] = ED.steps[j]; ED.steps[j] = t;
+  edRender();
+}
+
+function edDelStep(i){
+  if(!confirm("Удалить шаг " + (i+1) + "?")) return;
+  ED.steps.splice(i, 1);
+  edRender();
+}
+
+function edAddStep(){
+  ED.steps.push({ type: "yesno", bot: "", crit: "", stop_on: "none", stop_msg: "", end_verdict: "stopped" });
+  edRender();
+  // прокрутка к новому шагу
+  var box = document.getElementById("edSteps");
+  box.lastElementChild && box.lastElementChild.scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function edCollectPayload(){
+  return {
+    name: document.getElementById("edName").value.trim(),
+    closing: document.getElementById("edClosing").value,
+    steps: ED.steps.map(uiStepToSrv),
+    stop_factors: ED.steps.filter(function(u){
+      return (u.type==="yesno" && (u.stop_on==="yes"||u.stop_on==="no")) || u.type==="age" || u.type==="shifts";
+    }).map(function(u){ return u.crit || ""; }).filter(Boolean),
+  };
+}
+
+async function edSave(silent){
+  var msg = document.getElementById("edMsg");
+  var payload = edCollectPayload();
+  if(!payload.name){ msg.textContent = "❌ Введи название"; return false; }
+  try{
+    var r = await fetch(API + "/voicecall/scripts/" + encodeURIComponent(ED.id) + "?password=" + encodeURIComponent(PASSWORD), {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok){ var t = await r.text(); msg.textContent = "❌ HTTP " + r.status + ": " + t.slice(0,120); return false; }
+    var d = await r.json();
+    document.getElementById("edStatus").className = "pill " + (d.status||"draft");
+    document.getElementById("edStatus").textContent = d.status === "published" ? "✓ опубликован" : "✎ черновик";
+    if(!silent) msg.textContent = "✅ Сохранено (" + new Date().toLocaleTimeString("ru-RU") + ")";
+    return true;
+  }catch(e){ msg.textContent = "❌ " + e.message; return false; }
+}
+
+async function edPublish(){
+  var msg = document.getElementById("edMsg");
+  // Сначала сохраняем текущие правки, потом публикуем
+  var ok = await edSave(true);
+  if(!ok) return;
+  try{
+    var r = await fetch(API + "/voicecall/scripts/" + encodeURIComponent(ED.id) + "/publish?password=" + encodeURIComponent(PASSWORD), { method: "POST" });
+    if(!r.ok){ msg.textContent = "❌ Публикация: HTTP " + r.status; return; }
+    document.getElementById("edStatus").className = "pill published";
+    document.getElementById("edStatus").textContent = "✓ опубликован";
+    msg.textContent = "📢 Опубликовано — теперь доступно для обзвона";
+  }catch(e){ msg.textContent = "❌ " + e.message; }
 }
 </script>
 </body>
