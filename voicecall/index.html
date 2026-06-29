@@ -221,9 +221,9 @@
         <label>Название кампании
           <input id="uName" type="text" placeholder="Авито 25.06 — Тандер Стерлитамак" />
         </label>
-        <label>Сценарий
+        <label>Сценарий (скрипт обзвона)
           <select id="uScenario">
-            <option value="tander-sterlitamak-pack">Тандер · Стерлитамак · комплектовщик</option>
+            <option value="">Загрузка скриптов...</option>
           </select>
         </label>
         <label>Источник
@@ -386,7 +386,7 @@ async function loadCampaigns(){
         + "  <div class='camp-head' onclick='toggleCampaign("+c.id+")'>"
         + "    <div>"
         + "      <div class='camp-title'>"+escHtml(c.name)+"</div>"
-        + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+"</div>"
+        + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+" · 📋 "+escHtml(c.scenario_name||c.scenario_id||"?")+"</div>"
         + "    </div>"
         + "    <div class='camp-stats'>"
         +        (c.pending ? "<span class='pill pending'>⏳ "+c.pending+"</span>" : "")
@@ -1000,8 +1000,29 @@ document.getElementById("testDebugBtn").addEventListener("click", function(){
   w.style.display = (w.style.display === "none") ? "block" : "none";
 });
 
+// Загрузка списка скриптов в выпадашку выбора сценария.
+// Показываем только опубликованные (по published-скриптам идёт обзвон).
+async function loadScenarioOptions(){
+  var sel = document.getElementById("uScenario");
+  try{
+    var r = await fetch(API + "/voicecall/scripts");
+    var data = await r.json();
+    var pub = (data.items || []).filter(function(s){ return s.status === "published"; });
+    if(!pub.length){
+      sel.innerHTML = "<option value=''>Нет опубликованных скриптов — создай в конструкторе</option>";
+      return;
+    }
+    sel.innerHTML = pub.map(function(s){
+      return "<option value='" + escHtml(s.id) + "'>" + escHtml(s.name) + " (шагов: " + s.steps_count + ")</option>";
+    }).join("");
+  }catch(e){
+    sel.innerHTML = "<option value=''>Ошибка загрузки скриптов</option>";
+  }
+}
+
 // Стартуем
 loadCampaigns();
+loadScenarioOptions();
 </script>
 </body>
 </html>

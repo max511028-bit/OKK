@@ -124,9 +124,25 @@
       <span class="pill" id="edStatus"></span>
     </div>
 
+    <div class="fld" style="max-width:260px;">
+      <label>Голос для прослушки 🔊</label>
+      <select id="edVoice">
+        <option value="silero:kseniya" selected>Силеро · Ксения (ж)</option>
+        <option value="silero:baya">Силеро · Байя (ж)</option>
+        <option value="silero:xenia">Силеро · Ксения-2 (ж)</option>
+        <option value="silero:eugene">Силеро · Евгений (м)</option>
+        <option value="silero:aidar">Силеро · Айдар (м)</option>
+        <option value="ru-RU-SvetlanaNeural">Edge · Светлана (ж)</option>
+        <option value="ru-RU-DmitryNeural">Edge · Дмитрий (м)</option>
+      </select>
+    </div>
+
     <div class="fld">
       <label>Финальная фраза (что бот говорит в конце успешного звонка)</label>
-      <textarea id="edClosing" placeholder="Спасибо! Все вопросы заданы, до свидания."></textarea>
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <textarea id="edClosing" placeholder="Спасибо! Все вопросы заданы, до свидания." style="flex:1;"></textarea>
+        <button class="small" onclick="edPlay(document.getElementById('edClosing').value, this)" title="Прослушать">🔊</button>
+      </div>
     </div>
 
     <div id="edSteps"></div>
@@ -319,9 +335,35 @@ async function edOpen(sid){
 }
 
 function edBack(){
+  edStopAudio();
   document.getElementById("editorCard").style.display = "none";
   document.getElementById("libCard").style.display = "block";
   loadList();
+}
+
+// ── Прослушка фраз в редакторе ──
+var EDAudio = null;
+function edStopAudio(){
+  if(EDAudio){ try{ EDAudio.onerror=null; EDAudio.pause(); }catch(e){} EDAudio = null; }
+}
+function edPlay(text, btn){
+  text = (text||"").trim();
+  if(!text){ alert("Пустая фраза — нечего озвучивать"); return; }
+  edStopAudio();
+  var voice = document.getElementById("edVoice").value;
+  var url = API + "/voicecall/tts?text=" + encodeURIComponent(text)
+          + "&voice=" + encodeURIComponent(voice) + "&rate=%2B10%25";
+  var oldLabel = btn ? btn.textContent : "";
+  if(btn) btn.textContent = "⏳";
+  var a = new Audio(url);
+  EDAudio = a;
+  a.onplaying = function(){ if(btn) btn.textContent = "▶"; };
+  a.onended = function(){ if(btn) btn.textContent = oldLabel || "🔊"; EDAudio = null; };
+  a.onerror = function(){ if(btn) btn.textContent = "⚠️"; setTimeout(function(){ if(btn) btn.textContent = oldLabel || "🔊"; }, 2000); EDAudio = null; };
+  a.play().catch(function(e){ if(btn) btn.textContent = "⚠️"; });
+}
+function edPlayStep(i, key, btn){
+  edPlay(ED.steps[i][key] || "", btn);
 }
 
 function edRender(){
@@ -353,7 +395,10 @@ function edStepHtml(u, i){
     + "  </div>"
     + "</div>"
     + "<div class='fld'><label>Что говорит бот</label>"
-    + "  <textarea onchange='edSet(" + i + ",\"bot\",this.value)'>" + escHtml(u.bot) + "</textarea></div>"
+    + "  <div style='display:flex;gap:8px;align-items:flex-start;'>"
+    + "    <textarea style='flex:1;' onchange='edSet(" + i + ",\"bot\",this.value)'>" + escHtml(u.bot) + "</textarea>"
+    + "    <button class='small' onclick='edPlayStep(" + i + ",\"bot\",this)' title='Прослушать'>🔊</button>"
+    + "  </div></div>"
     + "<div class='fld-row'>"
     + "  <div class='fld'><label>Краткое название (для отчёта)</label>"
     + "    <input type='text' value='" + escHtml(u.crit||"") + "' onchange='edSet(" + i + ",\"crit\",this.value)' placeholder='напр. Возраст'></div>"
@@ -393,7 +438,10 @@ function edStepHtml(u, i){
 
 function edStopFields(u, i){
   return "<div class='fld'><label>Фраза при стопе (что бот скажет если кандидат не подходит)</label>"
-    + "<textarea onchange='edSet(" + i + ",\"stop_msg\",this.value)'>" + escHtml(u.stop_msg||"") + "</textarea></div>";
+    + "<div style='display:flex;gap:8px;align-items:flex-start;'>"
+    + "  <textarea style='flex:1;' onchange='edSet(" + i + ",\"stop_msg\",this.value)'>" + escHtml(u.stop_msg||"") + "</textarea>"
+    + "  <button class='small' onclick='edPlayStep(" + i + ",\"stop_msg\",this)' title='Прослушать'>🔊</button>"
+    + "</div></div>";
 }
 
 function edChk(val, acc, i){

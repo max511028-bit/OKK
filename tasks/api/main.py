@@ -3708,10 +3708,14 @@ async def vc_upload_contacts(
     campaign_name = name.strip() or f"Загрузка {_vc_dt.datetime.now().strftime('%d.%m.%Y %H:%M')}"
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
+        # Подтягиваем читаемое имя скрипта из библиотеки (для отображения кампании)
+        srow = conn.execute(
+            "SELECT name FROM voicecall_scripts WHERE id=?", (scenario_id,)).fetchone()
+        scenario_name = srow["name"] if srow else scenario_id
         cur = conn.execute(
             "INSERT INTO voicecall_campaigns (name, scenario_id, scenario_name, created_at, total, source) "
             "VALUES (?,?,?,?,?,?)",
-            (campaign_name, scenario_id, scenario_id, now, len(parsed), source),
+            (campaign_name, scenario_id, scenario_name, now, len(parsed), source),
         )
         campaign_id = cur.lastrowid
         for c in parsed:
@@ -3742,7 +3746,7 @@ def vc_list_campaigns(limit: int = 50):
     limit = max(1, min(int(limit), 200))
     with db() as conn:
         rows = conn.execute(
-            "SELECT c.id, c.name, c.scenario_id, c.created_at, c.total, c.source, "
+            "SELECT c.id, c.name, c.scenario_id, c.scenario_name, c.created_at, c.total, c.source, "
             "       SUM(CASE WHEN ct.status='pending' THEN 1 ELSE 0 END) AS pending_n, "
             "       SUM(CASE WHEN ct.status='calling' THEN 1 ELSE 0 END) AS calling_n, "
             "       SUM(CASE WHEN ct.status='done' THEN 1 ELSE 0 END) AS done_n, "
@@ -3758,6 +3762,7 @@ def vc_list_campaigns(limit: int = 50):
     for r in rows:
         out.append({
             "id": r["id"], "name": r["name"], "scenario_id": r["scenario_id"],
+            "scenario_name": r["scenario_name"],
             "created_at": r["created_at"], "total": r["total"], "source": r["source"],
             "pending": int(r["pending_n"] or 0), "calling": int(r["calling_n"] or 0),
             "done": int(r["done_n"] or 0), "skipped": int(r["skipped_n"] or 0),
