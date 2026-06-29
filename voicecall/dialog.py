@@ -161,25 +161,27 @@ def interpret(step: dict, raw: str) -> dict:
         return {"val": "unclear"}
 
     if expect == "shifts":
-        if re.search(r"(только день|только днем|только дневн|днем могу|лишь день)", t):
-            return {"val": "только день", "stop": True}
-        if re.search(r"(ноч.{0,6}(не|нельзя|никак)|не.{0,4}ноч|без ноч)", t):
-            return {"val": "только день", "stop": True}
-        # Если упомянули ночь без отрицания — готов к ночам
-        if re.search(r"(ноч|любые|оба|без разницы|все равно|хоть когда)", t):
+        # Распознаём вариант смен БЕЗ решения о стопе — стоп вычисляется
+        # в submit_answer по списку step["accepted"] (настраивается в конструкторе).
+        # Возможные значения: "только день" | "только ночь" | "день+ночь"
+        only_day = re.search(r"(только день|только днем|только дневн|днем могу|лишь день)", t)
+        no_night = re.search(r"(ноч.{0,6}(не|нельзя|никак)|не.{0,4}ноч|без ноч)", t)
+        only_night = re.search(r"(только ноч|только в ноч|лишь ноч|днем не могу|днем нельзя)", t)
+        both = re.search(r"(ноч|любые|оба|обе|без разницы|все равно|хоть когда)", t)
+        if only_night:
+            return {"val": "только ночь"}
+        if only_day or no_night:
+            return {"val": "только день"}
+        if both:
             return {"val": "день+ночь"}
-        # Yes/no с первой-позиции-побеждает (как в yesno expect)
         m_yes = _YES.search(t)
         m_no = _NO.search(t)
         if m_yes and not m_no:
             return {"val": "день+ночь"}
         if m_no and not m_yes:
-            return {"val": "только день", "stop": True}
+            return {"val": "только день"}
         if m_yes and m_no:
-            if m_yes.start() < m_no.start():
-                return {"val": "день+ночь"}
-            else:
-                return {"val": "только день", "stop": True}
+            return {"val": "день+ночь" if m_yes.start() < m_no.start() else "только день"}
         return {"val": "unclear"}
 
     if expect == "free":
@@ -397,19 +399,44 @@ class DialogSession:
         if r.get("val") == "unclear":
             return self._reask_or_skip(raw)
 
-        # yesno спец-логика для шагов с endOnNo / onNoFollow
+        # yesno спец-логика: стоп при «нет» (end_on_no) ИЛИ при «да» (end_on_yes)
         if step.get("expect") == "yesno":
+            # Стоп при ответе «нет» (приветствие, пол, гражданство, физнагрузка)
             if r["val"] == "no" and step.get("end_on_no"):
+                self.answers[step.get("crit", step["id"])] = "нет"
                 return self._end(step.get("end_verdict", "stopped"),
-                                 step.get("end_reason"),
-                                 last_bot=step.get("on_no"))
+                                 step.get("end_reason") or (step.get("crit", step["id"]) + ": нет"),
+                                 last_bot=step.get("on_no") or step.get("stop_msg"))
+            # Стоп при ответе «да» (судимости: «да, была судимость» → отказ)
+            if r["val"] == "yes" and step.get("end_on_yes"):
+                self.answers[step.get("crit", step["id"])] = "да"
+                return self._end(step.get("end_verdict", "stopped"),
+                                 step.get("end_reason") or (step.get("crit", step["id"]) + ": да"),
+                                 last_bot=step.get("on_yes") or step.get("stop_msg"))
+            # Доп. вопрос при «нет» (ЛМК — предложить изготовить)
             if r["val"] == "no" and step.get("on_no_follow"):
                 self.notes[step.get("crit", step["id"])] = "нет"
                 self.pending = "lmk_follow"
                 follow = step["on_no_follow"]
                 self._log("bot", follow)
                 return Action(kind="speak_then_listen", text=follow)
-            self.answers[step.get("crit", step["id"])] = "да" if r["val"] == "yes" else "нет"
+            # Обычный yesno — просто записать ответ
+            ans = "да" if r["val"] == "yes" else "нет"
+            if step.get("soft"):
+                self.notes[step.get("crit", step["id"])] = ans
+            else:
+                self.answers[step.get("crit", step["id"])] = ans
+            return self._next()
+
+        # Смены: стоп если распознанный вариант не входит в accepted.
+        # accepted по умолчанию ["день+ночь"] — сохраняет старое поведение.
+        if step.get("expect") == "shifts":
+            accepted = step.get("accepted") or ["день+ночь"]
+            self.answers[step.get("crit", step["id"])] = r["val"]
+            if r["val"] not in accepted:
+                return self._end(step.get("end_verdict", "stopped"),
+                                 step.get("end_reason") or (step.get("crit", step["id"]) + ": " + r["val"]),
+                                 last_bot=step.get("stop_msg"))
             return self._next()
 
         if r.get("stop"):
