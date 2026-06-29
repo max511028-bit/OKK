@@ -153,7 +153,12 @@
         Запись звонка сохраняется в общую историю.
       </p>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+        <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Сценарий
+          <select id="testScenario" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
+            <option value="">Загрузка...</option>
+          </select>
+        </label>
         <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Голос
           <select id="testVoice" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
             <optgroup label="Силеро (нейросеть, естественнее)">
@@ -502,6 +507,7 @@ var TEST = {
   ended: false,
   voice: "ru-RU-SvetlanaNeural",
   rate: "+10%",
+  scenario: "",
   bargeSens: 0.06,
   logs: [],
 };
@@ -811,10 +817,11 @@ async function tStart(){
   // Считываем настройки из UI
   TEST.voice = document.getElementById("testVoice").value;
   TEST.rate  = document.getElementById("testRate").value;
+  TEST.scenario = document.getElementById("testScenario").value;
   var bs = document.getElementById("testBargeSens").value;
   TEST.bargeSens = (bs === "off") ? 0 : parseFloat(bs);
   tLog("=== SESSION START ===", "ok");
-  tLog("voice=" + TEST.voice + " rate=" + TEST.rate + " bargeSens=" + TEST.bargeSens);
+  tLog("scenario=" + TEST.scenario + " voice=" + TEST.voice + " rate=" + TEST.rate + " bargeSens=" + TEST.bargeSens);
 
   try{
     await tInitMic();
@@ -832,7 +839,8 @@ async function tStart(){
     tLog("POST /voicecall/test/start (с прогревом TTS в фоне)");
     var startUrl = API + "/voicecall/test/start"
                  + "?voice=" + encodeURIComponent(TEST.voice)
-                 + "&rate=" + encodeURIComponent(TEST.rate);
+                 + "&rate=" + encodeURIComponent(TEST.rate)
+                 + (TEST.scenario ? "&scenario_id=" + encodeURIComponent(TEST.scenario) : "");
     var r = await fetch(startUrl, { method: "POST" });
     if(!r.ok){
       var t = await r.text().catch(function(){ return r.statusText; });
@@ -1020,9 +1028,31 @@ async function loadScenarioOptions(){
   }
 }
 
+// Загрузка сценариев в ТЕСТОВЫЙ прозвон — показываем ВСЕ (вкл. черновики),
+// чтобы можно было проверить черновик голосом перед публикацией.
+async function loadTestScenarioOptions(){
+  var sel = document.getElementById("testScenario");
+  try{
+    var r = await fetch(API + "/voicecall/scripts");
+    var data = await r.json();
+    var items = data.items || [];
+    if(!items.length){
+      sel.innerHTML = "<option value=''>Нет скриптов — создай в конструкторе</option>";
+      return;
+    }
+    sel.innerHTML = items.map(function(s){
+      var mark = s.status === "published" ? "✓" : "✎";
+      return "<option value='" + escHtml(s.id) + "'>" + mark + " " + escHtml(s.name) + " (" + s.steps_count + ")</option>";
+    }).join("");
+  }catch(e){
+    sel.innerHTML = "<option value=''>Ошибка загрузки</option>";
+  }
+}
+
 // Стартуем
 loadCampaigns();
 loadScenarioOptions();
+loadTestScenarioOptions();
 </script>
 </body>
 </html>
