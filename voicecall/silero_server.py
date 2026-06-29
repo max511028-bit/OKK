@@ -158,10 +158,18 @@ def tts():
 
 def main():
     port = int(os.getenv("SILERO_PORT", "5001"))
-    print(f"[silero] starting on 127.0.0.1:{port}", flush=True)
     # Прогрев в фоне — пока сервер слушает, грузим модель
     threading.Thread(target=_load_model, daemon=True).start()
-    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
+    # waitress — production WSGI сервер. Werkzeug dev-сервер давится на
+    # keep-alive соединениях httpx через SSH-туннель («Invalid HTTP request»).
+    try:
+        from waitress import serve
+        print(f"[silero] starting on 127.0.0.1:{port} (waitress)", flush=True)
+        serve(app, host="127.0.0.1", port=port, threads=4,
+              channel_timeout=30, connection_limit=50)
+    except ImportError:
+        print(f"[silero] waitress нет, fallback на werkzeug 127.0.0.1:{port}", flush=True)
+        app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
 
 
 if __name__ == "__main__":

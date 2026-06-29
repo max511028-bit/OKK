@@ -4054,11 +4054,18 @@ async def _vc_tts_generate_silero(text: str, voice: str) -> str:
     cache_path = _vt_os.path.join(_VT_TTS_CACHE_DIR, f"silero_{key}.wav")
     if _vt_os.path.exists(cache_path):
         return cache_path
-    # Качаем через локальный туннель к ПК пользователя
+    # Качаем через локальный туннель к ПК пользователя.
+    # ВАЖНО: werkzeug dev-сервер (Silero на Flask app.run) давится на
+    # keep-alive соединениях httpx через SSH-туннель → "Invalid HTTP request".
+    # Заставляем закрывать соединение после каждого запроса.
     import urllib.parse as _up
     url = f"{_SILERO_LOCAL_URL}/tts?text={_up.quote(text)}&voice={_up.quote(voice_clean)}&sample_rate=24000"
     try:
-        async with httpx.AsyncClient(timeout=15) as cli:
+        async with httpx.AsyncClient(
+            timeout=15,
+            headers={"Connection": "close"},
+            limits=httpx.Limits(max_keepalive_connections=0),
+        ) as cli:
             r = await cli.get(url)
             if r.status_code != 200:
                 raise RuntimeError(f"silero HTTP {r.status_code}: {r.text[:200]}")
