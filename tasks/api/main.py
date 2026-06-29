@@ -205,6 +205,19 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_vc_contacts_campaign ON voicecall_contacts(campaign_id, status);
         CREATE INDEX IF NOT EXISTS idx_vc_contacts_status ON voicecall_contacts(status, created_at);
         CREATE INDEX IF NOT EXISTS idx_vc_contacts_phone ON voicecall_contacts(phone);
+
+        CREATE TABLE IF NOT EXISTS voicecall_scripts (
+            id TEXT PRIMARY KEY,              -- slug или uuid
+            name TEXT NOT NULL,              -- "Тандер · Стерлитамак · комплектовщик"
+            status TEXT NOT NULL DEFAULT 'draft',  -- draft | published
+            steps_json TEXT NOT NULL,        -- [{id, crit, expect, bot, ...}]
+            stop_factors_json TEXT,          -- ["пол муж", ...] для отображения
+            closing TEXT,                    -- финальная фраза
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_vc_scripts_status ON voicecall_scripts(status, updated_at DESC);
         """)
         # Soft-delete migration (idempotent)
         try:
@@ -401,9 +414,64 @@ def get_list(conn, name: str) -> Any:
     return json.loads(row["data"]) if row else []
 
 
+def _seed_voicecall_scripts():
+    """Миграция: при первом старте засеять voicecall_scripts из JSON-файлов
+    в voicecall/scenarios/. Идемпотентно — если скрипт с таким id уже есть,
+    пропускаем."""
+    import datetime as _dt
+    scenarios_dir = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                     "voicecall", "scenarios"))
+    if not os.path.isdir(scenarios_dir):
+        print(f"[scripts-seed] dir not found: {scenarios_dir}", flush=True)
+        return
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    seeded = 0
+    with db() as conn:
+        for fn in sorted(os.listdir(scenarios_dir)):
+            if not fn.endswith(".json"):
+                continue
+            path = os.path.join(scenarios_dir, fn)
+            try:
+                data = json.loads(open(path, encoding="utf-8").read())
+            except Exception as e:
+                print(f"[scripts-seed] skip {fn}: {e}", flush=True)
+                continue
+            sid = data.get("id") or fn[:-5]
+            exists = conn.execute(
+                "SELECT 1 FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+            if exists:
+                continue
+            conn.execute(
+                "INSERT INTO voicecall_scripts "
+                "(id, name, status, steps_json, stop_factors_json, closing, "
+                " version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    sid,
+                    data.get("name", sid),
+                    "published",
+                    json.dumps(data.get("steps", []), ensure_ascii=False),
+                    json.dumps(data.get("stop_factors", []), ensure_ascii=False),
+                    data.get("closing", ""),
+                    1, now, now,
+                ),
+            )
+            seeded += 1
+            print(f"[scripts-seed] seeded '{sid}' from {fn}", flush=True)
+    if seeded:
+        print(f"[scripts-seed] total seeded: {seeded}", flush=True)
+    else:
+        print("[scripts-seed] nothing to seed (all already in DB)", flush=True)
+
+
 @app.on_event("startup")
 def _startup():
     init_db()
+    # Миграция voicecall-скриптов из JSON в БД (Этап 1 конструктора)
+    try:
+        _seed_voicecall_scripts()
+    except Exception as e:
+        print(f"[startup] voicecall scripts seed failed: {e}", flush=True)
     # Прогрев кэшей рекрутера в фоне — первый пользователь дня не ждёт 7.5 сек
     try:
         from recruiter_logic import warmup_async
@@ -3787,7 +3855,7 @@ if _VT_VOICECALL_DIR not in _vt_sys.path:
 try:
     from dialog import (
         DialogSession as _VT_DialogSession,
-        load_scenario as _vt_load_scenario,
+        load_scenario as _vt_load_scenario_file,
         vocab_for_step as _vt_vocab_for_step,
     )
     _VT_DIALOG_OK = True
@@ -3795,6 +3863,29 @@ try:
 except Exception as _vt_e:
     _VT_DIALOG_OK = False
     _VT_DIALOG_ERR = type(_vt_e).__name__ + ": " + str(_vt_e)
+
+
+def _vt_load_scenario(scenario_id: str) -> dict:
+    """Грузит сценарий СНАЧАЛА из БД (voicecall_scripts), при отсутствии —
+    fallback на JSON-файл. Так конструктор (правки в БД) сразу применяется,
+    а старые файлы остаются как резерв."""
+    try:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT id, name, steps_json, stop_factors_json, closing "
+                "FROM voicecall_scripts WHERE id=?", (scenario_id,)).fetchone()
+        if row:
+            return {
+                "id": row["id"],
+                "name": row["name"],
+                "steps": json.loads(row["steps_json"] or "[]"),
+                "stop_factors": json.loads(row["stop_factors_json"] or "[]"),
+                "closing": row["closing"] or "",
+            }
+        print(f"[scenario] '{scenario_id}' not in DB, fallback to file", flush=True)
+    except Exception as e:
+        print(f"[scenario] DB load failed for '{scenario_id}': {e}, fallback to file", flush=True)
+    return _vt_load_scenario_file(scenario_id)
 
 # В памяти процесса: активные сессии теста.
 _VT_SESSIONS = {}  # session_id -> {sess, scenario, started_at, transcript}
@@ -4412,3 +4503,196 @@ def admin_vosk_status():
         "contents": contents,
         "required": have,
     }
+
+
+# ════════════════════════════════════════════════════════════════════════
+# КОНСТРУКТОР СКРИПТОВ (Этап 1-2) — CRUD библиотеки сценариев в БД.
+# Чтение открыто (нужно при обзвоне). Запись — за паролем 511028 через
+# проверку X-VC-Token (то же что portal token).
+# ════════════════════════════════════════════════════════════════════════
+
+import datetime as _vcs_dt
+import uuid as _vcs_uuid
+import re as _vcs_re
+
+
+def _vcs_check_password(request: Request):
+    """Конструктор за паролем 511028. Проверяем X-Auth-Token (portal-токен)
+    ИЛИ ?password= в query (для простоты UI). Дебаг-friendly: ясная 403."""
+    token = request.headers.get("X-Auth-Token", "")
+    if token and _verify_token(token, "portal"):
+        return
+    pwd = request.query_params.get("password", "")
+    if PORTAL_PASSWORD and _hmac.compare_digest(pwd, PORTAL_PASSWORD):
+        return
+    raise HTTPException(403, "Конструктор скриптов требует пароль портала (511028)")
+
+
+def _vcs_slugify(name: str) -> str:
+    s = (name or "").lower().strip()
+    s = s.replace("ё", "е")
+    s = _vcs_re.sub(r"[^a-zа-я0-9]+", "-", s)
+    s = _vcs_re.sub(r"-+", "-", s).strip("-")
+    return s[:50] or ("script-" + _vcs_uuid.uuid4().hex[:8])
+
+
+def _vcs_row_to_dict(row, with_steps=False):
+    d = {
+        "id": row["id"],
+        "name": row["name"],
+        "status": row["status"],
+        "version": row["version"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+    if with_steps:
+        try: d["steps"] = json.loads(row["steps_json"] or "[]")
+        except Exception: d["steps"] = []
+        try: d["stop_factors"] = json.loads(row["stop_factors_json"] or "[]")
+        except Exception: d["stop_factors"] = []
+        d["closing"] = row["closing"] or ""
+    return d
+
+
+@app.get("/voicecall/scripts")
+def vcs_list():
+    """Список всех скриптов (для библиотеки и для выбора при обзвоне).
+    Открыто без пароля — список нужен везде."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, name, status, version, created_at, updated_at, "
+            "steps_json FROM voicecall_scripts ORDER BY updated_at DESC"
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = _vcs_row_to_dict(r)
+        try: d["steps_count"] = len(json.loads(r["steps_json"] or "[]"))
+        except Exception: d["steps_count"] = 0
+        out.append(d)
+    return {"items": out, "total": len(out)}
+
+
+@app.get("/voicecall/scripts/{sid}")
+def vcs_get(sid: str):
+    """Полный скрипт со всеми шагами. Открыто (нужно при обзвоне/тесте)."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+    if not row:
+        raise HTTPException(404, f"Скрипт '{sid}' не найден")
+    return _vcs_row_to_dict(row, with_steps=True)
+
+
+class VCScriptPayload(BaseModel):
+    name: str
+    steps: list = []
+    stop_factors: list = []
+    closing: str = ""
+    status: Optional[str] = None  # draft | published
+
+
+@app.post("/voicecall/scripts")
+def vcs_create(payload: VCScriptPayload, request: Request):
+    """Создать новый скрипт. За паролем."""
+    _vcs_check_password(request)
+    if not payload.name.strip():
+        raise HTTPException(400, "Имя обязательно")
+    now = _vcs_dt.datetime.now().isoformat(timespec="seconds")
+    base_slug = _vcs_slugify(payload.name)
+    with db() as conn:
+        # уникальность id
+        sid = base_slug
+        n = 2
+        while conn.execute("SELECT 1 FROM voicecall_scripts WHERE id=?", (sid,)).fetchone():
+            sid = f"{base_slug}-{n}"; n += 1
+        conn.execute(
+            "INSERT INTO voicecall_scripts "
+            "(id,name,status,steps_json,stop_factors_json,closing,version,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (sid, payload.name.strip(), payload.status or "draft",
+             json.dumps(payload.steps, ensure_ascii=False),
+             json.dumps(payload.stop_factors, ensure_ascii=False),
+             payload.closing, 1, now, now),
+        )
+        print(f"[scripts] created '{sid}' ({payload.name})", flush=True)
+    return {"ok": True, "id": sid}
+
+
+@app.put("/voicecall/scripts/{sid}")
+def vcs_update(sid: str, payload: VCScriptPayload, request: Request):
+    """Обновить скрипт. За паролем.
+    ВАЖНО (решение #3): если скрипт published — правка переводит его в draft
+    (черновик-копия логики), пока не нажмут «Опубликовать»."""
+    _vcs_check_password(request)
+    with db() as conn:
+        row = conn.execute("SELECT status, version FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"Скрипт '{sid}' не найден")
+        now = _vcs_dt.datetime.now().isoformat(timespec="seconds")
+        # published → правка делает draft (защита живого обзвона)
+        new_status = payload.status or ("draft" if row["status"] == "published" else row["status"])
+        conn.execute(
+            "UPDATE voicecall_scripts SET name=?, steps_json=?, stop_factors_json=?, "
+            "closing=?, status=?, version=version+1, updated_at=? WHERE id=?",
+            (payload.name.strip(),
+             json.dumps(payload.steps, ensure_ascii=False),
+             json.dumps(payload.stop_factors, ensure_ascii=False),
+             payload.closing, new_status, now, sid),
+        )
+        print(f"[scripts] updated '{sid}' v{row['version']+1} status={new_status}", flush=True)
+    return {"ok": True, "id": sid, "status": new_status}
+
+
+@app.post("/voicecall/scripts/{sid}/publish")
+def vcs_publish(sid: str, request: Request):
+    """Опубликовать скрипт (draft → published). За паролем."""
+    _vcs_check_password(request)
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"Скрипт '{sid}' не найден")
+        now = _vcs_dt.datetime.now().isoformat(timespec="seconds")
+        conn.execute(
+            "UPDATE voicecall_scripts SET status='published', updated_at=? WHERE id=?",
+            (now, sid))
+        print(f"[scripts] published '{sid}'", flush=True)
+    return {"ok": True, "id": sid, "status": "published"}
+
+
+@app.post("/voicecall/scripts/{sid}/copy")
+def vcs_copy(sid: str, request: Request):
+    """Создать копию скрипта (новый draft). За паролем."""
+    _vcs_check_password(request)
+    with db() as conn:
+        row = conn.execute("SELECT * FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"Скрипт '{sid}' не найден")
+        now = _vcs_dt.datetime.now().isoformat(timespec="seconds")
+        new_name = (row["name"] or sid) + " (копия)"
+        base_slug = _vcs_slugify(new_name)
+        new_id = base_slug
+        n = 2
+        while conn.execute("SELECT 1 FROM voicecall_scripts WHERE id=?", (new_id,)).fetchone():
+            new_id = f"{base_slug}-{n}"; n += 1
+        conn.execute(
+            "INSERT INTO voicecall_scripts "
+            "(id,name,status,steps_json,stop_factors_json,closing,version,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (new_id, new_name, "draft", row["steps_json"], row["stop_factors_json"],
+             row["closing"], 1, now, now),
+        )
+        print(f"[scripts] copied '{sid}' → '{new_id}'", flush=True)
+    return {"ok": True, "id": new_id, "name": new_name}
+
+
+@app.delete("/voicecall/scripts/{sid}")
+def vcs_delete(sid: str, request: Request):
+    """Удалить скрипт. За паролем. (Пока тесты — удаляем насовсем, решение #2)"""
+    _vcs_check_password(request)
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM voicecall_scripts WHERE id=?", (sid,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"Скрипт '{sid}' не найден")
+        conn.execute("DELETE FROM voicecall_scripts WHERE id=?", (sid,))
+        print(f"[scripts] deleted '{sid}'", flush=True)
+    return {"ok": True, "deleted": sid}
