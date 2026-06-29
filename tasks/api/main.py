@@ -4069,8 +4069,13 @@ async def _vc_tts_generate_silero(text: str, voice: str) -> str:
             r = await cli.get(url)
             if r.status_code != 200:
                 raise RuntimeError(f"silero HTTP {r.status_code}: {r.text[:200]}")
-            with open(cache_path, "wb") as f:
+            # Атомарная запись: temp + os.replace, иначе прогрев и запрос
+            # дерутся за полу-записанный WAV
+            import uuid as _uuid
+            tmp = cache_path + f".{_uuid.uuid4().hex[:8]}.tmp"
+            with open(tmp, "wb") as f:
                 f.write(r.content)
+            _vt_os.replace(tmp, cache_path)
     except httpx.TimeoutException:
         raise RuntimeError("silero: timeout — туннель не отвечает, проверь /voicecall/silero-status")
     except Exception as e:
@@ -4097,35 +4102,49 @@ async def _vc_tts_generate(text: str, voice: str, rate: str) -> str:
         import edge_tts  # type: ignore
     except ImportError:
         raise RuntimeError("edge-tts не установлен")
-    tmp_raw = cache_path + ".raw.mp3"
+    # Уникальные temp-имена (uuid) — иначе параллельные вызовы (прогрев +
+    # реальный запрос) дерутся за один файл и читатель видит битый MP3.
+    import uuid as _uuid
+    uniq = _uuid.uuid4().hex[:8]
+    tmp_raw = cache_path + f".{uniq}.raw.mp3"
+    tmp_out = cache_path + f".{uniq}.out.mp3"
     try:
         communicate = edge_tts.Communicate(text, voice, rate=rate)
         await communicate.save(tmp_raw)
     except Exception as e:
         raise RuntimeError(f"edge-tts error: {type(e).__name__}: {e}")
 
-    # silenceremove через ffmpeg
+    # silenceremove через ffmpeg → во временный файл, потом атомарный replace
     try:
         import imageio_ffmpeg  # type: ignore
         ff_exe = imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
         ff_exe = "ffmpeg"
+    final_src = None
     try:
         proc = _v_sp.run([
             ff_exe, "-y", "-loglevel", "error", "-i", tmp_raw,
             "-af", ("silenceremove=start_periods=1:start_duration=0.05:"
                     "start_threshold=-45dB:stop_periods=-1:"
                     "stop_duration=0.15:stop_threshold=-40dB"),
-            "-codec:a", "libmp3lame", "-q:a", "4", cache_path,
+            "-codec:a", "libmp3lame", "-q:a", "4", tmp_out,
         ], capture_output=True, timeout=15)
-        if proc.returncode != 0 or not _vt_os.path.exists(cache_path):
-            _vt_os.rename(tmp_raw, cache_path)
+        if proc.returncode == 0 and _vt_os.path.exists(tmp_out) and _vt_os.path.getsize(tmp_out) > 0:
+            final_src = tmp_out
         else:
-            try: _vt_os.unlink(tmp_raw)
-            except Exception: pass
+            final_src = tmp_raw  # ffmpeg не сработал — отдаём сырой
     except Exception:
-        try: _vt_os.rename(tmp_raw, cache_path)
-        except Exception: pass
+        final_src = tmp_raw
+    # os.replace атомарен на одной ФС — читатель видит либо старый, либо новый файл целиком
+    try:
+        _vt_os.replace(final_src, cache_path)
+    except Exception as e:
+        raise RuntimeError(f"tts save failed: {e}")
+    # Подчищаем оставшийся temp
+    for p in (tmp_raw, tmp_out):
+        if p != final_src:
+            try: _vt_os.unlink(p)
+            except Exception: pass
     return cache_path
 
 
