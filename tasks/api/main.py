@@ -4022,7 +4022,6 @@ def vc_test_get_summary(validation_id: int):
     return {"summary": row["summary"], "ready": row["summary"] is not None}
 
 
-@app.get("/voicecall/tts")
 def _vc_normalize_tts_rate(rate: str) -> str:
     rate = (rate or "").strip()
     if not rate.startswith(("+", "-")):
@@ -4123,6 +4122,7 @@ async def _vc_tts_generate(text: str, voice: str, rate: str) -> str:
     return cache_path
 
 
+@app.get("/voicecall/tts")
 async def vc_tts(text: str, voice: str = "ru-RU-SvetlanaNeural",
                   rate: str = "+10%"):
     """Серверный TTS через edge-tts → ffmpeg trim silence → MP3.
