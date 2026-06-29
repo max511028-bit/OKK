@@ -145,10 +145,17 @@
       <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
         <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Голос
           <select id="testVoice" style="font-family:inherit; background:var(--surface2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px;">
-            <option value="ru-RU-SvetlanaNeural" selected>Светлана (ж)</option>
-            <option value="ru-RU-DmitryNeural">Дмитрий (м)</option>
-            <!-- Silero-голоса временно скрыты — туннель 25001 не идёт через VPS.
-                 Когда починим (auth.log на VPS), вернуть optgroup сюда. -->
+            <optgroup label="Силеро (нейросеть, естественнее)">
+              <option value="silero:kseniya" selected>Силеро · Ксения (ж)</option>
+              <option value="silero:baya">Силеро · Байя (ж)</option>
+              <option value="silero:xenia">Силеро · Ксения-2 (ж)</option>
+              <option value="silero:eugene">Силеро · Евгений (м)</option>
+              <option value="silero:aidar">Силеро · Айдар (м)</option>
+            </optgroup>
+            <optgroup label="Edge (Microsoft, запасной)">
+              <option value="ru-RU-SvetlanaNeural">Edge · Светлана (ж)</option>
+              <option value="ru-RU-DmitryNeural">Edge · Дмитрий (м)</option>
+            </optgroup>
           </select>
         </label>
         <label style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--muted);">Скорость
