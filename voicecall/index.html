@@ -133,6 +133,38 @@
 
   <div class="grid">
 
+    <!-- ── Конструктор скриптов (библиотека) ── -->
+    <div class="card">
+      <h2 style="display:flex;align-items:center;gap:10px;">
+        ⚙️ Конструктор скриптов
+        <button class="small" onclick="csToggle()" id="csToggleBtn" style="margin-left:auto;">Открыть</button>
+      </h2>
+      <p style="font-size:13px;color:var(--muted);margin:0;">
+        Библиотека сценариев обзвона. Создавай, копируй, редактируй скрипты без программиста.
+        Редактирование — за паролем портала.
+      </p>
+
+      <div id="csPanel" style="display:none;margin-top:16px;">
+        <!-- Парольный гейт -->
+        <div id="csAuth" style="background:var(--surface2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px;">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:8px;">🔒 Введи пароль портала чтобы редактировать скрипты:</div>
+          <div style="display:flex;gap:8px;">
+            <input type="password" id="csPassword" placeholder="Пароль" style="flex:1;font-family:inherit;font-size:14px;padding:9px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);outline:none;">
+            <button class="primary" onclick="csCheckAuth()">Войти</button>
+          </div>
+          <div id="csAuthErr" style="display:none;color:var(--bad);font-size:12px;margin-top:8px;"></div>
+        </div>
+
+        <!-- Тулбар библиотеки (виден после авторизации) -->
+        <div id="csToolbar" style="display:none;margin-bottom:12px;">
+          <button class="primary" onclick="csCreateNew()">+ Создать скрипт</button>
+          <button class="small" onclick="csLoadList()" style="margin-left:6px;">↻ Обновить</button>
+        </div>
+
+        <div id="csList" class="camp"><div class="loading">Открой конструктор и введи пароль...</div></div>
+      </div>
+    </div>
+
     <!-- ── Тестовый прозвон в браузере ── -->
     <div class="card">
       <h2>🎙 Тестовый прозвон (попробовать бота прямо здесь)</h2>
@@ -988,6 +1020,121 @@ document.getElementById("testDebugBtn").addEventListener("click", function(){
   var w = document.getElementById("testDebugWrap");
   w.style.display = (w.style.display === "none") ? "block" : "none";
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// КОНСТРУКТОР СКРИПТОВ (библиотека) — Этап 2
+// ═══════════════════════════════════════════════════════════════════
+var CS = {
+  password: null,       // пароль портала после успешного входа
+  opened: false,
+};
+
+function csToggle(){
+  CS.opened = !CS.opened;
+  document.getElementById("csPanel").style.display = CS.opened ? "block" : "none";
+  document.getElementById("csToggleBtn").textContent = CS.opened ? "Свернуть" : "Открыть";
+  if(CS.opened && !CS.password){
+    // показываем гейт, прячем тулбар
+    document.getElementById("csAuth").style.display = "block";
+    document.getElementById("csToolbar").style.display = "none";
+  }
+}
+
+async function csCheckAuth(){
+  var pwd = document.getElementById("csPassword").value;
+  var err = document.getElementById("csAuthErr");
+  err.style.display = "none";
+  if(!pwd){ err.textContent = "Введи пароль"; err.style.display = "block"; return; }
+  // Проверяем пароль лёгким запросом — пробуем list (открыт), но валидируем
+  // пароль через попытку. Проще: проверим через /auth/check портала.
+  try{
+    var r = await fetch(API + "/auth/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pwd, kind: "portal" })
+    });
+    if(!r.ok){
+      err.textContent = r.status === 403 ? "Неверный пароль" : ("Ошибка " + r.status);
+      err.style.display = "block";
+      return;
+    }
+    CS.password = pwd;
+    document.getElementById("csAuth").style.display = "none";
+    document.getElementById("csToolbar").style.display = "block";
+    csLoadList();
+  }catch(e){
+    err.textContent = "Сеть: " + e.message;
+    err.style.display = "block";
+  }
+}
+
+async function csLoadList(){
+  var list = document.getElementById("csList");
+  list.innerHTML = "<div class='loading'>Загрузка библиотеки...</div>";
+  try{
+    var r = await fetch(API + "/voicecall/scripts");
+    var data = await r.json();
+    var items = data.items || [];
+    if(!items.length){
+      list.innerHTML = "<div class='empty'>Скриптов пока нет. Создай первый.</div>";
+      return;
+    }
+    list.innerHTML = items.map(function(s){
+      var statusPill = s.status === "published"
+        ? "<span class='pill passed'>✓ опубликован</span>"
+        : "<span class='pill pending'>✎ черновик</span>";
+      return ""
+        + "<div class='camp-item'>"
+        + "  <div class='camp-head'>"
+        + "    <div>"
+        + "      <div class='camp-title'>" + escHtml(s.name) + "</div>"
+        + "      <div class='camp-meta'>id: " + escHtml(s.id) + " · шагов: " + s.steps_count + " · v" + s.version + " · изменён " + fmtTs(s.updated_at) + "</div>"
+        + "    </div>"
+        + "    <div class='camp-stats'>" + statusPill + "</div>"
+        + "  </div>"
+        + "  <div style='margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;'>"
+        + "    <button class='small' onclick=\"csCopy('" + s.id + "')\">⧉ Копия</button>"
+        + "    <button class='small danger' onclick=\"csDelete('" + s.id + "','" + escHtml(s.name).replace(/'/g,'') + "')\">🗑 Удалить</button>"
+        + "  </div>"
+        + "</div>";
+    }).join("");
+  }catch(e){
+    list.innerHTML = "<div class='empty'>Ошибка: " + escHtml(e.message) + "</div>";
+  }
+}
+
+async function csCreateNew(){
+  var name = prompt("Название нового скрипта:", "Новый скрипт");
+  if(!name) return;
+  try{
+    var r = await fetch(API + "/voicecall/scripts?password=" + encodeURIComponent(CS.password), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name, steps: [], stop_factors: [], closing: "Спасибо! Все вопросы заданы, до свидания." })
+    });
+    if(!r.ok){ alert("Не удалось создать: HTTP " + r.status); return; }
+    var d = await r.json();
+    csLoadList();
+    alert("Создан скрипт «" + name + "». Редактор шагов появится на следующем этапе.");
+  }catch(e){ alert("Ошибка: " + e.message); }
+}
+
+async function csCopy(sid){
+  try{
+    var r = await fetch(API + "/voicecall/scripts/" + encodeURIComponent(sid) + "/copy?password=" + encodeURIComponent(CS.password), { method: "POST" });
+    if(!r.ok){ alert("Не удалось скопировать: HTTP " + r.status); return; }
+    csLoadList();
+  }catch(e){ alert("Ошибка: " + e.message); }
+}
+
+async function csDelete(sid, name){
+  if(!confirm("Удалить скрипт «" + name + "»? Действие необратимо.")) return;
+  try{
+    var r = await fetch(API + "/voicecall/scripts/" + encodeURIComponent(sid) + "?password=" + encodeURIComponent(CS.password), { method: "DELETE" });
+    if(!r.ok){ alert("Не удалось удалить: HTTP " + r.status); return; }
+    csLoadList();
+  }catch(e){ alert("Ошибка: " + e.message); }
+}
 
 // Стартуем
 loadCampaigns();
