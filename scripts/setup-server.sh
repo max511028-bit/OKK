@@ -7,6 +7,23 @@ set -e
 # Не прерываться на ошибках проверки внешних сервисов
 trap 'echo "WARN: non-critical step failed, continuing..." >&2' ERR
 
+# ГАРАНТИРОВАННЫЙ рестарт tasks-api при ЛЮБОМ выходе из скрипта.
+# Раньше set -e мог убить скрипт на vosk/pip/nginx ДО строки restart —
+# код деплоился, но сервис крутил старый в памяти (источник кучи «багов»).
+# Теперь рестарт в trap EXIT — применяется даже если скрипт упал в середине.
+_final_restart() {
+  echo "=== [trap EXIT] гарантированный рестарт tasks-api ==="
+  systemctl daemon-reload 2>/dev/null || true
+  systemctl restart tasks-api 2>/dev/null || true
+  sleep 2
+  if systemctl is-active --quiet tasks-api; then
+    echo "[trap EXIT] tasks-api active ✅"
+  else
+    echo "[trap EXIT] tasks-api НЕ active ❌ — смотри journalctl -u tasks-api"
+  fi
+}
+trap '_final_restart' EXIT
+
 SITE_CONF=""
 for f in /etc/nginx/sites-enabled/*; do
   [ -f "$f" ] && SITE_CONF="$f" && break

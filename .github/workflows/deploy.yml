@@ -66,3 +66,42 @@ jobs:
             root@195.208.119.67 \
             'bash /var/www/okk/scripts/setup-server.sh'
           rm /tmp/vps_key
+
+      - name: Smoke test (проверка что портал и звонилка живы)
+        run: |
+          echo "Жду 8 сек чтобы tasks-api поднялся после рестарта..."
+          sleep 8
+          BASE="https://portalsth.ru/tasks/api"
+          fail=0
+
+          # 1. Базовый health
+          code=$(curl -sS -m 10 -o /dev/null -w "%{http_code}" "$BASE/health" || echo 000)
+          echo "health: $code"
+          [ "$code" = "200" ] || { echo "❌ /health не 200"; fail=1; }
+
+          # 2. AI health (Ollama через туннель)
+          curl -sS -m 10 "$BASE/ai/health" || true
+          echo ""
+
+          # 3. Voicecall TTS (Edge) — главный эндпоинт теста, ASCII-текст
+          code=$(curl -sS -m 20 -o /tmp/tts_smoke.bin -w "%{http_code}" \
+            "$BASE/voicecall/tts?text=test&voice=ru-RU-SvetlanaNeural" || echo 000)
+          size=$(stat -c%s /tmp/tts_smoke.bin 2>/dev/null || echo 0)
+          echo "voicecall/tts edge: HTTP $code, $size bytes"
+          # Должен быть аудио (>1КБ), не JSON-ошибка
+          if [ "$code" != "200" ] || [ "$size" -lt 1000 ]; then
+            echo "❌ TTS не вернул аудио. Ответ:"; head -c 300 /tmp/tts_smoke.bin; echo
+            fail=1
+          fi
+
+          # 4. Старт тестовой сессии валидатора
+          code=$(curl -sS -m 10 -o /tmp/vc_start.json -w "%{http_code}" \
+            -X POST "$BASE/voicecall/test/start" || echo 000)
+          echo "voicecall/test/start: HTTP $code"
+          [ "$code" = "200" ] || { echo "❌ test/start не 200"; head -c 300 /tmp/vc_start.json; fail=1; }
+
+          if [ "$fail" = "1" ]; then
+            echo "::error::Смоук-тест звонилки провалился — деплой сломал эндпоинты"
+            exit 1
+          fi
+          echo "✅ Смоук-тест пройден: портал и звонилка живы"
