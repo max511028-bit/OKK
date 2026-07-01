@@ -797,11 +797,44 @@ async function deleteCampaign(cid){
 }
 
 // ── Модалка карточки контакта ──
+function renderTranscriptMsgs(transcript){
+  return transcript.map(function(m){
+    var cls = m.who === "bot" ? "bot" : m.who === "candidate" ? "candidate" : "system";
+    var icon = m.who === "bot" ? "🤖 " : m.who === "candidate" ? "🧑 " : "";
+    return "<div class='transcript-msg " + cls + "'>" + icon + escHtml(m.text) + "</div>";
+  }).join("");
+}
+
+var _liveModalTimer = null;
+
+function stopLivePolling(){
+  if(_liveModalTimer){ clearInterval(_liveModalTimer); _liveModalTimer = null; }
+}
+
+function startLivePolling(id){
+  stopLivePolling();
+  var poll = async function(){
+    var wrap = document.getElementById("liveTranscriptWrap");
+    if(!wrap){ stopLivePolling(); return; }  // модалку закрыли/сменили контакт
+    try{
+      var r = await fetch(API + "/voicecall/contacts/" + id + "/live");
+      var data = await r.json();
+      var t = data.transcript || [];
+      wrap.innerHTML = t.length ? renderTranscriptMsgs(t)
+        : "<div style='color:var(--hint); font-size:13px;'>Ожидание первой реплики...</div>";
+    }catch(e){ /* тихо, следующий тик попробует снова */ }
+  };
+  poll();
+  _liveModalTimer = setInterval(poll, 2000);
+}
+
 function closeContactModal(){
   document.getElementById("contactModal").classList.remove("show");
+  stopLivePolling();
 }
 
 async function openContactModal(id){
+  stopLivePolling();
   var modal = document.getElementById("contactModal");
   var body = document.getElementById("contactModalBody");
   body.innerHTML = "<div class='loading'>Загрузка...</div>";
@@ -841,18 +874,18 @@ async function openContactModal(id){
       html += "<div class='modal-section'><div class='modal-section-title'>Резюме</div>"
         + "<div style='font-size:13px'>" + escHtml(ct.summary) + "</div></div>";
     }
-    if((ct.transcript || []).length){
+    if(ct.status === "calling"){
+      html += "<div class='modal-section'><div class='modal-section-title'>🔴 Идёт звонок — транскрипт вживую</div>"
+        + "<div id='liveTranscriptWrap'><div style='color:var(--hint); font-size:13px;'>Ожидание первой реплики...</div></div></div>";
+    } else if((ct.transcript || []).length){
       html += "<div class='modal-section'><div class='modal-section-title'>Транскрипт звонка</div>"
-        + ct.transcript.map(function(m){
-            var cls = m.who === "bot" ? "bot" : m.who === "candidate" ? "candidate" : "system";
-            var icon = m.who === "bot" ? "🤖 " : m.who === "candidate" ? "🧑 " : "";
-            return "<div class='transcript-msg " + cls + "'>" + icon + escHtml(m.text) + "</div>";
-          }).join("") + "</div>";
-    } else if(ct.status === "pending" || ct.status === "calling"){
+        + renderTranscriptMsgs(ct.transcript) + "</div>";
+    } else if(ct.status === "pending"){
       html += "<div class='modal-section' style='color:var(--hint); font-size:13px;'>Звонка ещё не было.</div>";
     }
 
     body.innerHTML = html;
+    if(ct.status === "calling") startLivePolling(id);
   } catch(e){
     body.innerHTML = "<div class='empty'>Ошибка: " + escHtml(e.message) + "</div>";
   }

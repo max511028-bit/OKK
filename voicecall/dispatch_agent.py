@@ -36,7 +36,7 @@ RESULT_POST_RETRY_DELAY = 5
 
 
 def _rpc(base_url: str, method: str, path: str, token: str = "",
-         params: dict = None, json_body: dict = None) -> dict:
+         params: dict = None, json_body: dict = None, timeout: float = 30) -> dict:
     url = base_url.rstrip("/") + path
     if params:
         from urllib.parse import urlencode
@@ -46,7 +46,7 @@ def _rpc(base_url: str, method: str, path: str, token: str = "",
     if token:
         headers["X-Auth-Token"] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -122,10 +122,21 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
         print(f"→ Звоню contact_id={contact_id}, телефон +{phone}"
               + (f", известно заранее: {known_answers}" if known_answers else ""), flush=True)
 
+        def push_live(transcript, _cid=contact_id):
+            # Живой мониторинг на портале — лучшее старание, не должен
+            # мешать самому звонку: сеть шлём с коротким таймаутом,
+            # ошибки молча проглатываем (см. on_transcript_update в
+            # phone_call.py, там тоже есть try/except с той же логикой).
+            try:
+                _rpc(base_url, "POST", "/voicecall/dispatch/live", token=token,
+                     json_body={"contact_id": _cid, "transcript": transcript}, timeout=4)
+            except Exception:
+                pass
+
         result = run_call_via_bridge(
             phone, scenario_id, candidate_name=name,
             known_answers=known_answers, on_log=print,
-            scenario=scenario,
+            scenario=scenario, on_transcript_update=push_live,
         )
         print(f"← Итог: status={result.get('status')} verdict={result.get('verdict')}", flush=True)
         _post_result_with_retries(base_url, token, contact_id, result)

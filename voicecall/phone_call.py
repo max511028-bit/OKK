@@ -605,13 +605,22 @@ def detect_voicemail(call, max_listen_sec: float = 8.0) -> Optional[str]:
     паузами между предложениями — если резать по первой паузе (как в
     обычном listen() для ответов кандидата), можно остановиться раньше
     ключевых слов («...оставьте сообщение») и не поймать автоответчик.
-    Поэтому здесь окно ожидания и порог тишины после речи заметно шире.
+    Поэтому если речь УЖЕ началась — ждём тишины после неё заметно дольше
+    обычного (silence_after_speech_sec).
+
+    silence_before_speech_sec, наоборот, короткий (не max_listen_sec) —
+    живой человек часто отвечает молча, ожидая что заговорит звонящий
+    (обычный телефонный этикет); если ждать тут все 8 секунд как раньше,
+    получается долгая неловкая тишина перед первой фразой бота на КАЖДОМ
+    звонке живому человеку. Автоответчик почти всегда начинает говорить
+    сразу — короткого окна достаточно, чтобы его поймать, а живому
+    кандидату не придётся ждать дольше пары секунд.
 
     Возвращает распознанный текст если это похоже на автоответчик, иначе
     None."""
     heard = listen(call, vocab=None,
                     silence_after_speech_sec=2.5,
-                    silence_before_speech_sec=max_listen_sec,
+                    silence_before_speech_sec=2.0,
                     max_total_sec=max_listen_sec)
     if heard and is_voicemail_phrase(heard):
         return heard
@@ -619,15 +628,27 @@ def detect_voicemail(call, max_listen_sec: float = 8.0) -> Optional[str]:
 
 
 def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
-                      known_answers: Optional[dict] = None) -> None:
+                      known_answers: Optional[dict] = None,
+                      on_transcript_update=None) -> None:
     """Общий цикл диалога поверх уже установленного (отвеченного) звонка —
     используется и в run_call() (прямой исходящий SIP), и в
     run_call_via_bridge() (входящий звонок от Novofon после моста).
 
     known_answers: ответы, уже известные из загруженного файла/ручного
-    ввода — бот не переспрашивает эти вопросы вживую (см. dialog.py)."""
+    ввода — бот не переспрашивает эти вопросы вживую (см. dialog.py).
+
+    on_transcript_update: если передан, вызывается с копией sess.transcript
+    после каждой реплики (для живого мониторинга звонка на портале) —
+    ошибки внутри проглатываются, чтобы сбой отправки на портал не мог
+    оборвать реальный звонок."""
+    def push_transcript():
+        if on_transcript_update:
+            try: on_transcript_update(list(sess.transcript))
+            except Exception: pass
+
     sess = DialogSession(scenario, known_answers=known_answers)
     action = sess.start()
+    push_transcript()
     first_phrase = True
     heard_anything = False
     while True:
@@ -669,6 +690,7 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         if answer:
             heard_anything = True
         action = sess.submit_answer(answer)
+        push_transcript()
 
     result["answers"] = action.answers
     result["notes"] = action.notes
@@ -689,12 +711,15 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
 def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
              known_answers: Optional[dict] = None,
              candidate_name: str = "",
-             on_log=None) -> dict:
+             on_log=None,
+             on_transcript_update=None) -> dict:
     """Совершает один реальный звонок и ведёт полный диалог.
 
     known_answers: {crit: value} — уже известные из загруженного файла/
                    ручного ввода ответы, бот не переспрашивает их вживую.
     candidate_name: подставляется в текст бота вместо {name}.
+    on_transcript_update: коллбэк для живого мониторинга звонка (см.
+                   _run_dialog_loop) — вызывается после каждой реплики.
 
     Возвращает dict:
       status: answered_completed | no_answer | busy | hangup_by_candidate
@@ -782,7 +807,8 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         log("✅ Ответили! Начинаю диалог.")
-        _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers)
+        _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
+                          on_transcript_update=on_transcript_update)
 
         try: call.hangup()
         except Exception: pass
@@ -805,7 +831,8 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
 def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
                          candidate_name: str = "", on_log=None,
                          known_answers: Optional[dict] = None,
-                         scenario: Optional[dict] = None) -> dict:
+                         scenario: Optional[dict] = None,
+                         on_transcript_update=None) -> dict:
     """Совершает звонок в обход ограничения нашей SIP-линии (type=in —
     только входящие, см. Data API get.sip_lines). Вместо прямого
     исходящего INVITE (который на этой линии не работает физически, не
@@ -910,7 +937,8 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         log("✅ Кандидат на линии! Начинаю диалог.")
-        _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers)
+        _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
+                          on_transcript_update=on_transcript_update)
 
         try: call.hangup()
         except Exception: pass

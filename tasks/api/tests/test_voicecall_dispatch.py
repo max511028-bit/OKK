@@ -228,6 +228,38 @@ class TestDispatchQueue:
         assert contacts[0]["status"] == "failed"
         assert contacts[0]["last_call_status"] == "voicemail"
 
+    def test_live_transcript_visible_during_call_then_cleared(self, client, portal_token):
+        """Живой мониторинг: пока звонок идёт, агент шлёт снимки транскрипта,
+        портал их отдаёт по /live; после результата звонка запись удаляется
+        (иначе следующий звонок этому же контакту покажет старьё)."""
+        cid = self._upload_one_pending(client, phone="79999990011")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                             headers=auth).json()
+        contact_id = claim["contact_id"]
+
+        assert client.get(f"/voicecall/contacts/{contact_id}/live").json()["transcript"] == []
+
+        r = client.post("/voicecall/dispatch/live", headers=auth, json={
+            "contact_id": contact_id,
+            "transcript": [{"who": "bot", "text": "Привет", "ts": "2026-01-01T00:00:00"}],
+        })
+        assert r.status_code == 200, r.text
+        live = client.get(f"/voicecall/contacts/{contact_id}/live").json()
+        assert live["transcript"] == [{"who": "bot", "text": "Привет", "ts": "2026-01-01T00:00:00"}]
+
+        client.post("/voicecall/dispatch/result", headers=auth, json={
+            "contact_id": contact_id, "status": "answered_completed", "verdict": "passed",
+        })
+        live_after = client.get(f"/voicecall/contacts/{contact_id}/live").json()
+        assert live_after["transcript"] == []
+
+    def test_live_endpoint_requires_password(self, client):
+        r = client.post("/voicecall/dispatch/live", json={"contact_id": 1, "transcript": []})
+        assert r.status_code == 403
+
 
 class TestHangupMidCall:
     def _claim_one(self, client, portal_token, phone):

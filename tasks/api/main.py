@@ -4138,6 +4138,14 @@ def vc_contact_detail(cid: int):
     return d
 
 
+@app.get("/voicecall/contacts/{cid}/live")
+def vc_contact_live(cid: int):
+    """Живой транскрипт текущего звонка (пока status='calling') — агент
+    присылает его по ходу разговора через /dispatch/live, ничего кроме
+    памяти процесса не хранит (после результата звонка удаляется)."""
+    return {"transcript": _VC_LIVE_TRANSCRIPTS.get(cid, [])}
+
+
 @app.delete("/voicecall/campaigns/{cid}")
 def vc_delete_campaign(cid: int):
     with db() as conn:
@@ -4251,6 +4259,28 @@ _VC_STATUS_MAP = {
     "error": "failed",
 }
 
+# Живой транскрипт звонков в процессе — только в памяти процесса, не в БД.
+# contact_id -> [{who, text}, ...]. Агент шлёт снимок транскрипта целиком
+# после каждой реплики (см. /voicecall/dispatch/live), портал опрашивает
+# GET /voicecall/contacts/{id}/live пока статус контакта 'calling'.
+# Не переживает рестарт процесса и не разделяется между несколькими
+# воркерами uvicorn — приемлемо для мониторинга одного текущего звонка.
+_VC_LIVE_TRANSCRIPTS: dict = {}
+
+
+class VCDispatchLiveReq(BaseModel):
+    contact_id: int
+    transcript: list = []
+
+
+@app.post("/voicecall/dispatch/live")
+def vc_dispatch_live(req: VCDispatchLiveReq, request: Request):
+    """Агент шлёт сюда снимок транскрипта по ходу звонка (не только в
+    конце) — портал показывает это в карточке контакта, пока идёт звонок."""
+    _vcs_check_password(request)
+    _VC_LIVE_TRANSCRIPTS[req.contact_id] = req.transcript
+    return {"ok": True}
+
 
 @app.post("/voicecall/dispatch/result")
 def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
@@ -4295,6 +4325,7 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
             (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
              validation_id, req.contact_id),
         )
+    _VC_LIVE_TRANSCRIPTS.pop(req.contact_id, None)
     return {"ok": True}
 
 
