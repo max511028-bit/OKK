@@ -476,6 +476,22 @@ def load_scenario(scenario_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def render_name(text: str, name: str = "") -> str:
+    """Подставляет {name} в текст бота. Если имени нет — аккуратно вырезает
+    плейсхолдер вместе с окружающими запятыми/пробелами, чтобы не осталось
+    двойных пробелов или висящей запятой.
+    «Здравствуйте, {name}! Меня зовут...» без имени → «Здравствуйте! Меня зовут...»
+    """
+    if not text or "{name}" not in text:
+        return text
+    if name:
+        return text.replace("{name}", name.strip())
+    cleaned = re.sub(r"[,\s]*\{name\}[,\s]*", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+([!?.,])", r"\1", cleaned)
+    return cleaned
+
+
 # ── CLI для теста в текстовом режиме ────────────────────────────────────
 
 def main():
