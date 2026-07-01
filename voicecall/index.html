@@ -52,10 +52,14 @@
   button.danger:hover:not(:disabled){background:#3e1818}
   button.small{font-size:12px; padding:6px 10px}
   button.tab-active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
-  .funnel{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; font-size:12px}
+  .funnel{display:flex; flex-wrap:wrap; gap:8px; font-size:12px}
   .funnel .fitem{background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm);
                  padding:6px 10px; color:var(--muted)}
   .funnel .fitem b{color:var(--text)}
+  .funnel-stage{margin:10px 0}
+  .funnel-stage-title{font-size:11px; color:var(--hint); text-transform:uppercase; letter-spacing:.04em;
+                       margin-bottom:6px;}
+  .ct-row{cursor:pointer}
 
   /* Preview */
   .preview{margin-top:14px; padding:12px 14px; background:var(--ok-soft); border:1px solid #1f4a2d;
@@ -108,6 +112,26 @@
     cursor:pointer;z-index:9996;box-shadow:0 4px 16px rgba(0,0,0,.5);
     display:flex;align-items:center;justify-content:center;}
   #_help_btn:hover{background:#262b36}
+
+  /* Модалка карточки контакта */
+  .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none;
+    align-items:center; justify-content:center; z-index:9998; padding:20px;}
+  .modal-backdrop.show{display:flex}
+  .modal-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:22px 24px; max-width:640px; width:100%; max-height:85vh; overflow-y:auto; position:relative;}
+  .modal-close{position:absolute; top:14px; right:14px; background:transparent; border:none;
+    color:var(--muted); font-size:16px; cursor:pointer; padding:4px 8px;}
+  .modal-close:hover{color:var(--text)}
+  .modal-section{margin-top:16px;}
+  .modal-section-title{font-size:11px; color:var(--hint); text-transform:uppercase;
+    letter-spacing:.04em; margin-bottom:8px;}
+  .modal-kv{display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px;}
+  .modal-kv dt{color:var(--muted)}
+  .modal-kv dd{margin:0; color:var(--text)}
+  .transcript-msg{margin-bottom:8px; padding:8px 12px; border-radius:8px; max-width:88%; font-size:13px; line-height:1.45;}
+  .transcript-msg.bot{background:var(--surface2); border-bottom-left-radius:3px;}
+  .transcript-msg.candidate{background:var(--accent-soft); margin-left:auto; border-bottom-right-radius:3px;}
+  .transcript-msg.system{background:transparent; color:var(--hint); font-size:11px; text-align:center; max-width:100%;}
 
   @media (max-width: 768px){
     .form-row{grid-template-columns:1fr}
@@ -219,10 +243,10 @@
       <h2>1. Загрузить контакты на обзвон</h2>
       <div class="form-row">
         <label>Название обзвона
-          <input id="uName" type="text" placeholder="Авито 25.06 — Тандер Стерлитамак" />
+          <input id="uName" type="text" placeholder="Недозвоны по проекту X за 01.07.2026" />
         </label>
         <label>Сценарий (скрипт обзвона)
-          <select id="uScenario">
+          <select id="uScenario" disabled>
             <option value="">Загрузка скриптов...</option>
           </select>
         </label>
@@ -235,6 +259,7 @@
           </select>
         </label>
       </div>
+      <div id="uGateHint" style="font-size:12px; color:var(--warn); margin-top:8px;">Сначала укажи название обзвона</div>
 
       <div style="margin-top:10px;">
         <button id="uTemplateBtn" class="small" disabled>📥 Скачать шаблон под этот сценарий</button>
@@ -244,15 +269,20 @@
         </span>
       </div>
 
+      <div id="uReqLegend" style="font-size:11px; color:var(--muted); margin-top:10px; display:none;">
+        <span style="display:inline-block; width:11px; height:11px; background:var(--warn-soft); border:1px solid var(--warn); border-radius:3px; vertical-align:middle; margin-right:5px;"></span>
+        Поле «Телефон» обязательно для заполнения. Остальные — если по кандидату есть такие данные.
+      </div>
+
       <div style="margin-top:14px; display:flex; gap:8px;">
-        <button id="uModeFile" class="small tab-active" onclick="uSetMode('file')">📎 Файл</button>
-        <button id="uModeManual" class="small" onclick="uSetMode('manual')">⌨ Ввести вручную</button>
+        <button id="uModeFile" class="small tab-active" onclick="uSetMode('file')" disabled>📎 Файл</button>
+        <button id="uModeManual" class="small" onclick="uSetMode('manual')" disabled>⌨ Ввести вручную</button>
       </div>
 
       <div id="uFileBlock" style="margin-top:14px;">
         <div style="border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px;">
-          <input type="file" id="uFile" accept=".csv,.xlsx,.xlsm" style="display:none" />
-          <button type="button" class="small" id="uPickBtn">📎 Выбрать файл</button>
+          <input type="file" id="uFile" accept=".csv,.xlsx,.xlsm" style="display:none" disabled />
+          <button type="button" class="small" id="uPickBtn" disabled>📎 Выбрать файл</button>
           <div style="font-size:11px; color:var(--hint); margin-top:10px;">Поддерживается .csv, .xlsx — макс 5 МБ. Колонки распознаются автоматически по заголовкам «ФИО», «Телефон», «Источник», а также по точным названиям вопросов сценария (см. шаблон).</div>
         </div>
         <div id="uFileName" style="font-size:12px; color:var(--accent); margin-top:8px; display:none;"></div>
@@ -303,6 +333,13 @@
 
 <button id="_help_btn" onclick="alert('Сюда загружаешь Excel/CSV с кандидатами (имя + телефон). Файлы из HH или Avito подойдут — главное чтобы был заголовок с телефоном.\n\nПосле загрузки контакты попадают в очередь со статусом pending. Когда подключим звонилку, бот будет их прозванивать.\n\nСтатусы: pending (ждёт звонка), calling (звонит сейчас), done (прошёл звонок), skipped (вручную пропущен).');">?</button>
 
+<div id="contactModal" class="modal-backdrop" onclick="if(event.target===this) closeContactModal()">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeContactModal()">✕</button>
+    <div id="contactModalBody"><div class="loading">Загрузка...</div></div>
+  </div>
+</div>
+
 <script>
 "use strict";
 var API = "/tasks/api";
@@ -320,11 +357,10 @@ function onFileChange(){
   if(f){
     fileName.style.display = "block";
     fileName.textContent = "📄 " + f.name + " (" + (f.size/1024).toFixed(1) + " КБ)";
-    uBtn.disabled = false;
   } else {
     fileName.style.display = "none";
-    uBtn.disabled = true;
   }
+  uUpdateGating();
 }
 
 uBtn.addEventListener("click", async function(){
@@ -379,6 +415,42 @@ uBtn.addEventListener("click", async function(){
   }
 });
 
+// ── Гейтинг формы: название → сценарий → способ загрузки ──
+function uUpdateGating(){
+  var name = document.getElementById("uName").value.trim();
+  var sid = document.getElementById("uScenario").value;
+  var scenarioSel = document.getElementById("uScenario");
+  var hint = document.getElementById("uGateHint");
+  var modeBtns = [document.getElementById("uModeFile"), document.getElementById("uModeManual")];
+  var pickBtn = document.getElementById("uPickBtn");
+  var fileInputEl = document.getElementById("uFile");
+
+  scenarioSel.disabled = !name;
+  if(!name){
+    hint.textContent = "Сначала укажи название обзвона";
+    hint.style.display = "block";
+  } else if(!sid){
+    hint.textContent = "Теперь выбери сценарий обзвона";
+    hint.style.display = "block";
+  } else {
+    hint.style.display = "none";
+  }
+
+  var unlocked = !!(name && sid);
+  modeBtns.forEach(function(b){ b.disabled = !unlocked; });
+  pickBtn.disabled = !unlocked;
+  fileInputEl.disabled = !unlocked;
+  document.getElementById("uReqLegend").style.display = unlocked ? "block" : "none";
+  if(!unlocked){
+    uBtn.disabled = true;
+    document.getElementById("uManualBtn").disabled = true;
+  } else {
+    uBtn.disabled = !fileInput.files[0];
+    document.getElementById("uManualBtn").disabled = false;
+  }
+}
+document.getElementById("uName").addEventListener("input", uUpdateGating);
+
 // ── Шаблон + вопросы текущего сценария (нужны и шаблону, и ручному вводу) ──
 var uCrits = [];
 
@@ -395,6 +467,7 @@ async function uOnScenarioChange(){
     }catch(e){ /* оставляем пустым, ручной ввод покажет только Имя/Телефон */ }
   }
   uRebuildManualTable();
+  uUpdateGating();
 }
 
 document.getElementById("uTemplateBtn").addEventListener("click", function(){
@@ -405,6 +478,7 @@ document.getElementById("uTemplateBtn").addEventListener("click", function(){
 
 // ── Переключатель Файл / Ручной ввод ──
 function uSetMode(mode){
+  if(document.getElementById("uModeFile").disabled) return;
   document.getElementById("uModeFile").classList.toggle("tab-active", mode === "file");
   document.getElementById("uModeManual").classList.toggle("tab-active", mode === "manual");
   document.getElementById("uFileBlock").style.display = mode === "file" ? "block" : "none";
@@ -413,13 +487,19 @@ function uSetMode(mode){
 }
 
 // ── Ручной ввод: динамическая таблица (Имя, Телефон, + вопрос сценария) ──
+// "Телефон" — единственная жёстко обязательная колонка (подтверждено:
+// Имя может быть пустым, вопросы сценария — по наличию данных).
 function uManualCols(){ return ["Имя", "Телефон"].concat(uCrits); }
 
 function uRebuildManualTable(){
   var head = document.getElementById("uManualHead");
   var body = document.getElementById("uManualBody");
   if(!head || !body) return;
-  head.innerHTML = uManualCols().map(function(c){ return "<th>" + escHtml(c) + "</th>"; }).join("") + "<th></th>";
+  head.innerHTML = uManualCols().map(function(c){
+    var req = c === "Телефон";
+    return "<th" + (req ? " style='background:var(--warn-soft); color:var(--warn);'" : "") + ">"
+      + escHtml(c) + (req ? " *" : "") + "</th>";
+  }).join("") + "<th></th>";
   body.innerHTML = "";
   uAddManualRow();
 }
@@ -428,9 +508,10 @@ function uAddManualRow(){
   var body = document.getElementById("uManualBody");
   var tr = document.createElement("tr");
   tr.innerHTML = uManualCols().map(function(c){
+    var req = c === "Телефон";
     return "<td><input type='text' data-col='" + escHtml(c) + "' "
       + "style='width:100%;font-size:12px;padding:4px 6px;background:var(--surface2);"
-      + "border:1px solid var(--line);border-radius:6px;color:var(--text)' /></td>";
+      + "border:1px solid " + (req ? "var(--warn)" : "var(--line)") + ";border-radius:6px;color:var(--text)' /></td>";
   }).join("") + "<td><button class='small' onclick='this.closest(\"tr\").remove()'>✕</button></td>";
   body.appendChild(tr);
 }
@@ -505,17 +586,18 @@ function fmtPhone(p){
 
 // ── Список кампаний ──
 var _campaignsCache = [];
+var _openCampaignId = null;
 
-async function loadCampaigns(){
+async function loadCampaigns(silent){
   var list = document.getElementById("campList");
-  list.innerHTML = "<div class='loading'>Загрузка...</div>";
+  if(!silent) list.innerHTML = "<div class='loading'>Загрузка...</div>";
   try{
     var r = await fetch(API + "/voicecall/campaigns");
     var data = await r.json();
     _campaignsCache = data.items || [];
     renderCampaignList();
   } catch(e){
-    list.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
+    if(!silent) list.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
   }
 }
 
@@ -557,6 +639,16 @@ function renderCampaignList(){
       + "  <div class='camp-body' id='body-"+c.id+"'></div>"
       + "</div>";
   }).join("");
+  // renderCampaignList перестраивает DOM с нуля — вернуть открытую панель
+  // на место и перезагрузить её контакты, иначе живое обновление будет
+  // схлопывать её каждые 5 сек.
+  if(_openCampaignId != null){
+    var reopened = document.querySelector(".camp-item[data-cid='"+_openCampaignId+"']");
+    if(reopened){
+      reopened.classList.add("open");
+      loadContacts(_openCampaignId, true);
+    }
+  }
 }
 
 var _vcPortalPassword = "";
@@ -587,17 +679,21 @@ async function toggleCampaign(cid){
   var wasOpen = item.classList.contains("open");
   // закрыть все
   document.querySelectorAll(".camp-item.open").forEach(function(el){ el.classList.remove("open"); });
-  if(wasOpen) return;
+  if(wasOpen){ _openCampaignId = null; return; }
   item.classList.add("open");
+  _openCampaignId = cid;
   await loadContacts(cid);
 }
 
-var _FUNNEL_LABELS = {
-  loaded: "Загружено", screened_out: "Отсеяно предпроверкой", precheck_done: "Готово без звонка",
-  pending: "В очереди", calling: "Звоним сейчас", reached: "Дозвонились", failed: "Не дозвонились",
-  passed: "Годен", stopped: "Стоп", declined: "Отказ",
-  voicemail: "Автоответчик", no_answer: "Не взял трубку", busy: "Занято", error: "Ошибка звонка",
-};
+// Воронка по этапам: загружено → попытки дозвона → исходы попытки →
+// дошли до конца сценария → вердикт среди дошедших.
+var _FUNNEL_STAGES = [
+  {title: "Загружено", keys: {loaded: "Загружено", screened_out: "Отсеяно предпроверкой", precheck_done: "Готово без звонка"}},
+  {title: "Попытки дозвона", keys: {pending: "В очереди", calling: "Звоним сейчас", attempted: "Уже пытались дозвониться"}},
+  {title: "Исходы попытки", keys: {no_answer: "Не взял трубку", busy: "Занято", voicemail: "Автоответчик", error: "Ошибка звонка"}, hideZero: ["busy", "error"]},
+  {title: "Дошли до конца сценария", keys: {reached_end: "Дошли до конца", dropped_mid_call: "Оборвались посреди"}},
+  {title: "Вердикт (среди дошедших до конца)", keys: {passed: "Годен", stopped: "Стоп", declined: "Отказ"}, hideZero: ["declined"]},
+];
 
 async function loadFunnel(cid){
   var el = document.getElementById("funnel-"+cid);
@@ -605,55 +701,65 @@ async function loadFunnel(cid){
   try{
     var r = await fetch(API + "/voicecall/campaigns/"+cid+"/funnel");
     var f = await r.json();
-    el.innerHTML = Object.keys(_FUNNEL_LABELS).map(function(k){
-      var v = f[k] || 0;
-      if(!v && (k==="declined"||k==="error"||k==="busy")) return ""; // не засорять нулями редкие
-      return "<span class='fitem'>"+_FUNNEL_LABELS[k]+": <b>"+v+"</b></span>";
+    el.innerHTML = _FUNNEL_STAGES.map(function(stage){
+      var items = Object.keys(stage.keys).map(function(k){
+        var v = f[k] || 0;
+        if(!v && stage.hideZero && stage.hideZero.indexOf(k) !== -1) return "";
+        return "<span class='fitem'>"+stage.keys[k]+": <b>"+v+"</b></span>";
+      }).join("");
+      if(!items) return "";
+      return "<div class='funnel-stage'><div class='funnel-stage-title'>"+stage.title+"</div>"
+        + "<div class='funnel'>"+items+"</div></div>";
     }).join("");
   }catch(e){ el.innerHTML = "<span class='fitem'>Ошибка воронки</span>"; }
 }
 
-async function loadContacts(cid){
+var _LCS_LABEL = {voicemail:"автоответчик", no_answer:"не взял трубку", busy:"занято",
+                   error:"ошибка звонка", answered_completed:"поговорили", hangup_by_candidate:"бросил трубку"};
+
+function ctStatusPill(ct){
+  return ct.status === "pending" ? "<span class='pill pending'>⏳ ждёт</span>" :
+    ct.status === "calling" ? "<span class='pill calling'>📞 звоним</span>" :
+    ct.status === "done"    ? (
+      ct.verdict === "passed"  ? "<span class='pill passed'>✓ годен</span>" :
+      ct.verdict === "stopped" ? "<span class='pill stopped'>✗ "+escHtml(ct.stop_reason||"стоп")+"</span>" :
+      ct.verdict == null       ? "<span class='pill skipped'>⚠ оборвался"+(ct.dropped_at_step ? " на «"+escHtml(ct.dropped_at_step)+"»" : "")+"</span>" :
+                                  "<span class='pill skipped'>" + escHtml(ct.verdict||"—") + "</span>"
+    ) :
+    ct.status === "skipped" ? (
+      ct.screen_out_reason ? "<span class='pill skipped'>⊝ отсеян: "+escHtml(ct.screen_out_reason)+"</span>"
+                            : "<span class='pill skipped'>⊝ пропущен вручную</span>"
+    ) :
+    ct.status === "failed" ? "<span class='pill stopped'>☎ "+escHtml(_LCS_LABEL[ct.last_call_status]||ct.last_call_status||"не дозвонились")+"</span>" :
+    "<span class='pill'>"+escHtml(ct.status)+"</span>";
+}
+
+async function loadContacts(cid, silent){
   var body = document.getElementById("body-"+cid);
   if(!body) return;
-  body.innerHTML = "<div class='loading'>Загрузка контактов...</div>";
+  if(!silent) body.innerHTML = "<div class='loading'>Загрузка контактов...</div>";
   try{
     var r = await fetch(API + "/voicecall/contacts?campaign_id="+cid+"&limit=1000");
     var data = await r.json();
     var items = data.items || [];
-    var _LCS_LABEL = {voicemail:"автоответчик", no_answer:"не взял трубку", busy:"занято",
-                       error:"ошибка звонка", answered_completed:"поговорили", hangup_by_candidate:"бросил трубку"};
     var rows = items.map(function(ct){
-      var statusPill =
-        ct.status === "pending" ? "<span class='pill pending'>⏳ ждёт</span>" :
-        ct.status === "calling" ? "<span class='pill calling'>📞 звоним</span>" :
-        ct.status === "done"    ? (
-          ct.verdict === "passed"  ? "<span class='pill passed'>✓ годен</span>" :
-          ct.verdict === "stopped" ? "<span class='pill stopped'>✗ "+escHtml(ct.stop_reason||"стоп")+"</span>" :
-                                      "<span class='pill skipped'>" + escHtml(ct.verdict||"—") + "</span>"
-        ) :
-        ct.status === "skipped" ? (
-          ct.screen_out_reason ? "<span class='pill skipped'>⊝ отсеян: "+escHtml(ct.screen_out_reason)+"</span>"
-                                : "<span class='pill skipped'>⊝ пропущен вручную</span>"
-        ) :
-        ct.status === "failed" ? "<span class='pill stopped'>☎ "+escHtml(_LCS_LABEL[ct.last_call_status]||ct.last_call_status||"не дозвонились")+"</span>" :
-        "<span class='pill'>"+escHtml(ct.status)+"</span>";
+      var statusPill = ctStatusPill(ct);
       var actions = ct.status === "pending"
         ? "<button class='small' onclick='skipContact("+ct.id+")'>Пропустить</button>"
         : ct.status === "skipped" || ct.status === "done" || ct.status === "failed"
         ? "<button class='small' onclick='retryContact("+ct.id+")'>↻ Заново</button>"
         : "";
-      return "<tr>"
+      return "<tr class='ct-row' onclick='event.stopPropagation(); openContactModal("+ct.id+")'>"
         + "<td>"+escHtml(ct.name||"—")+"</td>"
         + "<td>"+fmtPhone(ct.phone)+"</td>"
         + "<td>"+escHtml(ct.source||"")+"</td>"
         + "<td>"+statusPill+"</td>"
         + "<td>"+(ct.attempts||0)+"</td>"
-        + "<td class='ct-actions'>"+actions+"</td>"
+        + "<td class='ct-actions' onclick='event.stopPropagation()'>"+actions+"</td>"
         + "</tr>";
     }).join("");
     body.innerHTML =
-      "<div class='funnel' id='funnel-"+cid+"'><span class='fitem'>Загрузка воронки...</span></div>"
+      "<div id='funnel-"+cid+"'><span class='fitem'>Загрузка воронки...</span></div>"
       + "<table class='ct-table'>"
       + "<thead><tr><th>Имя</th><th>Телефон</th><th>Источник</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
       + "<tbody>"+(rows || "<tr><td colspan='6' class='empty'>Контактов нет</td></tr>")+"</tbody></table>"
@@ -671,6 +777,17 @@ async function loadContacts(cid){
   }
 }
 
+// ── Живое обновление: пока открытый обзвон в процессе (dispatch_state
+// === 'running'), раз в 5 сек тихо подтягиваем свежие данные (loadCampaigns
+// сам восстанавливает открытую панель и перезагружает её контакты —
+// см. renderCampaignList). Иначе — тишина, не гоняем сеть зря.
+setInterval(function(){
+  if(_openCampaignId == null) return;
+  var camp = _campaignsCache.find(function(c){ return c.id === _openCampaignId; });
+  if(!camp || camp.dispatch_state !== "running") return;
+  loadCampaigns(true);
+}, 5000);
+
 async function skipContact(id){
   if(!confirm("Пропустить этот контакт (не звонить)?")) return;
   await fetch(API+"/voicecall/contacts/"+id+"/skip", {method:"POST"});
@@ -685,6 +802,68 @@ async function deleteCampaign(cid){
   var r = await fetch(API+"/voicecall/campaigns/"+cid, {method:"DELETE"});
   if(r.ok) loadCampaigns();
   else alert("Не удалось удалить");
+}
+
+// ── Модалка карточки контакта ──
+function closeContactModal(){
+  document.getElementById("contactModal").classList.remove("show");
+}
+
+async function openContactModal(id){
+  var modal = document.getElementById("contactModal");
+  var body = document.getElementById("contactModalBody");
+  body.innerHTML = "<div class='loading'>Загрузка...</div>";
+  modal.classList.add("show");
+  try{
+    var r = await fetch(API + "/voicecall/contacts/" + id + "/detail");
+    if(!r.ok){ body.innerHTML = "<div class='empty'>Не найдено</div>"; return; }
+    var ct = await r.json();
+
+    var knownEntries = Object.keys(ct.known_answers || {});
+    var liveEntries = Object.keys(ct.live_answers || {});
+
+    var html = ""
+      + "<h2 style='margin:0 0 4px'>" + escHtml(ct.name || "—") + "</h2>"
+      + "<div style='color:var(--muted); font-size:13px; margin-bottom:10px;'>"
+      +   fmtPhone(ct.phone) + " · " + escHtml(ct.source || "") + "</div>"
+      + "<div>" + ctStatusPill(ct) + "</div>";
+
+    if(knownEntries.length){
+      html += "<div class='modal-section'><div class='modal-section-title'>Известно из файла</div>"
+        + "<dl class='modal-kv'>" + knownEntries.map(function(k){
+            return "<dt>" + escHtml(k) + "</dt><dd>" + escHtml(ct.known_answers[k]) + "</dd>";
+          }).join("") + "</dl></div>";
+    }
+    if(liveEntries.length){
+      html += "<div class='modal-section'><div class='modal-section-title'>Ответы на звонке</div>"
+        + "<dl class='modal-kv'>" + liveEntries.map(function(k){
+            return "<dt>" + escHtml(k) + "</dt><dd>" + escHtml(ct.live_answers[k]) + "</dd>";
+          }).join("") + "</dl></div>";
+    }
+    if(ct.status === "done" && ct.verdict == null){
+      html += "<div class='modal-section' style='color:var(--warn)'>"
+        + "⚠ Оборвался" + (ct.dropped_at_step ? " на вопросе: «" + escHtml(ct.dropped_at_step) + "»" : "")
+        + "</div>";
+    }
+    if(ct.summary){
+      html += "<div class='modal-section'><div class='modal-section-title'>Резюме</div>"
+        + "<div style='font-size:13px'>" + escHtml(ct.summary) + "</div></div>";
+    }
+    if((ct.transcript || []).length){
+      html += "<div class='modal-section'><div class='modal-section-title'>Транскрипт звонка</div>"
+        + ct.transcript.map(function(m){
+            var cls = m.who === "bot" ? "bot" : m.who === "candidate" ? "candidate" : "system";
+            var icon = m.who === "bot" ? "🤖 " : m.who === "candidate" ? "🧑 " : "";
+            return "<div class='transcript-msg " + cls + "'>" + icon + escHtml(m.text) + "</div>";
+          }).join("") + "</div>";
+    } else if(ct.status === "pending" || ct.status === "calling"){
+      html += "<div class='modal-section' style='color:var(--hint); font-size:13px;'>Звонка ещё не было.</div>";
+    }
+
+    body.innerHTML = html;
+  } catch(e){
+    body.innerHTML = "<div class='empty'>Ошибка: " + escHtml(e.message) + "</div>";
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1221,12 +1400,13 @@ async function loadScenarioOptions(){
       sel.innerHTML = "<option value=''>Нет опубликованных скриптов — создай в конструкторе</option>";
       return;
     }
-    sel.innerHTML = pub.map(function(s){
+    sel.innerHTML = "<option value=''>— выбери сценарий —</option>" + pub.map(function(s){
       return "<option value='" + escHtml(s.id) + "'>" + escHtml(s.name) + " (шагов: " + s.steps_count + ")</option>";
     }).join("");
   }catch(e){
     sel.innerHTML = "<option value=''>Ошибка загрузки скриптов</option>";
   }
+  uUpdateGating();
 }
 
 // Загрузка сценариев в ТЕСТОВЫЙ прозвон — показываем ВСЕ (вкл. черновики),

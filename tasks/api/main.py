@@ -236,6 +236,7 @@ def init_db() -> None:
             ("known_answers_json", "TEXT"),
             ("screen_out_reason", "TEXT"),
             ("last_call_status", "TEXT"),
+            ("dropped_at_step", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE voicecall_contacts ADD COLUMN {_vc_col} {_vc_type}")
@@ -3667,17 +3668,25 @@ def _vc_scenario_crits(scenario: dict) -> list:
     return out
 
 
-def _vc_build_xlsx_bytes(headers: list, rows: list) -> bytes:
+def _vc_build_xlsx_bytes(headers: list, rows: list, required_cols: set = None) -> bytes:
     """Собирает .xlsx в памяти: headers — первая строка, rows — список
-    списков значений. Возвращает сырые байты файла."""
+    списков значений. required_cols — заголовки, которые нужно выделить
+    цветом как обязательные для заполнения. Возвращает сырые байты файла."""
     from openpyxl import Workbook  # type: ignore
+    from openpyxl.styles import PatternFill, Font  # type: ignore
     wb = Workbook()
     ws = wb.active
     ws.append(headers)
     for r in rows:
         ws.append(r)
+    required_cols = required_cols or set()
+    fill = PatternFill(start_color="FCE8B2", end_color="FCE8B2", fill_type="solid")
     for i, h in enumerate(headers, 1):
         ws.column_dimensions[chr(64 + i) if i <= 26 else "A"].width = max(14, len(str(h)) + 2)
+        if h in required_cols:
+            cell = ws.cell(row=1, column=i)
+            cell.fill = fill
+            cell.font = Font(bold=True)
     buf = _vc_io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -3819,7 +3828,7 @@ def vc_upload_template(scenario_id: str = "tander-sterlitamak-pack"):
         raise HTTPException(500, f"Dialog engine недоступен: {_VT_DIALOG_ERR}")
     scenario = _vt_load_scenario(scenario_id)
     headers = ["Имя", "Телефон"] + _vc_scenario_crits(scenario)
-    content = _vc_build_xlsx_bytes(headers, [])
+    content = _vc_build_xlsx_bytes(headers, [], required_cols={"Телефон"})
     fname = f"shablon_{scenario_id}.xlsx"
     return StreamingResponse(
         _vc_io.BytesIO(content),
@@ -4107,6 +4116,28 @@ def vc_retry_contact(cid: int):
     return {"ok": True}
 
 
+@app.get("/voicecall/contacts/{cid}/detail")
+def vc_contact_detail(cid: int):
+    """Полная карточка контакта для модалки на портале: всё что знаем —
+    откуда взяты известные заранее ответы, что ответили вживую на
+    звонке, полный транскрипт, на каком вопросе оборвались (если
+    оборвались)."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT ct.*, cv.answers_json, cv.transcript_json, cv.summary "
+            "FROM voicecall_contacts ct "
+            "LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
+            "WHERE ct.id=?", (cid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Contact not found")
+    d = dict(row)
+    d["known_answers"] = json.loads(d.pop("known_answers_json") or "{}")
+    d["raw_data"] = json.loads(d.pop("raw_data_json") or "{}")
+    d["live_answers"] = json.loads(d.pop("answers_json") or "{}")
+    d["transcript"] = json.loads(d.pop("transcript_json") or "[]")
+    return d
+
+
 @app.delete("/voicecall/campaigns/{cid}")
 def vc_delete_campaign(cid: int):
     with db() as conn:
@@ -4208,6 +4239,7 @@ class VCDispatchResultReq(BaseModel):
     transcript: list = []
     duration_s: Optional[float] = None
     error: Optional[str] = None
+    dropped_at_step: Optional[str] = None
 
 
 _VC_STATUS_MAP = {
@@ -4259,16 +4291,18 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
 
         conn.execute(
             "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
-            "last_call_status=?, validation_id=COALESCE(?, validation_id) WHERE id=?",
-            (new_status, req.verdict, req.stop_reason, req.status, validation_id, req.contact_id),
+            "last_call_status=?, dropped_at_step=?, validation_id=COALESCE(?, validation_id) WHERE id=?",
+            (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
+             validation_id, req.contact_id),
         )
     return {"ok": True}
 
 
 @app.get("/voicecall/campaigns/{cid}/funnel")
 def vc_campaign_funnel(cid: int):
-    """Воронка обзвона: сколько загружено → отсеяно предпроверкой →
-    в очереди → дозвонились/не дозвонились (раздельно по причине)."""
+    """Воронка обзвона по этапам: загружено/отсеяно → попытки дозвона →
+    исходы попытки (недозвон/автоответчик/занято) → дошли до конца
+    сценария или оборвались посреди → вердикт среди дошедших до конца."""
     with db() as conn:
         camp = conn.execute("SELECT id, total FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
         if not camp:
@@ -4280,8 +4314,10 @@ def vc_campaign_funnel(cid: int):
             " SUM(CASE WHEN screen_out_reason='precheck_full' THEN 1 ELSE 0 END) AS precheck_done, "
             " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, "
             " SUM(CASE WHEN status='calling' THEN 1 ELSE 0 END) AS calling, "
-            " SUM(CASE WHEN status='done' AND screen_out_reason IS NULL THEN 1 ELSE 0 END) AS reached, "
+            " SUM(CASE WHEN attempts > 0 THEN 1 ELSE 0 END) AS attempted, "
             " SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed, "
+            " SUM(CASE WHEN status='done' AND verdict IS NOT NULL THEN 1 ELSE 0 END) AS reached_end, "
+            " SUM(CASE WHEN status='done' AND verdict IS NULL THEN 1 ELSE 0 END) AS dropped_mid_call, "
             " SUM(CASE WHEN verdict='passed' THEN 1 ELSE 0 END) AS passed, "
             " SUM(CASE WHEN verdict='stopped' THEN 1 ELSE 0 END) AS stopped, "
             " SUM(CASE WHEN verdict='declined' THEN 1 ELSE 0 END) AS declined, "
@@ -4296,15 +4332,17 @@ def vc_campaign_funnel(cid: int):
         "precheck_done": int(row["precheck_done"] or 0),
         "pending": int(row["pending"] or 0),
         "calling": int(row["calling"] or 0),
-        "reached": int(row["reached"] or 0),
+        "attempted": int(row["attempted"] or 0),
         "failed": int(row["failed"] or 0),
-        "passed": int(row["passed"] or 0),
-        "stopped": int(row["stopped"] or 0),
-        "declined": int(row["declined"] or 0),
         "voicemail": int(row["voicemail"] or 0),
         "no_answer": int(row["no_answer"] or 0),
         "busy": int(row["busy"] or 0),
         "error": int(row["call_error"] or 0),
+        "reached_end": int(row["reached_end"] or 0),
+        "dropped_mid_call": int(row["dropped_mid_call"] or 0),
+        "passed": int(row["passed"] or 0),
+        "stopped": int(row["stopped"] or 0),
+        "declined": int(row["declined"] or 0),
     }
 
 

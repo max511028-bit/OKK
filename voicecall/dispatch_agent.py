@@ -66,6 +66,7 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
         "transcript": result.get("transcript") or [],
         "duration_s": result.get("duration_s"),
         "error": result.get("error"),
+        "dropped_at_step": result.get("dropped_at_step"),
     }
     for attempt in range(1, RESULT_POST_RETRIES + 1):
         try:

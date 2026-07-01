@@ -635,6 +635,12 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         if "ENDED" in st or "FAIL" in st:
             log("Звонок оборвался (кандидат положил трубку).")
             result["status"] = "hangup_by_candidate"
+            result["answers"] = sess.answers
+            result["notes"] = sess.notes
+            result["transcript"] = sess.transcript
+            if sess.i < len(sess.steps):
+                step = sess.steps[sess.i]
+                result["dropped_at_step"] = step.get("crit", step["id"])
             return
 
         preroll = None
@@ -722,6 +728,7 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         "status": "unknown", "verdict": None, "stop_reason": None,
         "answers": {}, "notes": {}, "transcript": [],
         "duration_s": 0, "error": None, "possible_voicemail": False,
+        "dropped_at_step": None,
     }
 
     phone = VoIPPhone(server=server, port=port, username=user, password=pwd,
@@ -843,6 +850,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         "status": "unknown", "verdict": None, "stop_reason": None,
         "answers": {}, "notes": {}, "transcript": [],
         "duration_s": 0, "error": None, "possible_voicemail": False,
+        "dropped_at_step": None,
     }
 
     incoming: "queue.Queue" = queue.Queue()

@@ -38,6 +38,17 @@ class TestUploadTemplate:
         assert headers[1] == "Телефон"
         assert len(headers) > 2  # хотя бы один вопрос сценария
 
+    def test_required_column_is_highlighted(self, client):
+        """Телефон — единственное жёстко обязательное поле, его заголовок
+        должен быть визуально выделен цветом в скачиваемом шаблоне."""
+        r = client.get("/voicecall/upload-template", params={"scenario_id": SCENARIO})
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(r.content))
+        ws = wb.active
+        name_cell, phone_cell = ws["A1"], ws["B1"]
+        assert phone_cell.fill.start_color.rgb not in (None, "00000000")
+        assert name_cell.fill.start_color.rgb in (None, "00000000")
+
 
 class TestUploadContactsPrecheck:
     def test_stop_factor_screens_out_without_calling(self, client):
@@ -216,6 +227,53 @@ class TestDispatchQueue:
         contacts = client.get("/voicecall/contacts", params={"campaign_id": cid}).json()["items"]
         assert contacts[0]["status"] == "failed"
         assert contacts[0]["last_call_status"] == "voicemail"
+
+
+class TestHangupMidCall:
+    def _claim_one(self, client, portal_token, phone):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Кандидат", phone]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Обрыв тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        cid = r.json()["campaign_id"]
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                             headers=auth).json()
+        return cid, claim["contact_id"], auth
+
+    def test_partial_answers_preserved_and_dropped_step_recorded(self, client, portal_token):
+        cid, contact_id, auth = self._claim_one(client, portal_token, "79991230001")
+
+        r = client.post("/voicecall/dispatch/result", headers=auth, json={
+            "contact_id": contact_id,
+            "status": "hangup_by_candidate",
+            "verdict": None,
+            "answers": {"intro": "да"},
+            "notes": {},
+            "transcript": [{"who": "bot", "text": "Привет", "ts": "2026-01-01T00:00:00"},
+                            {"who": "candidate", "text": "да", "ts": "2026-01-01T00:00:01"}],
+            "dropped_at_step": "Пол",
+        })
+        assert r.status_code == 200, r.text
+
+        contacts = client.get("/voicecall/contacts", params={"campaign_id": cid}).json()["items"]
+        assert contacts[0]["status"] == "done"
+        assert contacts[0]["verdict"] is None
+        assert contacts[0]["validation_id"] is not None
+
+        funnel = client.get(f"/voicecall/campaigns/{cid}/funnel").json()
+        assert funnel["dropped_mid_call"] == 1
+        assert funnel["reached_end"] == 0
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["dropped_at_step"] == "Пол"
+        assert detail["live_answers"] == {"intro": "да"}
+        assert len(detail["transcript"]) == 2
 
 
 class TestFunnelAndExport:
