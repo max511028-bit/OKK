@@ -559,12 +559,23 @@ function renderCampaignList(){
   }).join("");
 }
 
+var _vcPortalPassword = "";
+
 async function startDispatch(cid){
   if(!confirm("Начать обзвон? Локальный агент на ПК с SIP-линией должен быть запущен.")) return;
+  if(!_vcPortalPassword){
+    var pwd = prompt("Пароль портала для запуска обзвона:");
+    if(!pwd) return;
+    _vcPortalPassword = pwd;
+  }
   try{
-    var r = await fetch(API + "/voicecall/campaigns/"+cid+"/start-dispatch", {method:"POST"});
+    var r = await fetch(API + "/voicecall/campaigns/"+cid+"/start-dispatch?password="+encodeURIComponent(_vcPortalPassword), {method:"POST"});
     var data = await r.json();
-    if(!r.ok){ alert("❌ " + (data.detail || r.statusText)); return; }
+    if(!r.ok){
+      if(r.status === 403){ _vcPortalPassword = ""; }
+      alert("❌ " + (data.detail || r.statusText));
+      return;
+    }
     alert("✅ Обзвон запрошен (" + data.pending + " контактов в очереди). Агент подхватит в течение ~20-30 сек.");
     loadCampaigns();
   }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }

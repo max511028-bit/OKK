@@ -5045,7 +5045,7 @@ def _vcs_check_password(request: Request):
     pwd = request.query_params.get("password", "")
     if PORTAL_PASSWORD and _hmac.compare_digest(pwd, PORTAL_PASSWORD):
         return
-    raise HTTPException(403, "Конструктор скриптов требует пароль портала (511028)")
+    raise HTTPException(403, "Требуется пароль портала")
 
 
 def _vcs_slugify(name: str) -> str:
