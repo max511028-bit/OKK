@@ -740,6 +740,8 @@ async function loadContacts(cid, silent){
         ? "<button class='small' onclick='skipContact("+ct.id+")'>Пропустить</button>"
         : ct.status === "skipped" || ct.status === "done" || ct.status === "failed"
         ? "<button class='small' onclick='retryContact("+ct.id+")'>↻ Заново</button>"
+        : ct.status === "calling"
+        ? "<button class='small' onclick='retryContact("+ct.id+", true)'>↻ Сбросить</button>"
         : "";
       return "<tr class='ct-row' onclick='event.stopPropagation(); openContactModal("+ct.id+")'>"
         + "<td>"+escHtml(ct.name||"—")+"</td>"
@@ -785,7 +787,8 @@ async function skipContact(id){
   await fetch(API+"/voicecall/contacts/"+id+"/skip", {method:"POST"});
   loadCampaigns();
 }
-async function retryContact(id){
+async function retryContact(id, isForceReset){
+  if(isForceReset && !confirm("Сбросить статус «звоним»? Делай это только если звонок реально завис (агент упал/перезапустился) — если звонок правда идёт, это прервёт его отслеживание.")) return;
   await fetch(API+"/voicecall/contacts/"+id+"/retry", {method:"POST"});
   loadCampaigns();
 }

@@ -4188,25 +4188,46 @@ def vc_start_dispatch(cid: int, request: Request):
     return {"ok": True, "pending": n_pending}
 
 
+_VC_STALE_CALLING_MINUTES = 10
+
+
 @app.get("/voicecall/dispatch/poll")
 def vc_dispatch_poll(request: Request):
     """Агент опрашивает это раз в 15-30 сек. Атомарно забирает САМУЮ
     старую кампанию с dispatch_state='requested', переключает в
-    'running' и возвращает её. Если таких нет — campaign_id=null."""
+    'running' и возвращает её. Если таких нет — campaign_id=null.
+
+    Восстановление после падения/рестарта агента: если процесс агента
+    умер посреди звонка (например, его перезапустили на ПК ради
+    деплоя новой версии), контакт навсегда остаётся в status='calling',
+    а его кампания — в dispatch_state='running', и НИКОГДА больше не
+    подхватывается (poll ищет только 'requested'). Раз в архитектуре
+    только один агент работает с очередью в любой момент времени —
+    любой звонок, «идущий» дольше разумной длительности реального
+    разговора, почти наверняка осиротел, а не правда ещё идёт.
+    Возвращаем такие контакты в очередь и заодно снова рассматриваем
+    'running'-кампании с освободившимися pending-контактами."""
     _vcs_check_password(request)
+    stale_before = (_vc_dt.datetime.now()
+                    - _vc_dt.timedelta(minutes=_VC_STALE_CALLING_MINUTES)
+                    ).isoformat(timespec="seconds")
     with db() as conn:
+        conn.execute(
+            "UPDATE voicecall_contacts SET status='pending' "
+            "WHERE status='calling' AND (last_attempt_at IS NULL OR last_attempt_at < ?)",
+            (stale_before,))
         row = conn.execute(
-            "SELECT id, scenario_id FROM voicecall_campaigns "
-            "WHERE dispatch_state='requested' ORDER BY created_at LIMIT 1").fetchone()
+            "SELECT id, scenario_id FROM voicecall_campaigns c WHERE "
+            "  dispatch_state='requested' "
+            "  OR (dispatch_state='running' AND EXISTS ("
+            "        SELECT 1 FROM voicecall_contacts "
+            "        WHERE campaign_id=c.id AND status='pending')) "
+            "ORDER BY created_at LIMIT 1").fetchone()
         if not row:
             return {"campaign_id": None}
         cid = row["id"]
-        cur = conn.execute(
-            "UPDATE voicecall_campaigns SET dispatch_state='running' "
-            "WHERE id=? AND dispatch_state='requested'", (cid,))
-        if cur.rowcount == 0:
-            # Кто-то другой уже забрал (гонка маловероятна, но безопасна)
-            return {"campaign_id": None}
+        conn.execute(
+            "UPDATE voicecall_campaigns SET dispatch_state='running' WHERE id=?", (cid,))
     return {"campaign_id": cid, "scenario_id": row["scenario_id"]}
 
 

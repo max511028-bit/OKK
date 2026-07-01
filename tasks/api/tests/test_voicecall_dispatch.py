@@ -308,6 +308,65 @@ class TestHangupMidCall:
         assert len(detail["transcript"]) == 2
 
 
+class TestOrphanedCallRecovery:
+    """Если процесс агента умирает посреди звонка (например, его убили ради
+    рестарта на новую версию кода), контакт навсегда остаётся в 'calling',
+    а его кампания — в dispatch_state='running', и раньше НИКОГДА больше
+    не подхватывалась (poll искал только 'requested'). poll() теперь сам
+    восстанавливает такие зависшие звонки."""
+
+    def _running_campaign_with_calling_contact(self, client, portal_token, phone):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Кандидат", phone]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Осиротевший звонок", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        cid = r.json()["campaign_id"]
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)  # requested -> running
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                             headers=auth).json()
+        return cid, claim["contact_id"], auth
+
+    def test_fresh_calling_contact_not_touched(self, client, portal_token, main_module):
+        """Звонок только что начался (last_attempt_at свежий) — poll не должен
+        трогать его, кампания без ДРУГИХ pending-контактов не переподхватывается."""
+        cid, contact_id, auth = self._running_campaign_with_calling_contact(
+            client, portal_token, "79995551001")
+
+        r = client.get("/voicecall/dispatch/poll", headers=auth)
+        assert r.json()["campaign_id"] is None
+
+        contacts = client.get("/voicecall/contacts", params={"campaign_id": cid}).json()["items"]
+        assert contacts[0]["status"] == "calling"
+
+    def test_stale_calling_contact_recovered_and_campaign_resumed(self, client, portal_token, main_module):
+        """last_attempt_at старше 10 минут — считаем что агент умер посреди
+        звонка, возвращаем контакт в очередь и переподхватываем кампанию."""
+        cid, contact_id, auth = self._running_campaign_with_calling_contact(
+            client, portal_token, "79995551002")
+
+        old_ts = "2000-01-01T00:00:00"
+        with main_module.db() as conn:
+            conn.execute("UPDATE voicecall_contacts SET last_attempt_at=? WHERE id=?",
+                         (old_ts, contact_id))
+
+        r = client.get("/voicecall/dispatch/poll", headers=auth)
+        assert r.status_code == 200
+        assert r.json()["campaign_id"] == cid
+
+        contacts = client.get("/voicecall/contacts", params={"campaign_id": cid}).json()["items"]
+        assert contacts[0]["status"] == "pending"
+
+        # И его можно снова забрать на звонок как обычно
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                             headers=auth).json()
+        assert claim["contact_id"] == contact_id
+
+
 class TestFunnelAndExport:
     def test_funnel_counts(self, client):
         headers = ["Имя", "Телефон", "Пол"]
