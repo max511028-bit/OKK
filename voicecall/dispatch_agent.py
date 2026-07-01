@@ -25,7 +25,7 @@ except Exception:
     pass
 
 from _sip_config import load_env, require
-from dialog import load_scenario, DEFAULT_SCENARIO, all_reask_texts
+from dialog import all_reask_texts
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import warmup as stt_warmup
 from phone_call import run_call_via_bridge
@@ -87,8 +87,15 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
         print(f"❌ Не смог даже сохранить результат локально: {e}", flush=True)
 
 
+def _load_scenario_from_portal(base_url: str, scenario_id: str) -> dict:
+    """Сценарии из конструктора живут в БД портала, не в локальных файлах
+    этого ПК — грузим через тот же эндпоинт, что и фронтенд/билдер."""
+    from urllib.parse import quote
+    return _rpc(base_url, "GET", f"/voicecall/scripts/{quote(scenario_id, safe='')}")
+
+
 def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str) -> None:
-    scenario = load_scenario(scenario_id)
+    scenario = _load_scenario_from_portal(base_url, scenario_id)
     print(f"Прогрев TTS для сценария «{scenario['name']}»...", flush=True)
     prewarm_scenario(scenario, voice=DEFAULT_VOICE, verbose=False)
     for t in all_reask_texts():
@@ -117,6 +124,7 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
         result = run_call_via_bridge(
             phone, scenario_id, candidate_name=name,
             known_answers=known_answers, on_log=print,
+            scenario=scenario,
         )
         print(f"← Итог: status={result.get('status')} verdict={result.get('verdict')}", flush=True)
         _post_result_with_retries(base_url, token, contact_id, result)

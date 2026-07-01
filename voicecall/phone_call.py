@@ -797,7 +797,8 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
 
 def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
                          candidate_name: str = "", on_log=None,
-                         known_answers: Optional[dict] = None) -> dict:
+                         known_answers: Optional[dict] = None,
+                         scenario: Optional[dict] = None) -> dict:
     """Совершает звонок в обход ограничения нашей SIP-линии (type=in —
     только входящие, см. Data API get.sip_lines). Вместо прямого
     исходящего INVITE (который на этой линии не работает физически, не
@@ -808,7 +809,10 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
     поверх уже установленного (не нами инициированного) звонка.
 
     known_answers: {crit: value} — уже известные из загруженного файла/
-                   ручного ввода ответы, бот не переспрашивает их вживую."""
+                   ручного ввода ответы, бот не переспрашивает их вживую.
+    scenario: если передан — используется как есть (например, сценарий из
+              БД портала), scenario_id тогда нужен только для лога/отчёта.
+              Если None — грузится по scenario_id из локального файла."""
     def log(msg):
         print(msg, flush=True)
         if on_log:
@@ -831,7 +835,8 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
     employee_id = int(require(env, "NOVOFON_EMPLOYEE_ID"))
     local_ip = get_local_ip()
 
-    scenario = load_scenario(scenario_id)
+    if scenario is None:
+        scenario = load_scenario(scenario_id)
     log(f"Сценарий: {scenario['name']}")
 
     result = {
