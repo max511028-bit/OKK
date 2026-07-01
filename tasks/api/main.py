@@ -229,6 +229,24 @@ def init_db() -> None:
             conn.execute("ALTER TABLE analyst_projects ADD COLUMN name TEXT")
         except sqlite3.OperationalError:
             pass
+        # voicecall_contacts: предзаполненные ответы из файла/ручного ввода,
+        # причина отсева на предпроверке (до звонка), точный raw-статус
+        # последнего звонка (для разделённой воронки — недозвон/автоответчик/занято)
+        for _vc_col, _vc_type in [
+            ("known_answers_json", "TEXT"),
+            ("screen_out_reason", "TEXT"),
+            ("last_call_status", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE voicecall_contacts ADD COLUMN {_vc_col} {_vc_type}")
+            except sqlite3.OperationalError:
+                pass
+        # voicecall_campaigns: состояние автообзвона локальным агентом
+        try:
+            conn.execute(
+                "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_state TEXT NOT NULL DEFAULT 'idle'")
+        except sqlite3.OperationalError:
+            pass
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted_at)")
         # Seed once if empty
         n = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
@@ -3638,10 +3656,251 @@ def _vc_parse_xlsx(content: bytes) -> tuple[list, list]:
     return rows[0], rows[1:]
 
 
+def _vc_scenario_crits(scenario: dict) -> list:
+    """Список crit-имён вопросов сценария в порядке шагов — колонки
+    Excel-шаблона и ключи known_answers/предпроверки."""
+    out = []
+    for step in scenario.get("steps", []):
+        crit = step.get("crit") or step.get("id")
+        if crit and crit not in out:
+            out.append(crit)
+    return out
+
+
+def _vc_build_xlsx_bytes(headers: list, rows: list) -> bytes:
+    """Собирает .xlsx в памяти: headers — первая строка, rows — список
+    списков значений. Возвращает сырые байты файла."""
+    from openpyxl import Workbook  # type: ignore
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for r in rows:
+        ws.append(r)
+    for i, h in enumerate(headers, 1):
+        ws.column_dimensions[chr(64 + i) if i <= 26 else "A"].width = max(14, len(str(h)) + 2)
+    buf = _vc_io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def _vc_coerce_known_value(val) -> str:
+    """Приводит значение ячейки к строке для known_answers. openpyxl может
+    авто-типизировать «ДА»/«TRUE» в bool — переводим обратно в да/нет."""
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "да" if val else "нет"
+    return str(val).strip()
+
+
+def _vc_precheck_stop(scenario: dict, known_answers: dict):
+    """Проверяет КАЖДЫЙ известный ответ независимо на стоп-фактор его
+    собственного шага — НЕ полагаясь на порядок шагов. Это принципиально
+    важно: DialogSession.start() идёт строго последовательно с первого
+    шага сценария, а первый шаг (обычно приветствие/«удобно сейчас
+    ответить?») почти никогда не будет заполнен в файле — значит
+    последовательный прогон застревал бы на нём и никогда не доходил до
+    реального стоп-фактора (например «Пол») дальше по сценарию, даже
+    если тот уже известен. Возвращает (verdict, reason) или None."""
+    if not _VT_DIALOG_OK:
+        return None
+    for step in scenario.get("steps", []):
+        crit = step.get("crit", step.get("id"))
+        raw = known_answers.get(crit)
+        if not raw:
+            continue
+        try:
+            r = _vt_interpret(step, str(raw))
+        except Exception:
+            continue
+        if r.get("val") == "unclear":
+            continue
+        expect = step.get("expect")
+        if expect == "yesno":
+            if r["val"] == "no" and step.get("end_on_no"):
+                return step.get("end_verdict", "stopped"), step.get("end_reason") or f"{crit}: нет"
+            if r["val"] == "yes" and step.get("end_on_yes"):
+                return step.get("end_verdict", "stopped"), step.get("end_reason") or f"{crit}: да"
+        elif expect == "shifts":
+            accepted = step.get("accepted") or ["день+ночь"]
+            if r["val"] not in accepted:
+                return step.get("end_verdict", "stopped"), step.get("end_reason") or f"{crit}: {r['val']}"
+        elif r.get("stop"):
+            return "stopped", f"{crit}: {r['val']}"
+    return None
+
+
+def _vc_process_row(conn, campaign_id: int, name: str, phone_raw: str, source: str,
+                     raw_row: dict, crit_map: dict, scenario: dict, now: str) -> dict:
+    """Нормализует один контакт (из файла или ручного ввода), извлекает
+    known_answers по точному совпадению с crit сценария, прогоняет
+    облегчённую предпроверку и вставляет строку в voicecall_contacts.
+    Общий путь и для загрузки файла, и для ручного ввода — чтобы не
+    дублировать логику отсева/статусов."""
+    phone = _vc_normalize_phone(phone_raw)
+    if not phone:
+        return {"ok": False, "reason": "bad_phone", "name": name, "phone": phone_raw}
+
+    known_answers = {}
+    for crit, val in (crit_map or {}).items():
+        sval = _vc_coerce_known_value(val)
+        if sval:
+            known_answers[crit] = sval
+
+    status = "pending"
+    verdict = None
+    stop_reason = None
+    screen_out_reason = None
+    validation_id = None
+
+    if known_answers and _VT_DIALOG_OK:
+        try:
+            stop = _vc_precheck_stop(scenario, known_answers)
+            if stop:
+                status = "skipped"
+                verdict, stop_reason = stop[0], stop[1]
+                screen_out_reason = stop_reason
+            else:
+                sess = _VT_DialogSession(scenario, known_answers=known_answers)
+                action = sess.start()
+                if action.end_verdict == "passed":
+                    # Все шаги были известны из файла, стопа нет — реального
+                    # звонка не требуется, сразу фиксируем как «готов без звонка».
+                    status = "done"
+                    verdict = "passed"
+                    screen_out_reason = "precheck_full"
+                    full_answers = dict(action.answers)
+                    full_answers.update(action.notes)
+                    cur = conn.execute(
+                        "INSERT INTO candidate_validations "
+                        "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
+                        "answers_json, transcript_json, summary, browser, ip) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (scenario.get("id", "unknown"), scenario.get("name"), now, now,
+                         "passed", None, json.dumps(full_answers, ensure_ascii=False),
+                         json.dumps(action.transcript, ensure_ascii=False),
+                         None, "precheck", ""),
+                    )
+                    validation_id = cur.lastrowid
+        except Exception as e:
+            print(f"[vc_process_row] предпроверка упала для {phone}: {e}", flush=True)
+
+    cur = conn.execute(
+        "INSERT INTO voicecall_contacts (campaign_id, name, phone, source, raw_data_json, "
+        "status, verdict, stop_reason, screen_out_reason, known_answers_json, validation_id, "
+        "attempts, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (campaign_id, name, phone, source, json.dumps(raw_row, ensure_ascii=False),
+         status, verdict, stop_reason, screen_out_reason,
+         json.dumps(known_answers, ensure_ascii=False) if known_answers else None,
+         validation_id, 0, now),
+    )
+    return {
+        "ok": True, "id": cur.lastrowid, "name": name, "phone": phone,
+        "status": status,
+        "screened_out": status == "skipped" and screen_out_reason is not None,
+        "precheck_done": screen_out_reason == "precheck_full",
+        "screen_out_reason": screen_out_reason,
+    }
+
+
 class VoicecallCampaign(BaseModel):
     name: str
     scenario_id: str = "tander-sterlitamak-pack"
     source: Optional[str] = "manual"
+
+
+@app.get("/voicecall/upload-template")
+def vc_upload_template(scenario_id: str = "tander-sterlitamak-pack"):
+    """Excel-шаблон под конкретный сценарий: Имя, Телефон, и по одной
+    колонке на каждый вопрос сценария (по crit) — заполненные значения
+    бот не переспрашивает вживую (см. known_answers в dialog.py)."""
+    if not _VT_DIALOG_OK:
+        raise HTTPException(500, f"Dialog engine недоступен: {_VT_DIALOG_ERR}")
+    scenario = _vt_load_scenario(scenario_id)
+    headers = ["Имя", "Телефон"] + _vc_scenario_crits(scenario)
+    content = _vc_build_xlsx_bytes(headers, [])
+    fname = f"shablon_{scenario_id}.xlsx"
+    return StreamingResponse(
+        _vc_io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+class VCManualEntryReq(BaseModel):
+    campaign_name: str = ""
+    scenario_id: str = "tander-sterlitamak-pack"
+    source: str = "manual"
+    rows: list  # [{name, phone, <crit1>: val, ...}, ...]
+
+
+@app.post("/voicecall/manual-entry")
+def vc_manual_entry(req: VCManualEntryReq):
+    """JSON-аналог /voicecall/upload-contacts — те же Имя/Телефон/
+    вопросы-сценария, только введённые вручную на портале вместо файла."""
+    if not req.rows:
+        raise HTTPException(400, "Нет ни одной строки")
+    scenario = _vt_load_scenario(req.scenario_id) if _VT_DIALOG_OK else {"steps": []}
+    crits = set(_vc_scenario_crits(scenario))
+
+    campaign_name = (req.campaign_name or "").strip() or \
+        f"Ручной ввод {_vc_dt.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    now = _vc_dt.datetime.now().isoformat(timespec="seconds")
+
+    parsed = []
+    skipped_bad_phone = 0
+    seen_phones = set()
+    for row in req.rows:
+        if not isinstance(row, dict):
+            continue
+        phone_raw = str(row.get("phone") or row.get("Телефон") or "")
+        phone_norm = _vc_normalize_phone(phone_raw)
+        if not phone_norm:
+            skipped_bad_phone += 1
+            continue
+        if phone_norm in seen_phones:
+            continue
+        seen_phones.add(phone_norm)
+        cname = str(row.get("name") or row.get("Имя") or "").strip()
+        crit_map = {k: v for k, v in row.items() if k in crits}
+        parsed.append({"name": cname, "phone": phone_raw, "crit_map": crit_map, "raw": row})
+
+    if not parsed:
+        raise HTTPException(400, f"Ни одного валидного контакта. "
+                                 f"Строк всего: {len(req.rows)}, с плохим телефоном: {skipped_bad_phone}")
+
+    screened_out = 0
+    precheck_done = 0
+    with db() as conn:
+        srow = conn.execute(
+            "SELECT name FROM voicecall_scripts WHERE id=?", (req.scenario_id,)).fetchone()
+        scenario_name = srow["name"] if srow else req.scenario_id
+        cur = conn.execute(
+            "INSERT INTO voicecall_campaigns (name, scenario_id, scenario_name, created_at, total, source) "
+            "VALUES (?,?,?,?,?,?)",
+            (campaign_name, req.scenario_id, scenario_name, now, len(parsed), req.source),
+        )
+        campaign_id = cur.lastrowid
+        for c in parsed:
+            res = _vc_process_row(conn, campaign_id, c["name"], c["phone"], req.source,
+                                   c["raw"], c["crit_map"], scenario, now)
+            if res.get("screened_out"):
+                screened_out += 1
+            if res.get("precheck_done"):
+                precheck_done += 1
+
+    return {
+        "ok": True,
+        "campaign_id": campaign_id,
+        "campaign_name": campaign_name,
+        "total": len(parsed),
+        "skipped_bad_phone": skipped_bad_phone,
+        "screened_out": screened_out,
+        "precheck_done": precheck_done,
+        "queued": len(parsed) - screened_out - precheck_done,
+        "preview": [{"name": p["name"], "phone": p["phone"]} for p in parsed[:5]],
+    }
 
 
 @app.post("/voicecall/upload-contacts")
@@ -3680,6 +3939,13 @@ async def vc_upload_contacts(
             + ", ".join(str(h) for h in headers[:10])
         )
 
+    # Сценарий нужен и для колонок вопросов (crit), и для предпроверки
+    scenario = _vt_load_scenario(scenario_id) if _VT_DIALOG_OK else {"steps": []}
+    crits = _vc_scenario_crits(scenario)
+    # Точное совпадение заголовка с crit-именем вопроса сценария
+    crit_cols = {crit: i for crit in crits for i, h in enumerate(headers)
+                 if str(h).strip() == crit}
+
     # Парсим строки
     parsed = []
     skipped_bad_phone = 0
@@ -3687,18 +3953,21 @@ async def vc_upload_contacts(
     for r in rows:
         if not r or all(not str(c).strip() for c in r):
             continue
-        phone = _vc_normalize_phone(r[phone_col] if phone_col < len(r) else "")
-        if not phone:
+        phone_raw = r[phone_col] if phone_col < len(r) else ""
+        if not _vc_normalize_phone(phone_raw):
             skipped_bad_phone += 1
             continue
-        if phone in seen_phones:
+        phone_norm = _vc_normalize_phone(phone_raw)
+        if phone_norm in seen_phones:
             continue
-        seen_phones.add(phone)
+        seen_phones.add(phone_norm)
         cname = r[name_col].strip() if name_col >= 0 and name_col < len(r) else ""
         csource = r[source_col].strip() if source_col >= 0 and source_col < len(r) else source
         raw = {str(headers[i] if i < len(headers) else f"col{i}"): str(r[i] if i < len(r) else "")
                for i in range(max(len(headers), len(r)))}
-        parsed.append({"name": cname, "phone": phone, "source": csource, "raw": raw})
+        crit_map = {crit: r[idx] for crit, idx in crit_cols.items() if idx < len(r)}
+        parsed.append({"name": cname, "phone": phone_raw, "source": csource,
+                       "raw": raw, "crit_map": crit_map})
 
     if not parsed:
         raise HTTPException(400, f"Ни одного валидного контакта не распознано. "
@@ -3707,6 +3976,8 @@ async def vc_upload_contacts(
     # Создаём campaign и contacts
     campaign_name = name.strip() or f"Загрузка {_vc_dt.datetime.now().strftime('%d.%m.%Y %H:%M')}"
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
+    screened_out = 0
+    precheck_done = 0
     with db() as conn:
         # Подтягиваем читаемое имя скрипта из библиотеки (для отображения кампании)
         srow = conn.execute(
@@ -3719,12 +3990,12 @@ async def vc_upload_contacts(
         )
         campaign_id = cur.lastrowid
         for c in parsed:
-            conn.execute(
-                "INSERT INTO voicecall_contacts (campaign_id, name, phone, source, raw_data_json, "
-                "status, attempts, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (campaign_id, c["name"], c["phone"], c["source"],
-                 json.dumps(c["raw"], ensure_ascii=False), "pending", 0, now),
-            )
+            res = _vc_process_row(conn, campaign_id, c["name"], c["phone"], c["source"],
+                                   c["raw"], c["crit_map"], scenario, now)
+            if res.get("screened_out"):
+                screened_out += 1
+            if res.get("precheck_done"):
+                precheck_done += 1
 
     return {
         "ok": True,
@@ -3732,12 +4003,16 @@ async def vc_upload_contacts(
         "campaign_name": campaign_name,
         "total": len(parsed),
         "skipped_bad_phone": skipped_bad_phone,
+        "screened_out": screened_out,
+        "precheck_done": precheck_done,
+        "queued": len(parsed) - screened_out - precheck_done,
         "headers_detected": {
             "name_col": (headers[name_col] if name_col >= 0 else None),
             "phone_col": (headers[phone_col] if phone_col >= 0 else None),
             "source_col": (headers[source_col] if source_col >= 0 else None),
+            "crit_cols": list(crit_cols.keys()),
         },
-        "preview": parsed[:5],
+        "preview": [{"name": p["name"], "phone": p["phone"], "source": p["source"]} for p in parsed[:5]],
     }
 
 
@@ -3747,10 +4022,12 @@ def vc_list_campaigns(limit: int = 50):
     with db() as conn:
         rows = conn.execute(
             "SELECT c.id, c.name, c.scenario_id, c.scenario_name, c.created_at, c.total, c.source, "
+            "       c.dispatch_state, "
             "       SUM(CASE WHEN ct.status='pending' THEN 1 ELSE 0 END) AS pending_n, "
             "       SUM(CASE WHEN ct.status='calling' THEN 1 ELSE 0 END) AS calling_n, "
             "       SUM(CASE WHEN ct.status='done' THEN 1 ELSE 0 END) AS done_n, "
             "       SUM(CASE WHEN ct.status='skipped' THEN 1 ELSE 0 END) AS skipped_n, "
+            "       SUM(CASE WHEN ct.status='failed' THEN 1 ELSE 0 END) AS failed_n, "
             "       SUM(CASE WHEN ct.verdict='passed' THEN 1 ELSE 0 END) AS passed_n, "
             "       SUM(CASE WHEN ct.verdict='stopped' THEN 1 ELSE 0 END) AS stopped_n "
             "FROM voicecall_campaigns c "
@@ -3764,8 +4041,10 @@ def vc_list_campaigns(limit: int = 50):
             "id": r["id"], "name": r["name"], "scenario_id": r["scenario_id"],
             "scenario_name": r["scenario_name"],
             "created_at": r["created_at"], "total": r["total"], "source": r["source"],
+            "dispatch_state": r["dispatch_state"],
             "pending": int(r["pending_n"] or 0), "calling": int(r["calling_n"] or 0),
             "done": int(r["done_n"] or 0), "skipped": int(r["skipped_n"] or 0),
+            "failed": int(r["failed_n"] or 0),
             "passed": int(r["passed_n"] or 0), "stopped": int(r["stopped_n"] or 0),
         })
     return {"items": out}
@@ -3791,6 +4070,7 @@ def vc_list_contacts(
     with db() as conn:
         rows = conn.execute(
             f"SELECT id, campaign_id, name, phone, source, status, verdict, stop_reason, "
+            f"       screen_out_reason, last_call_status, "
             f"       attempts, last_attempt_at, validation_id, created_at "
             f"FROM voicecall_contacts {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
@@ -3837,6 +4117,240 @@ def vc_delete_campaign(cid: int):
         conn.execute("DELETE FROM voicecall_campaigns WHERE id=?", (cid,))
     return {"ok": True}
 
+
+# ════════════════════════════════════════════════════════════════════════
+# VOICECALL DISPATCH — очередь для локального агента обзвона (dispatch_agent.py)
+# Агент работает ТОЛЬКО на ПК с реальной SIP-линией; портал лишь хранит
+# очередь и результаты. Привилегированные действия — за паролем портала,
+# как и конструктор скриптов (см. _vcs_check_password ниже по файлу).
+# ════════════════════════════════════════════════════════════════════════
+
+@app.post("/voicecall/campaigns/{cid}/start-dispatch")
+def vc_start_dispatch(cid: int, request: Request):
+    """Кнопка «Начать обзвон» на портале — просто ставит кампании флаг,
+    локальный агент подхватит её на следующем опросе (_vcs_check_password
+    объявлен ниже по файлу, но вызывается здесь во время запроса — на
+    момент реального HTTP-запроса модуль уже полностью загружен)."""
+    _vcs_check_password(request)
+    with db() as conn:
+        camp = conn.execute(
+            "SELECT id, dispatch_state FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        if camp["dispatch_state"] == "running":
+            raise HTTPException(409, "Обзвон этой кампании уже идёт")
+        n_pending = conn.execute(
+            "SELECT COUNT(*) FROM voicecall_contacts WHERE campaign_id=? AND status='pending'",
+            (cid,)).fetchone()[0]
+        if not n_pending:
+            raise HTTPException(400, "Нет контактов в очереди (все уже обработаны)")
+        conn.execute(
+            "UPDATE voicecall_campaigns SET dispatch_state='requested' WHERE id=?", (cid,))
+    return {"ok": True, "pending": n_pending}
+
+
+@app.get("/voicecall/dispatch/poll")
+def vc_dispatch_poll(request: Request):
+    """Агент опрашивает это раз в 15-30 сек. Атомарно забирает САМУЮ
+    старую кампанию с dispatch_state='requested', переключает в
+    'running' и возвращает её. Если таких нет — campaign_id=null."""
+    _vcs_check_password(request)
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, scenario_id FROM voicecall_campaigns "
+            "WHERE dispatch_state='requested' ORDER BY created_at LIMIT 1").fetchone()
+        if not row:
+            return {"campaign_id": None}
+        cid = row["id"]
+        cur = conn.execute(
+            "UPDATE voicecall_campaigns SET dispatch_state='running' "
+            "WHERE id=? AND dispatch_state='requested'", (cid,))
+        if cur.rowcount == 0:
+            # Кто-то другой уже забрал (гонка маловероятна, но безопасна)
+            return {"campaign_id": None}
+    return {"campaign_id": cid, "scenario_id": row["scenario_id"]}
+
+
+@app.post("/voicecall/dispatch/claim")
+def vc_dispatch_claim(campaign_id: int, request: Request):
+    """Атомарно забирает самый старый pending-контакт кампании, помечает
+    calling. Пустая очередь → contact_id=null (агент после этого переводит
+    кампанию в dispatch_state='done' и возвращается к /dispatch/poll)."""
+    _vcs_check_password(request)
+    now = _vc_dt.datetime.now().isoformat(timespec="seconds")
+    with db() as conn:
+        row = conn.execute(
+            "SELECT id, name, phone, known_answers_json FROM voicecall_contacts "
+            "WHERE campaign_id=? AND status='pending' ORDER BY created_at LIMIT 1",
+            (campaign_id,)).fetchone()
+        if not row:
+            conn.execute(
+                "UPDATE voicecall_campaigns SET dispatch_state='done' WHERE id=?",
+                (campaign_id,))
+            return {"contact_id": None}
+        cid = row["id"]
+        cur = conn.execute(
+            "UPDATE voicecall_contacts SET status='calling', attempts=attempts+1, "
+            "last_attempt_at=? WHERE id=? AND status='pending'", (now, cid))
+        if cur.rowcount == 0:
+            return {"contact_id": None}  # кто-то уже забрал
+    known = json.loads(row["known_answers_json"]) if row["known_answers_json"] else {}
+    return {"contact_id": cid, "phone": row["phone"], "name": row["name"] or "", "known_answers": known}
+
+
+class VCDispatchResultReq(BaseModel):
+    contact_id: int
+    status: str  # answered_completed|no_answer|busy|voicemail|hangup_by_candidate|error
+    verdict: Optional[str] = None
+    stop_reason: Optional[str] = None
+    answers: dict = {}
+    notes: dict = {}
+    transcript: list = []
+    duration_s: Optional[float] = None
+    error: Optional[str] = None
+
+
+_VC_STATUS_MAP = {
+    "answered_completed": "done",
+    "hangup_by_candidate": "done",
+    "no_answer": "failed",
+    "busy": "failed",
+    "voicemail": "failed",
+    "error": "failed",
+}
+
+
+@app.post("/voicecall/dispatch/result")
+def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
+    """Агент шлёт сюда результат реального звонка. Сохраняем ответы в
+    candidate_validations тем же паттерном что и browser-тест, обновляем
+    контакт: укрупнённый status + точный last_call_status (для
+    разделённой воронки: не взял / автоответчик / занято — раздельно)."""
+    _vcs_check_password(request)
+    now = _vc_dt.datetime.now().isoformat(timespec="seconds")
+    with db() as conn:
+        contact = conn.execute(
+            "SELECT id, campaign_id FROM voicecall_contacts WHERE id=?",
+            (req.contact_id,)).fetchone()
+        if not contact:
+            raise HTTPException(404, "Contact not found")
+        camp = conn.execute(
+            "SELECT scenario_id, scenario_name FROM voicecall_campaigns WHERE id=?",
+            (contact["campaign_id"],)).fetchone()
+
+        new_status = _VC_STATUS_MAP.get(req.status, "failed")
+        validation_id = None
+        if req.answers or req.notes or req.transcript:
+            full_answers = dict(req.answers)
+            full_answers.update(req.notes)
+            cur = conn.execute(
+                "INSERT INTO candidate_validations "
+                "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
+                "answers_json, transcript_json, summary, browser, ip) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (camp["scenario_id"] if camp else "unknown",
+                 camp["scenario_name"] if camp else None,
+                 now, now, req.verdict or "declined", req.stop_reason,
+                 json.dumps(full_answers, ensure_ascii=False),
+                 json.dumps(req.transcript, ensure_ascii=False),
+                 None, "dispatch-agent", ""),
+            )
+            validation_id = cur.lastrowid
+
+        conn.execute(
+            "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
+            "last_call_status=?, validation_id=COALESCE(?, validation_id) WHERE id=?",
+            (new_status, req.verdict, req.stop_reason, req.status, validation_id, req.contact_id),
+        )
+    return {"ok": True}
+
+
+@app.get("/voicecall/campaigns/{cid}/funnel")
+def vc_campaign_funnel(cid: int):
+    """Воронка обзвона: сколько загружено → отсеяно предпроверкой →
+    в очереди → дозвонились/не дозвонились (раздельно по причине)."""
+    with db() as conn:
+        camp = conn.execute("SELECT id, total FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        row = conn.execute(
+            "SELECT "
+            " SUM(CASE WHEN status='skipped' AND screen_out_reason IS NOT NULL "
+            "          AND screen_out_reason!='precheck_full' THEN 1 ELSE 0 END) AS screened_out, "
+            " SUM(CASE WHEN screen_out_reason='precheck_full' THEN 1 ELSE 0 END) AS precheck_done, "
+            " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, "
+            " SUM(CASE WHEN status='calling' THEN 1 ELSE 0 END) AS calling, "
+            " SUM(CASE WHEN status='done' AND screen_out_reason IS NULL THEN 1 ELSE 0 END) AS reached, "
+            " SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed, "
+            " SUM(CASE WHEN verdict='passed' THEN 1 ELSE 0 END) AS passed, "
+            " SUM(CASE WHEN verdict='stopped' THEN 1 ELSE 0 END) AS stopped, "
+            " SUM(CASE WHEN verdict='declined' THEN 1 ELSE 0 END) AS declined, "
+            " SUM(CASE WHEN last_call_status='voicemail' THEN 1 ELSE 0 END) AS voicemail, "
+            " SUM(CASE WHEN last_call_status='no_answer' THEN 1 ELSE 0 END) AS no_answer, "
+            " SUM(CASE WHEN last_call_status='busy' THEN 1 ELSE 0 END) AS busy, "
+            " SUM(CASE WHEN last_call_status='error' THEN 1 ELSE 0 END) AS call_error "
+            "FROM voicecall_contacts WHERE campaign_id=?", (cid,)).fetchone()
+    return {
+        "loaded": camp["total"],
+        "screened_out": int(row["screened_out"] or 0),
+        "precheck_done": int(row["precheck_done"] or 0),
+        "pending": int(row["pending"] or 0),
+        "calling": int(row["calling"] or 0),
+        "reached": int(row["reached"] or 0),
+        "failed": int(row["failed"] or 0),
+        "passed": int(row["passed"] or 0),
+        "stopped": int(row["stopped"] or 0),
+        "declined": int(row["declined"] or 0),
+        "voicemail": int(row["voicemail"] or 0),
+        "no_answer": int(row["no_answer"] or 0),
+        "busy": int(row["busy"] or 0),
+        "error": int(row["call_error"] or 0),
+    }
+
+
+@app.get("/voicecall/campaigns/{cid}/export")
+def vc_campaign_export(cid: int):
+    """Отчёт .xlsx: Имя/Телефон/Статус/точная причина/Вердикт/причина стопа
+    + по колонке на каждый вопрос сценария, заполненной либо ответом из
+    реального звонка (candidate_validations), либо тем что было в файле
+    (known_answers_json), если звонка не потребовалось/не было."""
+    with db() as conn:
+        camp = conn.execute(
+            "SELECT id, scenario_id FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        scenario = _vt_load_scenario(camp["scenario_id"]) if _VT_DIALOG_OK else {"steps": []}
+        crits = _vc_scenario_crits(scenario)
+        rows = conn.execute(
+            "SELECT ct.name, ct.phone, ct.status, ct.last_call_status, ct.verdict, "
+            "       ct.stop_reason, ct.known_answers_json, cv.answers_json "
+            "FROM voicecall_contacts ct "
+            "LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
+            "WHERE ct.campaign_id=? ORDER BY ct.created_at", (cid,)).fetchall()
+
+    _STATUS_RU = {"pending": "В очереди", "calling": "Звоним сейчас",
+                  "done": "Дозвонились", "skipped": "Отсеян", "failed": "Не дозвонились"}
+    headers = ["Имя", "Телефон", "Статус", "Точная причина", "Вердикт", "Причина стопа"] + crits
+    out_rows = []
+    for r in rows:
+        answers = {}
+        if r["known_answers_json"]:
+            answers.update(json.loads(r["known_answers_json"]))
+        if r["answers_json"]:
+            answers.update(json.loads(r["answers_json"]))
+        out_rows.append([
+            r["name"] or "", r["phone"], _STATUS_RU.get(r["status"], r["status"]),
+            r["last_call_status"] or "", r["verdict"] or "", r["stop_reason"] or "",
+        ] + [str(answers.get(c, "")) for c in crits])
+
+    content = _vc_build_xlsx_bytes(headers, out_rows)
+    return StreamingResponse(
+        _vc_io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="otchet_obzvon_{cid}.xlsx"'},
+    )
+
+
 # ════════════════════════════════════════════════════════════════════════
 # VOICECALL TEST — браузерный тестовый прозвон с серверным TTS+STT+Dialog
 # ════════════════════════════════════════════════════════════════════════
@@ -3862,6 +4376,7 @@ try:
         DialogSession as _VT_DialogSession,
         load_scenario as _vt_load_scenario_file,
         vocab_for_step as _vt_vocab_for_step,
+        interpret as _vt_interpret,
     )
     _VT_DIALOG_OK = True
     _VT_DIALOG_ERR = None

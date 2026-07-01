@@ -65,6 +65,12 @@ _NUM_WORDS = {
     "восемьдесят": 80, "девяносто": 90, "сто": 100,
 }
 
+# Правдоподобные границы возраста человека вообще (не границы конкретной
+# вакансии) — значения за пределами считаем вероятной ошибкой
+# распознавания речи и переспрашиваем, а не отклоняем кандидата.
+AGE_PLAUSIBLE_MIN = 14
+AGE_PLAUSIBLE_MAX = 90
+
 
 def parse_age_from_text(raw: str) -> Optional[int]:
     """Извлекает возраст из текста. Сначала ищет цифры, потом слова.
@@ -136,6 +142,14 @@ def interpret(step: dict, raw: str) -> dict:
     if expect == "age":
         a = parse_age_from_text(raw)
         if a is None:
+            return {"val": "unclear"}
+        # Правдоподобность возраста ≠ границы вакансии (step min/max).
+        # Vosk на короткой grammar-модели иногда теряет первую часть
+        # составного числа («двадцать девять» → «девять») — такое
+        # значение неправдоподобно как реальный возраст человека, скорее
+        # всего ошибка распознавания. Переспрашиваем вместо того чтобы
+        # сразу отклонять кандидата по некорректно расслышанному числу.
+        if a < AGE_PLAUSIBLE_MIN or a > AGE_PLAUSIBLE_MAX:
             return {"val": "unclear"}
         if a < step.get("min", 18) or a > step.get("max", 45):
             return {"val": a, "stop": True}
@@ -236,15 +250,49 @@ def llm_classify(step: dict, raw: str) -> Optional[dict]:
         return None
 
 
+_VOICEMAIL_PATTERN = re.compile(
+    r"(автоответчик|включен автоответчик|"
+    r"оставьте сообщение|оставьте своё сообщение|после сигнала|после гудка|"
+    r"недоступен|временно недоступен|вне зоны действия сети|"
+    r"абонент не отвечает|абонент не берет трубку|абонент не берёт трубку|"
+    r"не берет трубку|не берёт трубку|"
+    r"перезвоните позже|позвоните позже|попробуйте перезвонить|"
+    r"перенаправлен на голосовой|голосовой почтовый ящик|голосовую почту|"
+    r"выключен или находится|номер не обслуживается|заблокирован|"
+    r"продолжив договариваться|нажмите один)"
+)
+
+
+def is_voicemail_phrase(raw: str) -> bool:
+    """Похоже ли услышанное на приветствие автоответчика/голосовой почты
+    оператора, а не на живого человека."""
+    if not raw:
+        return False
+    return bool(_VOICEMAIL_PATTERN.search(_norm(raw)))
+
+
+_REASK_BY_EXPECT = {
+    "yesno": "Простите, не расслышала — это «да» или «нет»?",
+    "age": "Сколько вам полных лет? Можно просто цифрой.",
+    "citizen_rf": "Уточните, гражданство России или другой страны?",
+    "crime": "Судимости по 158, 228 или 105 — были или нет?",
+    "shifts": "В ночные смены выходить готовы?",
+    "gender_male": "Извините за формальность — вы мужчина?",
+}
+_REASK_DEFAULT = "Уточните, пожалуйста, ещё раз?"
+
+
 def reask_text(step: dict) -> str:
-    return {
-        "yesno": "Простите, не расслышала — это «да» или «нет»?",
-        "age": "Сколько вам полных лет? Можно просто цифрой.",
-        "citizen_rf": "Уточните, гражданство России или другой страны?",
-        "crime": "Судимости по 158, 228 или 105 — были или нет?",
-        "shifts": "В ночные смены выходить готовы?",
-        "gender_male": "Извините за формальность — вы мужчина?",
-    }.get(step.get("expect"), "Уточните, пожалуйста, ещё раз?")
+    return _REASK_BY_EXPECT.get(step.get("expect"), _REASK_DEFAULT)
+
+
+def all_reask_texts() -> list:
+    """Все возможные варианты reask_text() — для прогрева TTS-кэша перед
+    звонком (иначе первое же использование уточняющей фразы посреди
+    разговора вызывает живой синтез и заметную паузу)."""
+    texts = list(_REASK_BY_EXPECT.values())
+    texts.append(_REASK_DEFAULT)
+    return texts
 
 
 # Числительные для возраста — даём Vosk-у словарь чтобы лучше распознавал
@@ -321,7 +369,7 @@ class Action:
 # ── Session — одна беседа с одним кандидатом ─────────────────────────────
 
 class DialogSession:
-    def __init__(self, scenario: dict):
+    def __init__(self, scenario: dict, known_answers: Optional[dict] = None):
         self.scenario = scenario
         self.steps = scenario["steps"]
         self.i = 0
@@ -334,6 +382,10 @@ class DialogSession:
         self.ended = False
         self.verdict: Optional[str] = None
         self.stop_reason: Optional[str] = None
+        # Ответы, уже известные из загруженного файла/ручного ввода —
+        # {crit: значение}. _speak_current() пропускает эти шаги вместо
+        # того чтобы задавать их вслух, см. ниже.
+        self.known_answers: dict = dict(known_answers or {})
 
     def _log(self, who: str, text: str):
         self.transcript.append({"who": who, "text": text,
@@ -345,6 +397,21 @@ class DialogSession:
 
     def _speak_current(self) -> Action:
         step = self.steps[self.i]
+        crit = step.get("crit", step["id"])
+        if crit in self.known_answers:
+            raw = self.known_answers[crit]
+            raw_str = "" if raw is None else str(raw).strip()
+            if raw_str:
+                # Прогоняем через interpret() ЗАРАНЕЕ — если значение из
+                # файла не парсится под этот тип вопроса, не считаем его
+                # известным: иначе submit_answer() ушёл бы в
+                # _reask_or_skip(), а тот озвучивает уточняющий вопрос
+                # ВСЛУХ посреди звонка, хотя мы должны были просто
+                # промолчать и звонить как обычно.
+                parsed = interpret(step, raw_str)
+                if parsed.get("val") != "unclear":
+                    self._log("system", f"[known] {crit} = {raw_str}")
+                    return self.submit_answer(raw_str)
         text = step["bot"]
         self._log("bot", text)
         return Action(kind="speak_then_listen", text=text)
