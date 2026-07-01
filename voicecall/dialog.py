@@ -369,8 +369,10 @@ class Action:
 # ── Session — одна беседа с одним кандидатом ─────────────────────────────
 
 class DialogSession:
-    def __init__(self, scenario: dict, known_answers: Optional[dict] = None):
+    def __init__(self, scenario: dict, known_answers: Optional[dict] = None,
+                 candidate_name: str = ""):
         self.scenario = scenario
+        self.candidate_name = candidate_name
         self.steps = scenario["steps"]
         self.i = 0
         self.answers: dict = {}
@@ -388,6 +390,11 @@ class DialogSession:
         self.known_answers: dict = dict(known_answers or {})
 
     def _log(self, who: str, text: str):
+        # Реально произносится (см. render_name в phone_call.py) текст с уже
+        # подставленным именем кандидата — транскрипт должен показывать то
+        # же самое, а не сырой шаблон с буквальным "{name}".
+        if who == "bot":
+            text = render_name(text, self.candidate_name)
         self.transcript.append({"who": who, "text": text,
                                 "ts": datetime.now().isoformat(timespec="seconds")})
 

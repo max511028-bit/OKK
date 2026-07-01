@@ -26,6 +26,7 @@ import re
 import select
 import socket
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -639,6 +640,42 @@ def detect_voicemail(call, max_listen_sec: float = 8.0) -> Optional[str]:
     return None
 
 
+def _prewarm_tts_for_name(scenario: dict, candidate_name: str) -> None:
+    """prewarm_scenario() в dispatch_agent.py кэширует фразы С ЛИТЕРАЛЬНЫМ
+    "{name}" в тексте — а реально в звонке произносится текст ПОСЛЕ
+    render_name() с уже подставленным именем кандидата. Это два разных
+    текста, значит разный ключ кэша TTS, значит на КАЖДОМ звонке первая
+    (и любая другая содержащая имя) фраза бота синтезируется вживую —
+    это и есть та самая большая пауза в начале диалога, которая не
+    ушла после фикса детекции автоответчика.
+
+    Вызывается в отдельном потоке сразу после того как стал известен
+    scenario/candidate_name, ДО того как кандидат физически поднимет
+    трубку — реальное время дозвона (гудки) обычно перекрывает время
+    синтеза, так что к первой фразе бота аудио уже готово в кэше."""
+    if not candidate_name:
+        return  # без имени render_name возвращает тот же текст что и в prewarm_scenario — кэш уже есть
+    try:
+        texts = []
+        for st in scenario.get("steps", []):
+            for key in ("bot", "on_no", "on_no_follow", "stop_msg"):
+                v = st.get(key)
+                if v and "{name}" in v:
+                    texts.append(render_name(v, candidate_name))
+        closing = scenario.get("closing")
+        if closing and "{name}" in closing:
+            texts.append(render_name(closing, candidate_name))
+        for t in texts:
+            synthesize_telephony_pcm(t, DEFAULT_VOICE, use_cache=True)
+    except Exception:
+        pass  # чисто оптимизация — при сбое просто синтезируем вживую как раньше
+
+
+def _start_prewarm_for_name(scenario: dict, candidate_name: str) -> None:
+    threading.Thread(target=_prewarm_tts_for_name, args=(scenario, candidate_name),
+                      daemon=True).start()
+
+
 def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                       known_answers: Optional[dict] = None,
                       on_transcript_update=None) -> None:
@@ -658,7 +695,7 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             try: on_transcript_update(list(sess.transcript))
             except Exception: pass
 
-    sess = DialogSession(scenario, known_answers=known_answers)
+    sess = DialogSession(scenario, known_answers=known_answers, candidate_name=candidate_name)
     action = sess.start()
     push_transcript()
     first_phrase = True
@@ -760,6 +797,7 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
 
     scenario = load_scenario(scenario_id)
     log(f"Сценарий: {scenario['name']}")
+    _start_prewarm_for_name(scenario, candidate_name)
 
     result = {
         "status": "unknown", "verdict": None, "stop_reason": None,
@@ -884,6 +922,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
     if scenario is None:
         scenario = load_scenario(scenario_id)
     log(f"Сценарий: {scenario['name']}")
+    _start_prewarm_for_name(scenario, candidate_name)
 
     result = {
         "status": "unknown", "verdict": None, "stop_reason": None,
