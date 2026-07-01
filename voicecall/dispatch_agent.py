@@ -112,7 +112,10 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
             continue
 
         if not claim.get("contact_id"):
-            print(f"Кампания {campaign_id} обзвонена, возвращаюсь к опросу.", flush=True)
+            if claim.get("paused"):
+                print(f"Кампания {campaign_id} на паузе, возвращаюсь к опросу.", flush=True)
+            else:
+                print(f"Кампания {campaign_id} обзвонена, возвращаюсь к опросу.", flush=True)
             return
 
         contact_id = claim["contact_id"]
