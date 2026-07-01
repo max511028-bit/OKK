@@ -36,11 +36,15 @@ except Exception:
     pass
 
 
-VOSK_MODEL_NAME = "vosk-model-small-ru-0.22"
+# Большая модель (~1.8 ГБ) вместо vosk-model-small-ru-0.22 (~45 МБ) —
+# заметно точнее на открытых ответах кандидата (small путала «торт» с
+# «парк» и т.п. на телефонном звуке). Ставим отдельной папкой, чтобы
+# откат на маленькую модель был просто сменой этих трёх констант назад.
+VOSK_MODEL_NAME = "vosk-model-ru-0.42"
 VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_NAME}.zip"
 # Кладём модель в путь без кириллицы — Vosk на Windows плохо работает с
 # не-ASCII символами в пути (известная проблема C++ библиотеки).
-MODEL_DIR = Path(os.getenv("VOSK_MODEL_DIR") or r"C:\ProgramData\sth\vosk-model")
+MODEL_DIR = Path(os.getenv("VOSK_MODEL_DIR") or rf"C:\ProgramData\sth\{VOSK_MODEL_NAME}")
 
 
 def _has_model_files(d: Path) -> bool:
