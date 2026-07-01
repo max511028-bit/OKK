@@ -248,6 +248,13 @@ def init_db() -> None:
                 "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_state TEXT NOT NULL DEFAULT 'idle'")
         except sqlite3.OperationalError:
             pass
+        # Пауза: текущий звонок доигрывается до конца, следующий не начинается,
+        # пока не нажали «Продолжить» (см. pause-dispatch/resume-dispatch).
+        try:
+            conn.execute(
+                "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_paused INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted_at)")
         # Seed once if empty
         n = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
@@ -4031,7 +4038,7 @@ def vc_list_campaigns(limit: int = 50):
     with db() as conn:
         rows = conn.execute(
             "SELECT c.id, c.name, c.scenario_id, c.scenario_name, c.created_at, c.total, c.source, "
-            "       c.dispatch_state, "
+            "       c.dispatch_state, c.dispatch_paused, "
             "       SUM(CASE WHEN ct.status='pending' THEN 1 ELSE 0 END) AS pending_n, "
             "       SUM(CASE WHEN ct.status='calling' THEN 1 ELSE 0 END) AS calling_n, "
             "       SUM(CASE WHEN ct.status='done' THEN 1 ELSE 0 END) AS done_n, "
@@ -4050,7 +4057,7 @@ def vc_list_campaigns(limit: int = 50):
             "id": r["id"], "name": r["name"], "scenario_id": r["scenario_id"],
             "scenario_name": r["scenario_name"],
             "created_at": r["created_at"], "total": r["total"], "source": r["source"],
-            "dispatch_state": r["dispatch_state"],
+            "dispatch_state": r["dispatch_state"], "dispatch_paused": bool(r["dispatch_paused"]),
             "pending": int(r["pending_n"] or 0), "calling": int(r["calling_n"] or 0),
             "done": int(r["done_n"] or 0), "skipped": int(r["skipped_n"] or 0),
             "failed": int(r["failed_n"] or 0),
@@ -4081,7 +4088,7 @@ def vc_list_contacts(
             f"SELECT id, campaign_id, name, phone, source, status, verdict, stop_reason, "
             f"       screen_out_reason, last_call_status, "
             f"       attempts, last_attempt_at, validation_id, created_at "
-            f"FROM voicecall_contacts {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"FROM voicecall_contacts {where} ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ).fetchall()
         total = conn.execute(
@@ -4184,8 +4191,43 @@ def vc_start_dispatch(cid: int, request: Request):
         if not n_pending:
             raise HTTPException(400, "Нет контактов в очереди (все уже обработаны)")
         conn.execute(
-            "UPDATE voicecall_campaigns SET dispatch_state='requested' WHERE id=?", (cid,))
+            "UPDATE voicecall_campaigns SET dispatch_state='requested', dispatch_paused=0 WHERE id=?",
+            (cid,))
     return {"ok": True, "pending": n_pending}
+
+
+@app.post("/voicecall/campaigns/{cid}/pause-dispatch")
+def vc_pause_dispatch(cid: int, request: Request):
+    """«Пауза» — текущий звонок (если идёт) доигрывается до конца, но
+    /dispatch/claim перестаёт выдавать агенту следующий контакт, пока не
+    нажали «Продолжить». Кампания остаётся dispatch_state='running'."""
+    _vcs_check_password(request)
+    with db() as conn:
+        camp = conn.execute("SELECT id FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        conn.execute("UPDATE voicecall_campaigns SET dispatch_paused=1 WHERE id=?", (cid,))
+    return {"ok": True}
+
+
+@app.post("/voicecall/campaigns/{cid}/resume-dispatch")
+def vc_resume_dispatch(cid: int, request: Request):
+    """«Продолжить» после паузы — агент снова начинает забирать pending-
+    контактов сверху вниз (тот же порядок что и в списке на портале,
+    см. ORDER BY в /voicecall/contacts и /dispatch/claim)."""
+    _vcs_check_password(request)
+    with db() as conn:
+        camp = conn.execute(
+            "SELECT id, dispatch_state FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        if camp["dispatch_state"] in ("running", "requested"):
+            conn.execute("UPDATE voicecall_campaigns SET dispatch_paused=0 WHERE id=?", (cid,))
+        else:
+            conn.execute(
+                "UPDATE voicecall_campaigns SET dispatch_paused=0, dispatch_state='requested' "
+                "WHERE id=?", (cid,))
+    return {"ok": True}
 
 
 _VC_STALE_CALLING_MINUTES = 10
@@ -4218,10 +4260,11 @@ def vc_dispatch_poll(request: Request):
             (stale_before,))
         row = conn.execute(
             "SELECT id, scenario_id FROM voicecall_campaigns c WHERE "
-            "  dispatch_state='requested' "
-            "  OR (dispatch_state='running' AND EXISTS ("
-            "        SELECT 1 FROM voicecall_contacts "
-            "        WHERE campaign_id=c.id AND status='pending')) "
+            "  dispatch_paused=0 AND ("
+            "    dispatch_state='requested' "
+            "    OR (dispatch_state='running' AND EXISTS ("
+            "          SELECT 1 FROM voicecall_contacts "
+            "          WHERE campaign_id=c.id AND status='pending'))) "
             "ORDER BY created_at LIMIT 1").fetchone()
         if not row:
             return {"campaign_id": None}
@@ -4233,15 +4276,22 @@ def vc_dispatch_poll(request: Request):
 
 @app.post("/voicecall/dispatch/claim")
 def vc_dispatch_claim(campaign_id: int, request: Request):
-    """Атомарно забирает самый старый pending-контакт кампании, помечает
-    calling. Пустая очередь → contact_id=null (агент после этого переводит
-    кампанию в dispatch_state='done' и возвращается к /dispatch/poll)."""
+    """Атомарно забирает самый старый (сверху вниз в списке на портале)
+    pending-контакт кампании, помечает calling. Пустая очередь →
+    contact_id=null (агент после этого переводит кампанию в
+    dispatch_state='done' и возвращается к /dispatch/poll). На паузе —
+    тоже contact_id=null, но dispatch_state НЕ трогаем (это не «конец»,
+    агент просто вернётся к тихому опросу, пока не нажмут «Продолжить»)."""
     _vcs_check_password(request)
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
+        camp = conn.execute(
+            "SELECT dispatch_paused FROM voicecall_campaigns WHERE id=?", (campaign_id,)).fetchone()
+        if camp and camp["dispatch_paused"]:
+            return {"contact_id": None, "paused": True}
         row = conn.execute(
             "SELECT id, name, phone, known_answers_json FROM voicecall_contacts "
-            "WHERE campaign_id=? AND status='pending' ORDER BY created_at LIMIT 1",
+            "WHERE campaign_id=? AND status='pending' ORDER BY created_at ASC, id ASC LIMIT 1",
             (campaign_id,)).fetchone()
         if not row:
             conn.execute(

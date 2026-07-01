@@ -308,6 +308,59 @@ class TestHangupMidCall:
         assert len(detail["transcript"]) == 2
 
 
+class TestPauseResume:
+    def _campaign_with_two_pending(self, client, phone1, phone2):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["A", phone1], ["B", phone2]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Пауза тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        return r.json()["campaign_id"]
+
+    def test_pause_blocks_next_claim_current_call_unaffected(self, client, portal_token):
+        cid = self._campaign_with_two_pending(client, "79997770001", "79997770002")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim1 = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                              headers=auth).json()
+        assert claim1["contact_id"] is not None
+
+        r = client.post(f"/voicecall/campaigns/{cid}/pause-dispatch", headers=auth)
+        assert r.status_code == 200
+
+        # Второй контакт не выдаётся, пока на паузе
+        claim2 = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                              headers=auth).json()
+        assert claim2["contact_id"] is None
+        assert claim2.get("paused") is True
+
+        # Пауза — не "конец обзвона"
+        camps = client.get("/voicecall/campaigns").json()["items"]
+        camp = next(c for c in camps if c["id"] == cid)
+        assert camp["dispatch_state"] == "running"
+        assert camp["dispatch_paused"] is True
+
+        # poll() тоже не должен пытаться повторно подхватить кампанию на паузе
+        assert client.get("/voicecall/dispatch/poll", headers=auth).json()["campaign_id"] is None
+
+        # Первый звонок как ни в чём не бывало доигрывается результатом
+        r = client.post("/voicecall/dispatch/result", headers=auth, json={
+            "contact_id": claim1["contact_id"], "status": "answered_completed", "verdict": "passed",
+        })
+        assert r.status_code == 200
+
+        r = client.post(f"/voicecall/campaigns/{cid}/resume-dispatch", headers=auth)
+        assert r.status_code == 200
+
+        claim2b = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                               headers=auth).json()
+        assert claim2b["contact_id"] is not None
+        assert claim2b["phone"] == "79997770002"
+
+
 class TestOrphanedCallRecovery:
     """Если процесс агента умирает посреди звонка (например, его убили ради
     рестарта на новую версию кода), контакт навсегда остаётся в 'calling',

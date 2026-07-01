@@ -593,6 +593,31 @@ async function loadCampaigns(silent){
   }
 }
 
+function campDispatchBtnHtml(c){
+  if(c.dispatch_state === "running" && c.dispatch_paused){
+    return "<span class='pill skipped'>⏸ на паузе</span>"
+      + "<button class='small primary' onclick='event.stopPropagation(); resumeDispatch("+c.id+")'>▶ Продолжить</button>";
+  }
+  if(c.dispatch_state === "running"){
+    return "<span class='pill calling'>▶ идёт обзвон</span>"
+      + "<button class='small' onclick='event.stopPropagation(); pauseDispatch("+c.id+")'>⏸ Пауза</button>";
+  }
+  if(c.pending > 0){
+    return "<button class='small primary' onclick='event.stopPropagation(); startDispatch("+c.id+")'>▶ Начать обзвон</button>";
+  }
+  return "<span class='pill' style='color:var(--muted)'>✓ завершён</span>";
+}
+
+function campStatsHtml(c){
+  return (c.pending ? "<span class='pill pending'>⏳ "+c.pending+"</span>" : "")
+    + (c.calling ? "<span class='pill calling'>📞 "+c.calling+"</span>" : "")
+    + (c.passed  ? "<span class='pill passed'>✓ "+c.passed+"</span>" : "")
+    + (c.stopped ? "<span class='pill stopped'>✗ "+c.stopped+"</span>" : "")
+    + (c.skipped ? "<span class='pill skipped'>⊝ "+c.skipped+"</span>" : "")
+    + (c.failed  ? "<span class='pill stopped'>☎ "+c.failed+"</span>" : "")
+    + campDispatchBtnHtml(c);
+}
+
 function renderCampaignList(){
   var list = document.getElementById("campList");
   var filter = document.getElementById("campFilter").value;
@@ -607,10 +632,6 @@ function renderCampaignList(){
     return;
   }
   list.innerHTML = items.map(function(c){
-    var dispatchBtn =
-      c.dispatch_state === "running" ? "<span class='pill calling'>▶ идёт обзвон</span>" :
-      c.pending > 0 ? "<button class='small primary' onclick='event.stopPropagation(); startDispatch("+c.id+")'>▶ Начать обзвон</button>" :
-      "<span class='pill' style='color:var(--muted)'>✓ завершён</span>";
     return ""
       + "<div class='camp-item' data-cid='"+c.id+"'>"
       + "  <div class='camp-head' onclick='toggleCampaign("+c.id+")'>"
@@ -618,15 +639,7 @@ function renderCampaignList(){
       + "      <div class='camp-title'>"+escHtml(c.name)+"</div>"
       + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+" · 📋 "+escHtml(c.scenario_name||c.scenario_id||"?")+"</div>"
       + "    </div>"
-      + "    <div class='camp-stats'>"
-      +        (c.pending ? "<span class='pill pending'>⏳ "+c.pending+"</span>" : "")
-      +        (c.calling ? "<span class='pill calling'>📞 "+c.calling+"</span>" : "")
-      +        (c.passed  ? "<span class='pill passed'>✓ "+c.passed+"</span>" : "")
-      +        (c.stopped ? "<span class='pill stopped'>✗ "+c.stopped+"</span>" : "")
-      +        (c.skipped ? "<span class='pill skipped'>⊝ "+c.skipped+"</span>" : "")
-      +        (c.failed  ? "<span class='pill stopped'>☎ "+c.failed+"</span>" : "")
-      +        dispatchBtn
-      + "    </div>"
+      + "    <div class='camp-stats'>" + campStatsHtml(c) + "</div>"
       + "  </div>"
       + "  <div class='camp-body' id='body-"+c.id+"'></div>"
       + "</div>";
@@ -645,22 +658,47 @@ function renderCampaignList(){
 
 var _vcPortalPassword = "";
 
-async function startDispatch(cid){
-  if(!confirm("Начать обзвон? Локальный агент на ПК с SIP-линией должен быть запущен.")) return;
+// Общий помощник для password-gated dispatch-действий (start/pause/resume) —
+// просит пароль портала один раз за сессию страницы, кэширует.
+async function _vcPortalPost(path){
   if(!_vcPortalPassword){
-    var pwd = prompt("Пароль портала для запуска обзвона:");
-    if(!pwd) return;
+    var pwd = prompt("Пароль портала:");
+    if(!pwd) return null;
     _vcPortalPassword = pwd;
   }
+  var r = await fetch(API + path + (path.indexOf("?") === -1 ? "?" : "&")
+    + "password=" + encodeURIComponent(_vcPortalPassword), {method: "POST"});
+  var data = await r.json().catch(function(){ return {}; });
+  if(!r.ok){
+    if(r.status === 403){ _vcPortalPassword = ""; }
+    alert("❌ " + (data.detail || r.statusText));
+    return null;
+  }
+  return data;
+}
+
+async function startDispatch(cid){
+  if(!confirm("Начать обзвон? Локальный агент на ПК с SIP-линией должен быть запущен.")) return;
   try{
-    var r = await fetch(API + "/voicecall/campaigns/"+cid+"/start-dispatch?password="+encodeURIComponent(_vcPortalPassword), {method:"POST"});
-    var data = await r.json();
-    if(!r.ok){
-      if(r.status === 403){ _vcPortalPassword = ""; }
-      alert("❌ " + (data.detail || r.statusText));
-      return;
-    }
+    var data = await _vcPortalPost("/voicecall/campaigns/"+cid+"/start-dispatch");
+    if(!data) return;
     alert("✅ Обзвон запрошен (" + data.pending + " контактов в очереди). Агент подхватит в течение ~20-30 сек.");
+    loadCampaigns();
+  }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }
+}
+
+async function pauseDispatch(cid){
+  try{
+    var data = await _vcPortalPost("/voicecall/campaigns/"+cid+"/pause-dispatch");
+    if(!data) return;
+    loadCampaigns();
+  }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }
+}
+
+async function resumeDispatch(cid){
+  try{
+    var data = await _vcPortalPost("/voicecall/campaigns/"+cid+"/resume-dispatch");
+    if(!data) return;
     loadCampaigns();
   }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }
 }
@@ -746,7 +784,6 @@ async function loadContacts(cid, silent){
       return "<tr class='ct-row' onclick='event.stopPropagation(); openContactModal("+ct.id+")'>"
         + "<td>"+escHtml(ct.name||"—")+"</td>"
         + "<td>"+fmtPhone(ct.phone)+"</td>"
-        + "<td>"+escHtml(ct.source||"")+"</td>"
         + "<td>"+statusPill+"</td>"
         + "<td>"+(ct.attempts||0)+"</td>"
         + "<td class='ct-actions' onclick='event.stopPropagation()'>"+actions+"</td>"
@@ -755,8 +792,8 @@ async function loadContacts(cid, silent){
     body.innerHTML =
       "<div id='funnel-"+cid+"'><span class='fitem'>Загрузка воронки...</span></div>"
       + "<table class='ct-table'>"
-      + "<thead><tr><th>Имя</th><th>Телефон</th><th>Источник</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
-      + "<tbody>"+(rows || "<tr><td colspan='6' class='empty'>Контактов нет</td></tr>")+"</tbody></table>"
+      + "<thead><tr><th>Имя</th><th>Телефон</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
+      + "<tbody>"+(rows || "<tr><td colspan='5' class='empty'>Контактов нет</td></tr>")+"</tbody></table>"
       + "<div style='margin-top:10px; display:flex; justify-content:space-between; align-items:center;'>"
       + "  <span style='font-size:11px; color:var(--muted)'>Всего: "+data.total+"</span>"
       + "  <span>"
@@ -772,14 +809,29 @@ async function loadContacts(cid, silent){
 }
 
 // ── Живое обновление: пока открытый обзвон в процессе (dispatch_state
-// === 'running'), раз в 5 сек тихо подтягиваем свежие данные (loadCampaigns
-// сам восстанавливает открытую панель и перезагружает её контакты —
-// см. renderCampaignList). Иначе — тишина, не гоняем сеть зря.
+// === 'running'), раз в 5 сек тихо подтягиваем свежие данные. В отличие
+// от loadCampaigns() — обновляет пилюли открытой карточки НА МЕСТЕ
+// (без replace всего .camp-item), иначе открытая панель на долю секунды
+// схлопывается и открывается заново при каждой перерисовке списка —
+// это и было тем самым «дёрганьем». Иначе — тишина, не гоняем сеть зря.
+async function refreshLiveOpenCampaign(){
+  try{
+    var r = await fetch(API + "/voicecall/campaigns");
+    var data = await r.json();
+    _campaignsCache = data.items || [];
+  } catch(e){ return; }
+  var camp = _campaignsCache.find(function(c){ return c.id === _openCampaignId; });
+  if(!camp) return;
+  var statsEl = document.querySelector(".camp-item[data-cid='"+camp.id+"'] .camp-stats");
+  if(statsEl) statsEl.innerHTML = campStatsHtml(camp);
+  loadContacts(_openCampaignId, true);
+}
+
 setInterval(function(){
   if(_openCampaignId == null) return;
   var camp = _campaignsCache.find(function(c){ return c.id === _openCampaignId; });
   if(!camp || camp.dispatch_state !== "running") return;
-  loadCampaigns(true);
+  refreshLiveOpenCampaign();
 }, 5000);
 
 async function skipContact(id){
