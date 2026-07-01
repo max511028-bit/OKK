@@ -578,7 +578,7 @@ function fmtPhone(p){
 
 // ── Список кампаний ──
 var _campaignsCache = [];
-var _openCampaignId = null;
+var _openCampaignIds = new Set();
 
 async function loadCampaigns(silent){
   var list = document.getElementById("campList");
@@ -644,16 +644,16 @@ function renderCampaignList(){
       + "  <div class='camp-body' id='body-"+c.id+"'></div>"
       + "</div>";
   }).join("");
-  // renderCampaignList перестраивает DOM с нуля — вернуть открытую панель
-  // на место и перезагрузить её контакты, иначе живое обновление будет
-  // схлопывать её каждые 5 сек.
-  if(_openCampaignId != null){
-    var reopened = document.querySelector(".camp-item[data-cid='"+_openCampaignId+"']");
+  // renderCampaignList перестраивает DOM с нуля — вернуть все открытые
+  // панели на место и перезагрузить их контакты, иначе живое обновление
+  // будет схлопывать их каждые 5 сек.
+  _openCampaignIds.forEach(function(id){
+    var reopened = document.querySelector(".camp-item[data-cid='"+id+"']");
     if(reopened){
       reopened.classList.add("open");
-      loadContacts(_openCampaignId, true);
+      loadContacts(id, true);
     }
-  }
+  });
 }
 
 var _vcPortalPassword = "";
@@ -707,11 +707,13 @@ async function toggleCampaign(cid){
   var item = document.querySelector(".camp-item[data-cid='"+cid+"']");
   if(!item) return;
   var wasOpen = item.classList.contains("open");
-  // закрыть все
-  document.querySelectorAll(".camp-item.open").forEach(function(el){ el.classList.remove("open"); });
-  if(wasOpen){ _openCampaignId = null; return; }
+  if(wasOpen){
+    item.classList.remove("open");
+    _openCampaignIds.delete(cid);
+    return;
+  }
   item.classList.add("open");
-  _openCampaignId = cid;
+  _openCampaignIds.add(cid);
   await loadContacts(cid);
 }
 
@@ -767,12 +769,18 @@ function ctStatusPill(ct){
 async function loadContacts(cid, silent){
   var body = document.getElementById("body-"+cid);
   if(!body) return;
-  if(!silent) body.innerHTML = "<div class='loading'>Загрузка контактов...</div>";
+  // "Тихий" (поллинговый) реролл обновляет только строки таблицы и цифры
+  // воронки НА МЕСТЕ, без сброса всего блока — полная пересборка body
+  // каждые 5 сек (включая мгновенный сброс воронки на плейсхолдер
+  // "Загрузка воронки..." перед тем как подтянутся реальные цифры) и
+  // была тем самым дёрганьем/миганием.
+  var hasSkeleton = !!document.getElementById("ctBody-"+cid);
+  if(!silent || !hasSkeleton) body.innerHTML = "<div class='loading'>Загрузка контактов...</div>";
   try{
     var r = await fetch(API + "/voicecall/contacts?campaign_id="+cid+"&limit=1000");
     var data = await r.json();
     var items = data.items || [];
-    var rows = items.map(function(ct){
+    var rowsHtml = items.map(function(ct){
       var statusPill = ctStatusPill(ct);
       var actions = ct.status === "pending"
         ? "<button class='small' onclick='skipContact("+ct.id+")'>Пропустить</button>"
@@ -788,50 +796,65 @@ async function loadContacts(cid, silent){
         + "<td>"+(ct.attempts||0)+"</td>"
         + "<td class='ct-actions' onclick='event.stopPropagation()'>"+actions+"</td>"
         + "</tr>";
-    }).join("");
-    body.innerHTML =
-      "<div id='funnel-"+cid+"'><span class='fitem'>Загрузка воронки...</span></div>"
-      + "<table class='ct-table'>"
-      + "<thead><tr><th>Имя</th><th>Телефон</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
-      + "<tbody>"+(rows || "<tr><td colspan='5' class='empty'>Контактов нет</td></tr>")+"</tbody></table>"
-      + "<div style='margin-top:10px; display:flex; justify-content:space-between; align-items:center;'>"
-      + "  <span style='font-size:11px; color:var(--muted)'>Всего: "+data.total+"</span>"
-      + "  <span>"
-      + "    <a class='small' href='"+API+"/voicecall/campaigns/"+cid+"/export' style='margin-right:8px' "
-      + "       onclick='event.stopPropagation()'><button class='small'>📥 Скачать отчёт</button></a>"
-      + "    <button class='danger small' onclick='deleteCampaign("+cid+")'>🗑 Удалить</button>"
-      + "  </span>"
-      + "</div>";
+    }).join("") || "<tr><td colspan='5' class='empty'>Контактов нет</td></tr>";
+
+    var tbody = document.getElementById("ctBody-"+cid);
+    if(silent && tbody){
+      tbody.innerHTML = rowsHtml;
+      var totalEl = document.getElementById("ctTotal-"+cid);
+      if(totalEl) totalEl.textContent = "Всего: " + data.total;
+    } else {
+      body.innerHTML =
+        "<div id='funnel-"+cid+"'></div>"
+        + "<table class='ct-table'>"
+        + "<thead><tr><th>Имя</th><th>Телефон</th><th>Статус</th><th>Попыток</th><th></th></tr></thead>"
+        + "<tbody id='ctBody-"+cid+"'>"+rowsHtml+"</tbody></table>"
+        + "<div style='margin-top:10px; display:flex; justify-content:space-between; align-items:center;'>"
+        + "  <span id='ctTotal-"+cid+"' style='font-size:11px; color:var(--muted)'>Всего: "+data.total+"</span>"
+        + "  <span>"
+        + "    <a class='small' href='"+API+"/voicecall/campaigns/"+cid+"/export' style='margin-right:8px' "
+        + "       onclick='event.stopPropagation()'><button class='small'>📥 Скачать отчёт</button></a>"
+        + "    <button class='danger small' onclick='deleteCampaign("+cid+")'>🗑 Удалить</button>"
+        + "  </span>"
+        + "</div>";
+    }
     loadFunnel(cid);
   } catch(e){
-    body.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
+    if(!silent) body.innerHTML = "<div class='empty'>Ошибка: "+escHtml(e.message)+"</div>";
   }
 }
 
-// ── Живое обновление: пока открытый обзвон в процессе (dispatch_state
-// === 'running'), раз в 5 сек тихо подтягиваем свежие данные. В отличие
-// от loadCampaigns() — обновляет пилюли открытой карточки НА МЕСТЕ
-// (без replace всего .camp-item), иначе открытая панель на долю секунды
-// схлопывается и открывается заново при каждой перерисовке списка —
-// это и было тем самым «дёрганьем». Иначе — тишина, не гоняем сеть зря.
-async function refreshLiveOpenCampaign(){
+// ── Живое обновление: пока хотя бы один из открытых обзвонов в процессе
+// (dispatch_state === 'running'), раз в 5 сек тихо подтягиваем свежие
+// данные для ВСЕХ открытых панелей сразу (можно раскрыть несколько).
+// Обновляет пилюли карточки и строки таблицы НА МЕСТЕ (без replace всего
+// .camp-item и без сброса воронки на плейсхолдер) — иначе панель на
+// долю секунды схлопывается/мигает при каждой перерисовке, это и было
+// тем самым «дёрганьем».
+async function refreshLiveOpenCampaigns(){
   try{
     var r = await fetch(API + "/voicecall/campaigns");
     var data = await r.json();
     _campaignsCache = data.items || [];
   } catch(e){ return; }
-  var camp = _campaignsCache.find(function(c){ return c.id === _openCampaignId; });
-  if(!camp) return;
-  var statsEl = document.querySelector(".camp-item[data-cid='"+camp.id+"'] .camp-stats");
-  if(statsEl) statsEl.innerHTML = campStatsHtml(camp);
-  loadContacts(_openCampaignId, true);
+  _openCampaignIds.forEach(function(cid){
+    var camp = _campaignsCache.find(function(c){ return c.id === cid; });
+    if(!camp) return;
+    var statsEl = document.querySelector(".camp-item[data-cid='"+cid+"'] .camp-stats");
+    if(statsEl) statsEl.innerHTML = campStatsHtml(camp);
+    if(camp.dispatch_state === "running") loadContacts(cid, true);
+  });
 }
 
 setInterval(function(){
-  if(_openCampaignId == null) return;
-  var camp = _campaignsCache.find(function(c){ return c.id === _openCampaignId; });
-  if(!camp || camp.dispatch_state !== "running") return;
-  refreshLiveOpenCampaign();
+  if(_openCampaignIds.size === 0) return;
+  var anyRunning = false;
+  _openCampaignIds.forEach(function(cid){
+    var camp = _campaignsCache.find(function(c){ return c.id === cid; });
+    if(camp && camp.dispatch_state === "running") anyRunning = true;
+  });
+  if(!anyRunning) return;
+  refreshLiveOpenCampaigns();
 }, 5000);
 
 async function skipContact(id){
