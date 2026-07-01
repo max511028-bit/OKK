@@ -250,14 +250,6 @@
             <option value="">Загрузка скриптов...</option>
           </select>
         </label>
-        <label>Источник
-          <select id="uSource">
-            <option value="HH">HeadHunter</option>
-            <option value="Avito">Авито</option>
-            <option value="manual">Ручная загрузка</option>
-            <option value="mix">Смешанный</option>
-          </select>
-        </label>
       </div>
       <div id="uGateHint" style="font-size:12px; color:var(--warn); margin-top:8px;">Сначала укажи название обзвона</div>
 
@@ -370,7 +362,7 @@ uBtn.addEventListener("click", async function(){
   fd.append("file", f);
   var name = document.getElementById("uName").value.trim();
   var scenario = document.getElementById("uScenario").value;
-  var source = document.getElementById("uSource").value;
+  var source = "manual";
   var url = API + "/voicecall/upload-contacts?name=" + encodeURIComponent(name)
     + "&scenario_id=" + encodeURIComponent(scenario)
     + "&source=" + encodeURIComponent(source);
@@ -520,7 +512,7 @@ document.getElementById("uManualBtn").addEventListener("click", async function()
   var btn = this;
   var name = document.getElementById("uName").value.trim();
   var scenario = document.getElementById("uScenario").value;
-  var source = document.getElementById("uSource").value;
+  var source = "manual";
   var preview = document.getElementById("uPreview");
   var err = document.getElementById("uErr");
   preview.classList.remove("show"); err.classList.remove("show");
