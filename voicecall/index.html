@@ -247,7 +247,7 @@
       </div>
 
       <div style="margin-top:10px;">
-        <button id="uTemplateBtn" class="small" disabled>⬇ Скачать шаблон под этот сценарий</button>
+        <button id="uTemplateBtn" class="small" disabled>📥 Скачать шаблон под этот сценарий</button>
         <span style="font-size:11px; color:var(--hint); margin-left:8px;">
           Первые 2 колонки — Имя и Телефон, дальше по колонке на каждый вопрос сценария.
           Заполненные ответы бот не будет переспрашивать вживую.
@@ -666,7 +666,7 @@ async function loadContacts(cid){
       + "  <span style='font-size:11px; color:var(--muted)'>Всего: "+data.total+"</span>"
       + "  <span>"
       + "    <a class='small' href='"+API+"/voicecall/campaigns/"+cid+"/export' style='margin-right:8px' "
-      + "       onclick='event.stopPropagation()'><button class='small'>⬇ Скачать отчёт</button></a>"
+      + "       onclick='event.stopPropagation()'><button class='small'>📥 Скачать отчёт</button></a>"
       + "    <button class='danger small' onclick='deleteCampaign("+cid+")'>🗑 Удалить</button>"
       + "  </span>"
       + "</div>";
