@@ -31,16 +31,6 @@
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
   .card h2{font-size:16px; font-weight:600; margin:0 0 14px;}
 
-  /* Upload */
-  .drop{
-    border:2px dashed var(--line); border-radius:var(--radius);
-    padding:30px 20px; text-align:center; color:var(--muted);
-    transition:border-color .15s, background .15s; cursor:pointer;
-  }
-  .drop:hover, .drop.drag{border-color:var(--accent); background:var(--accent-soft); color:var(--text);}
-  .drop input{display:none}
-  .drop strong{color:var(--text)}
-
   .form-row{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px}
   .form-row label{display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted)}
   .form-row input, .form-row select{
@@ -260,11 +250,11 @@
       </div>
 
       <div id="uFileBlock" style="margin-top:14px;">
-        <label class="drop" id="dropZone">
-          <input type="file" id="uFile" accept=".csv,.xlsx,.xlsm" />
-          <strong>📎 Выбрать файл</strong> или перетащи сюда<br>
-          <span style="font-size:11px; color:var(--hint);">Поддерживается .csv, .xlsx — макс 5 МБ. Колонки распознаются автоматически по заголовкам «ФИО», «Телефон», «Источник», а также по точным названиям вопросов сценария (см. шаблон).</span>
-        </label>
+        <div style="border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px;">
+          <input type="file" id="uFile" accept=".csv,.xlsx,.xlsm" style="display:none" />
+          <button type="button" class="small" id="uPickBtn">📎 Выбрать файл</button>
+          <div style="font-size:11px; color:var(--hint); margin-top:10px;">Поддерживается .csv, .xlsx — макс 5 МБ. Колонки распознаются автоматически по заголовкам «ФИО», «Телефон», «Источник», а также по точным названиям вопросов сценария (см. шаблон).</div>
+        </div>
         <div id="uFileName" style="font-size:12px; color:var(--accent); margin-top:8px; display:none;"></div>
         <div style="margin-top:14px; text-align:right">
           <button id="uBtn" class="primary" disabled>Загрузить</button>
@@ -317,18 +307,12 @@
 "use strict";
 var API = "/tasks/api";
 
-// ── Drag & drop ──
-var dropZone = document.getElementById("dropZone");
+// ── Выбор файла ──
 var fileInput = document.getElementById("uFile");
 var fileName = document.getElementById("uFileName");
 var uBtn = document.getElementById("uBtn");
 
-dropZone.addEventListener("dragover", function(e){ e.preventDefault(); dropZone.classList.add("drag"); });
-dropZone.addEventListener("dragleave", function(){ dropZone.classList.remove("drag"); });
-dropZone.addEventListener("drop", function(e){
-  e.preventDefault(); dropZone.classList.remove("drag");
-  if(e.dataTransfer.files.length){ fileInput.files = e.dataTransfer.files; onFileChange(); }
-});
+document.getElementById("uPickBtn").addEventListener("click", function(){ fileInput.click(); });
 fileInput.addEventListener("change", onFileChange);
 
 function onFileChange(){
