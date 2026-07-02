@@ -550,6 +550,21 @@ def listen(call, vocab: Optional[list] = None,
     start = time.time()
     chunk_len = 160  # 20мс при 8kHz, 1 байт/сэмпл (8-bit)
 
+    # Автоусиление тихого голоса (AGC) — если кандидат говорит тихо (плохая
+    # линия, далеко от трубки), распознавание заметно хуже. Считаем
+    # СКОЛЬЗЯЩУЮ медиану громкости за последние ~0.5с (игнорируя тишину
+    # между словами, иначе туда же попадает шумовой пол и коэффициент
+    # считается неверно) и, если она ниже целевого уровня, усиливаем
+    # последующие чанки. Пересчёт раз в ~200мс, а не на каждый чанк —
+    # иначе коэффициент дёргается и создаёт эффект "накачки" громкости.
+    AGC_TARGET_RMS = 3200.0
+    AGC_MAX_GAIN = 6.0
+    AGC_MIN_RMS_FOR_CALC = 60.0
+    AGC_RECALC_EVERY = 10  # чанков (~200мс при 20мс/чанк)
+    agc_gain = 1.0
+    agc_recent_rms: list = []
+    agc_chunk_i = 0
+
     if preroll_pcm16:
         r = rec.feed(preroll_pcm16)
         speech_started = True
@@ -578,6 +593,19 @@ def listen(call, vocab: Optional[list] = None,
             break
         time.sleep(chunk_len / 8000.0)
         pcm16 = _pyvoip_to_pcm16(raw8)
+
+        chunk_rms = audioop.rms(pcm16, 2) if pcm16 else 0
+        if chunk_rms > AGC_MIN_RMS_FOR_CALC:
+            agc_recent_rms.append(chunk_rms)
+            if len(agc_recent_rms) > 25:
+                agc_recent_rms.pop(0)
+        agc_chunk_i += 1
+        if agc_chunk_i % AGC_RECALC_EVERY == 0 and agc_recent_rms:
+            median_rms = sorted(agc_recent_rms)[len(agc_recent_rms) // 2]
+            agc_gain = min(AGC_MAX_GAIN, max(1.0, AGC_TARGET_RMS / median_rms))
+        if agc_gain > 1.05:
+            pcm16 = audioop.mul(pcm16, 2, agc_gain)
+
         r = rec.feed(pcm16)
         if r.get("final"):
             parts.append(r["final"])
