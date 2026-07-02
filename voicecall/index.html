@@ -132,6 +132,8 @@
   .transcript-msg.bot{background:var(--surface2); border-bottom-left-radius:3px;}
   .transcript-msg.candidate{background:var(--accent-soft); margin-left:auto; border-bottom-right-radius:3px;}
   .transcript-msg.system{background:transparent; color:var(--hint); font-size:11px; text-align:center; max-width:100%;}
+  .history-attempt{border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px; margin-top:10px;}
+  .history-attempt-head{font-size:12px; color:var(--muted);}
 
   @media (max-width: 768px){
     .form-row{grid-template-columns:1fr}
@@ -923,7 +925,7 @@ async function openContactModal(id){
     var ct = await r.json();
 
     var knownEntries = Object.keys(ct.known_answers || {});
-    var liveEntries = Object.keys(ct.live_answers || {});
+    var history = ct.history || [];
 
     var html = ""
       + "<h2 style='margin:0 0 4px'>" + escHtml(ct.name || "—") + "</h2>"
@@ -937,27 +939,45 @@ async function openContactModal(id){
             return "<dt>" + escHtml(k) + "</dt><dd>" + escHtml(ct.known_answers[k]) + "</dd>";
           }).join("") + "</dl></div>";
     }
-    if(liveEntries.length){
-      html += "<div class='modal-section'><div class='modal-section-title'>Ответы на звонке</div>"
-        + "<dl class='modal-kv'>" + liveEntries.map(function(k){
-            return "<dt>" + escHtml(k) + "</dt><dd>" + escHtml(ct.live_answers[k]) + "</dd>";
-          }).join("") + "</dl></div>";
-    }
-    if(ct.status === "done" && ct.verdict == null){
-      html += "<div class='modal-section' style='color:var(--warn)'>"
-        + "⚠ Оборвался" + (ct.dropped_at_step ? " на вопросе: «" + escHtml(ct.dropped_at_step) + "»" : "")
-        + "</div>";
-    }
-    if(ct.summary){
-      html += "<div class='modal-section'><div class='modal-section-title'>Резюме</div>"
-        + "<div style='font-size:13px'>" + escHtml(ct.summary) + "</div></div>";
-    }
+
     if(ct.status === "calling"){
       html += "<div class='modal-section'><div class='modal-section-title'>🔴 Идёт звонок — транскрипт вживую</div>"
         + "<div id='liveTranscriptWrap'><div style='color:var(--hint); font-size:13px;'>Ожидание первой реплики...</div></div></div>";
-    } else if((ct.transcript || []).length){
-      html += "<div class='modal-section'><div class='modal-section-title'>Транскрипт звонка</div>"
-        + renderTranscriptMsgs(ct.transcript) + "</div>";
+    }
+
+    if(history.length){
+      html += "<div class='modal-section'><div class='modal-section-title'>История звонков (" + history.length + ")</div></div>"
+        + history.map(function(h, i){
+            var answerEntries = Object.keys(h.answers || {});
+            var part = "<div class='history-attempt'>"
+              + "<div class='history-attempt-head'>"
+              +   "<b>Попытка " + (i+1) + "</b> · " + fmtTs(h.started_at) + " · "
+              +   escHtml(_LCS_LABEL[h.call_status] || h.call_status || "—")
+              +   (h.verdict ? " · вердикт: " + escHtml(h.verdict) : "")
+              + "</div>";
+            if(h.verdict == null && h.call_status === "hangup_by_candidate"){
+              part += "<div style='color:var(--warn); font-size:12px; margin:4px 0;'>⚠ Оборвался"
+                + (h.dropped_at_step ? " на вопросе: «" + escHtml(h.dropped_at_step) + "»" : "") + "</div>";
+            }
+            if(h.stop_reason){
+              part += "<div style='color:var(--muted); font-size:12px; margin:4px 0;'>Причина стопа: " + escHtml(h.stop_reason) + "</div>";
+            }
+            if(h.recording_url){
+              part += "<div style='margin:8px 0;'><audio controls preload='none' style='width:100%; height:32px;' src='" + escHtml(h.recording_url) + "'></audio>"
+                + " <a href='" + escHtml(h.recording_url) + "' target='_blank' rel='noopener' class='small' style='font-size:11px;'>Скачать</a></div>";
+            } else if(h.call_status === "answered_completed" || h.call_status === "hangup_by_candidate"){
+              part += "<div style='color:var(--hint); font-size:11px; margin:4px 0;'>Запись ещё обрабатывается Novofon — обнови позже.</div>";
+            }
+            if(answerEntries.length){
+              part += "<dl class='modal-kv'>" + answerEntries.map(function(k){
+                  return "<dt>" + escHtml(k) + "</dt><dd>" + escHtml(h.answers[k]) + "</dd>";
+                }).join("") + "</dl>";
+            }
+            if((h.transcript || []).length){
+              part += renderTranscriptMsgs(h.transcript);
+            }
+            return part + "</div>";
+          }).join("");
     } else if(ct.status === "pending"){
       html += "<div class='modal-section' style='color:var(--hint); font-size:13px;'>Звонка ещё не было.</div>";
     }

@@ -14,6 +14,7 @@ Windows, автозапуск при входе, по образцу scripts/sth
 """
 import json
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -29,10 +30,16 @@ from dialog import all_reask_texts
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import warmup as stt_warmup
 from phone_call import run_call_via_bridge
+import call_api
 
 POLL_INTERVAL_SEC = 20
 RESULT_POST_RETRIES = 3
 RESULT_POST_RETRY_DELAY = 5
+# Novofon обрабатывает запись не мгновенно после звонка — несколько
+# попыток с паузами, не блокируя основной цикл обзвона (см. поток в
+# _fetch_and_attach_recording).
+RECORDING_FETCH_ATTEMPTS = 5
+RECORDING_FETCH_DELAY_SEC = 8
 
 
 def _rpc(base_url: str, method: str, path: str, token: str = "",
@@ -55,7 +62,7 @@ def _auth(base_url: str, password: str) -> str:
     return result["token"]
 
 
-def _post_result_with_retries(base_url: str, token: str, contact_id: int, result: dict) -> None:
+def _post_result_with_retries(base_url: str, token: str, contact_id: int, result: dict) -> bool:
     body = {
         "contact_id": contact_id,
         "status": result.get("status"),
@@ -67,11 +74,12 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
         "duration_s": result.get("duration_s"),
         "error": result.get("error"),
         "dropped_at_step": result.get("dropped_at_step"),
+        "call_session_id": result.get("call_session_id"),
     }
     for attempt in range(1, RESULT_POST_RETRIES + 1):
         try:
             _rpc(base_url, "POST", "/voicecall/dispatch/result", token=token, json_body=body)
-            return
+            return True
         except Exception as e:
             print(f"⚠️  Не удалось отправить результат (попытка {attempt}/{RESULT_POST_RETRIES}): {e}",
                   flush=True)
@@ -86,6 +94,37 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
               f"в dispatch_agent_failed_results.jsonl — отправь вручную позже.", flush=True)
     except Exception as e:
         print(f"❌ Не смог даже сохранить результат локально: {e}", flush=True)
+    return False
+
+
+def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
+                                 call_session_id) -> None:
+    """Фоновый поток (не блокирует основной цикл обзвона): Novofon
+    обрабатывает запись разговора не мгновенно после звонка, поэтому
+    пробуем несколько раз с паузой. Лучшее старание — если записи нет
+    вообще (недозвон/автоответчик) или Novofon так и не отдал её за все
+    попытки, просто молча сдаёмся."""
+    if not call_session_id:
+        return
+    try:
+        env = load_env()
+        api_secret = require(env, "NOVOFON_API_SECRET")
+    except SystemExit:
+        return
+    for attempt in range(1, RECORDING_FETCH_ATTEMPTS + 1):
+        time.sleep(RECORDING_FETCH_DELAY_SEC)
+        try:
+            url = call_api.get_recording_url(api_secret, call_session_id)
+        except Exception:
+            url = None
+        if url:
+            try:
+                _rpc(base_url, "POST", "/voicecall/dispatch/recording", token=token,
+                     json_body={"contact_id": contact_id, "recording_url": url}, timeout=10)
+                print(f"🎙 Запись звонка contact_id={contact_id} прикреплена.", flush=True)
+            except Exception as e:
+                print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
+            return
 
 
 def _load_scenario_from_portal(base_url: str, scenario_id: str) -> dict:
@@ -142,7 +181,15 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
             scenario=scenario, on_transcript_update=push_live,
         )
         print(f"← Итог: status={result.get('status')} verdict={result.get('verdict')}", flush=True)
-        _post_result_with_retries(base_url, token, contact_id, result)
+        posted = _post_result_with_retries(base_url, token, contact_id, result)
+        if posted and result.get("call_session_id"):
+            # В фоне — следующий контакт в очереди не должен ждать, пока
+            # Novofon обработает запись разговора (может занять десятки секунд).
+            threading.Thread(
+                target=_fetch_and_attach_recording,
+                args=(base_url, token, contact_id, result["call_session_id"]),
+                daemon=True,
+            ).start()
 
 
 def main():

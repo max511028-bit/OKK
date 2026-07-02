@@ -10,6 +10,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta
 
 CALL_API_URL = "https://callapi-jsonrpc.novofon.ru/v4.0"
 DATA_API_URL = "https://dataapi-jsonrpc.novofon.ru/v2.0"
@@ -96,3 +97,39 @@ def wait_for_contact_talking(access_token: str, call_session_id: int,
             return False
         time.sleep(poll_interval)
     return False
+
+
+# Прямая ссылка на прослушку/скачивание записи — playback URL Novofon,
+# найдено эмпирически по документации Data API (get.calls_report,
+# поле call_records): id из этого отчёта совпадает с call_session_id,
+# который возвращает start.employee_call. Отдельного метода на
+# "получить ссылку по id звонка" в API нет — только полный отчёт за
+# период, в котором нужно найти свою строку.
+RECORDING_URL_TEMPLATE = "https://app.novofon.ru/system/media/talk/{communication_id}/{record_id}/"
+
+
+def get_recording_url(access_token: str, call_session_id: int,
+                       lookback_minutes: float = 30.0) -> "str | None":
+    """Ищет запись разговора для конкретного call_session_id за последние
+    lookback_minutes минут через get.calls_report (Data API) и строит
+    прямую ссылку на прослушку/скачивание. Возвращает None если записи
+    ещё нет (Novofon обрабатывает её не мгновенно после звонка — вызывающий
+    код должен повторить попытку через несколько секунд) или если звонок
+    не был реально установлен (недозвон/автоответчик без разговора —
+    записи в принципе не будет)."""
+    now = datetime.now()
+    date_from = (now - timedelta(minutes=lookback_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    date_till = (now + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    result = _rpc(DATA_API_URL, "get.calls_report", {
+        "access_token": access_token,
+        "date_from": date_from,
+        "date_till": date_till,
+    })
+    for row in result.get("data", []):
+        if row.get("id") == call_session_id:
+            records = row.get("call_records") or []
+            if not records:
+                return None
+            return RECORDING_URL_TEMPLATE.format(
+                communication_id=row["communication_id"], record_id=records[0])
+    return None

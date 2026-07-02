@@ -803,7 +803,7 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         "status": "unknown", "verdict": None, "stop_reason": None,
         "answers": {}, "notes": {}, "transcript": [],
         "duration_s": 0, "error": None, "possible_voicemail": False,
-        "dropped_at_step": None,
+        "dropped_at_step": None, "call_session_id": None,
     }
 
     phone = VoIPPhone(server=server, port=port, username=user, password=pwd,
@@ -928,7 +928,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         "status": "unknown", "verdict": None, "stop_reason": None,
         "answers": {}, "notes": {}, "transcript": [],
         "duration_s": 0, "error": None, "possible_voicemail": False,
-        "dropped_at_step": None,
+        "dropped_at_step": None, "call_session_id": None,
     }
 
     incoming: "queue.Queue" = queue.Queue()
@@ -958,6 +958,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             result["error"] = f"Call API отказал: {e}"
             log(f"❌ {result['error']}")
             return result
+        result["call_session_id"] = call_session_id
         log(f"call_session_id={call_session_id}, жду входящий звонок на нашу линию...")
 
         try:

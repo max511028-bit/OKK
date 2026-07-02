@@ -308,6 +308,85 @@ class TestHangupMidCall:
         assert len(detail["transcript"]) == 2
 
 
+class TestCallHistoryAndRecording:
+    """По одному контакту может быть несколько попыток дозвона (недозвон,
+    потом достучались) — каждая должна остаться в истории с собственным
+    транскриптом, а не только последняя (что было раньше)."""
+
+    def _campaign_with_one_contact(self, client, phone="79993330001"):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Кандидат", phone]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "История звонков тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        return r.json()["campaign_id"]
+
+    def _claim_and_result(self, client, auth, campaign_id, status, **extra):
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": campaign_id},
+                             headers=auth).json()
+        contact_id = claim["contact_id"]
+        body = {"contact_id": contact_id, "status": status}
+        body.update(extra)
+        r = client.post("/voicecall/dispatch/result", headers=auth, json=body)
+        assert r.status_code == 200, r.text
+        return contact_id
+
+    def test_no_answer_then_answered_both_kept_in_history(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client)
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+
+        # Попытка 1: недозвон — раньше вообще не оставляла следа в истории
+        contact_id = self._claim_and_result(client, auth, cid, "no_answer")
+
+        # Контакт возвращается в очередь для второй попытки
+        client.post(f"/voicecall/contacts/{contact_id}/retry")
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+
+        # Попытка 2: дозвонились и поговорили
+        claim2 = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                              headers=auth).json()
+        assert claim2["contact_id"] == contact_id
+        client.post("/voicecall/dispatch/result", headers=auth, json={
+            "contact_id": contact_id, "status": "answered_completed", "verdict": "passed",
+            "answers": {"intro": "да"},
+            "transcript": [{"who": "bot", "text": "Привет", "ts": "2026-01-01T00:00:00"}],
+            "call_session_id": 555111,
+        })
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert len(detail["history"]) == 2
+        assert detail["history"][0]["call_status"] == "no_answer"
+        assert detail["history"][1]["call_status"] == "answered_completed"
+        assert detail["history"][1]["answers"] == {"intro": "да"}
+
+    def test_recording_attached_to_latest_attempt(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330002")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed",
+            verdict="passed", call_session_id=999222)
+
+        r = client.post("/voicecall/dispatch/recording", headers=auth, json={
+            "contact_id": contact_id,
+            "recording_url": "https://app.novofon.ru/system/media/talk/999222/abc/",
+        })
+        assert r.status_code == 200, r.text
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["recording_url"] == "https://app.novofon.ru/system/media/talk/999222/abc/"
+
+    def test_recording_endpoint_requires_password(self, client):
+        r = client.post("/voicecall/dispatch/recording",
+                         json={"contact_id": 1, "recording_url": "https://x"})
+        assert r.status_code == 403
+
+
 class TestPauseResume:
     def _campaign_with_two_pending(self, client, phone1, phone2):
         content = _xlsx_bytes(["Имя", "Телефон"], [["A", phone1], ["B", phone2]])

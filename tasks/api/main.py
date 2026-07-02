@@ -255,6 +255,23 @@ def init_db() -> None:
                 "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_paused INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass
+        # candidate_validations: привязка к контакту обзвона (для истории ВСЕХ
+        # попыток дозвона по одному контакту, не только последней), точный
+        # raw-статус звонка, вопрос обрыва, ссылка на запись разговора у
+        # Novofon (см. call_api.get_recording_url).
+        for _cv_col, _cv_type in [
+            ("contact_id", "INTEGER"),
+            ("call_status", "TEXT"),
+            ("dropped_at_step", "TEXT"),
+            ("recording_url", "TEXT"),
+            ("call_session_id", "INTEGER"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE candidate_validations ADD COLUMN {_cv_col} {_cv_type}")
+            except sqlite3.OperationalError:
+                pass
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_validations_contact ON candidate_validations(contact_id, started_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted_at)")
         # Seed once if empty
         n = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
@@ -4127,21 +4144,40 @@ def vc_retry_contact(cid: int):
 def vc_contact_detail(cid: int):
     """Полная карточка контакта для модалки на портале: всё что знаем —
     откуда взяты известные заранее ответы, что ответили вживую на
-    звонке, полный транскрипт, на каком вопросе оборвались (если
-    оборвались)."""
+    последнем звонке, полный транскрипт, на каком вопросе оборвались
+    (если оборвались) + history — история ВСЕХ попыток дозвона по
+    этому контакту (не только последней), каждая со своим транскриптом
+    и ссылкой на запись разговора, если Novofon её уже обработал."""
     with db() as conn:
         row = conn.execute(
             "SELECT ct.*, cv.answers_json, cv.transcript_json, cv.summary "
             "FROM voicecall_contacts ct "
             "LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
             "WHERE ct.id=?", (cid,)).fetchone()
-    if not row:
-        raise HTTPException(404, "Contact not found")
+        if not row:
+            raise HTTPException(404, "Contact not found")
+        history_rows = conn.execute(
+            "SELECT id, started_at, ended_at, verdict, stop_reason, call_status, "
+            "       dropped_at_step, recording_url, answers_json, transcript_json, summary "
+            "FROM candidate_validations WHERE contact_id=? ORDER BY started_at ASC, id ASC",
+            (cid,)).fetchall()
     d = dict(row)
     d["known_answers"] = json.loads(d.pop("known_answers_json") or "{}")
     d["raw_data"] = json.loads(d.pop("raw_data_json") or "{}")
     d["live_answers"] = json.loads(d.pop("answers_json") or "{}")
     d["transcript"] = json.loads(d.pop("transcript_json") or "[]")
+    d["history"] = [
+        {
+            "id": h["id"], "started_at": h["started_at"], "ended_at": h["ended_at"],
+            "verdict": h["verdict"], "stop_reason": h["stop_reason"],
+            "call_status": h["call_status"], "dropped_at_step": h["dropped_at_step"],
+            "recording_url": h["recording_url"],
+            "answers": json.loads(h["answers_json"] or "{}"),
+            "transcript": json.loads(h["transcript_json"] or "[]"),
+            "summary": h["summary"],
+        }
+        for h in history_rows
+    ]
     return d
 
 
@@ -4319,6 +4355,7 @@ class VCDispatchResultReq(BaseModel):
     duration_s: Optional[float] = None
     error: Optional[str] = None
     dropped_at_step: Optional[str] = None
+    call_session_id: Optional[int] = None
 
 
 _VC_STATUS_MAP = {
@@ -4355,10 +4392,13 @@ def vc_dispatch_live(req: VCDispatchLiveReq, request: Request):
 
 @app.post("/voicecall/dispatch/result")
 def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
-    """Агент шлёт сюда результат реального звонка. Сохраняем ответы в
-    candidate_validations тем же паттерном что и browser-тест, обновляем
-    контакт: укрупнённый status + точный last_call_status (для
-    разделённой воронки: не взял / автоответчик / занято — раздельно)."""
+    """Агент шлёт сюда результат реального звонка. Каждая попытка (даже
+    недозвон/автоответчик без единого распознанного слова) сохраняется
+    отдельной строкой candidate_validations, привязанной к contact_id —
+    так по одному контакту видна история ВСЕХ звонков, а не только
+    последнего. Обновляем контакт: укрупнённый status + точный
+    last_call_status (для разделённой воронки: не взял / автоответчик /
+    занято — раздельно)."""
     _vcs_check_password(request)
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
@@ -4372,31 +4412,53 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
             (contact["campaign_id"],)).fetchone()
 
         new_status = _VC_STATUS_MAP.get(req.status, "failed")
-        validation_id = None
-        if req.answers or req.notes or req.transcript:
-            full_answers = dict(req.answers)
-            full_answers.update(req.notes)
-            cur = conn.execute(
-                "INSERT INTO candidate_validations "
-                "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
-                "answers_json, transcript_json, summary, browser, ip) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (camp["scenario_id"] if camp else "unknown",
-                 camp["scenario_name"] if camp else None,
-                 now, now, req.verdict or "declined", req.stop_reason,
-                 json.dumps(full_answers, ensure_ascii=False),
-                 json.dumps(req.transcript, ensure_ascii=False),
-                 None, "dispatch-agent", ""),
-            )
-            validation_id = cur.lastrowid
+        full_answers = dict(req.answers)
+        full_answers.update(req.notes)
+        cur = conn.execute(
+            "INSERT INTO candidate_validations "
+            "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
+            "answers_json, transcript_json, summary, browser, ip, "
+            "contact_id, call_status, dropped_at_step, call_session_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (camp["scenario_id"] if camp else "unknown",
+             camp["scenario_name"] if camp else None,
+             now, now, req.verdict or "declined", req.stop_reason,
+             json.dumps(full_answers, ensure_ascii=False),
+             json.dumps(req.transcript, ensure_ascii=False),
+             None, "dispatch-agent", "",
+             req.contact_id, req.status, req.dropped_at_step, req.call_session_id),
+        )
+        validation_id = cur.lastrowid
 
         conn.execute(
             "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
-            "last_call_status=?, dropped_at_step=?, validation_id=COALESCE(?, validation_id) WHERE id=?",
+            "last_call_status=?, dropped_at_step=?, validation_id=? WHERE id=?",
             (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
              validation_id, req.contact_id),
         )
     _VC_LIVE_TRANSCRIPTS.pop(req.contact_id, None)
+    return {"ok": True}
+
+
+class VCDispatchRecordingReq(BaseModel):
+    contact_id: int
+    recording_url: str
+
+
+@app.post("/voicecall/dispatch/recording")
+def vc_dispatch_recording(req: VCDispatchRecordingReq, request: Request):
+    """Агент шлёт сюда ссылку на запись разговора отдельным (не блокирующим
+    основной результат) запросом — Novofon не отдаёт запись мгновенно
+    после звонка, обработка занимает время. Прикрепляем к САМОЙ ПОСЛЕДНЕЙ
+    попытке этого контакта (та, для которой она была найдена)."""
+    _vcs_check_password(request)
+    with db() as conn:
+        conn.execute(
+            "UPDATE candidate_validations SET recording_url=? WHERE id = ("
+            "  SELECT id FROM candidate_validations WHERE contact_id=? "
+            "  ORDER BY id DESC LIMIT 1)",
+            (req.recording_url, req.contact_id),
+        )
     return {"ok": True}
 
 
