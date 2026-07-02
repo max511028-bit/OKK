@@ -62,7 +62,11 @@ def _auth(base_url: str, password: str) -> str:
     return result["token"]
 
 
-def _post_result_with_retries(base_url: str, token: str, contact_id: int, result: dict) -> bool:
+def _post_result_with_retries(base_url: str, token: str, contact_id: int, result: dict,
+                               password: str) -> "tuple[bool, str]":
+    """Возвращает (успех, актуальный_токен) — токен мог обновиться внутри
+    (см. ниже про 401/403), вызывающий код должен продолжать работать
+    с ВОЗВРАЩЁННЫМ токеном, а не с тем что передал."""
     body = {
         "contact_id": contact_id,
         "status": result.get("status"),
@@ -79,7 +83,23 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
     for attempt in range(1, RESULT_POST_RETRIES + 1):
         try:
             _rpc(base_url, "POST", "/voicecall/dispatch/result", token=token, json_body=body)
-            return True
+            return True, token
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                # Токен протух (например, после деплоя портала секрет
+                # пересоздался) — раньше это просто убивало результат
+                # звонка после 3 попыток с одним и тем же мёртвым
+                # токеном. Переавторизуемся и пробуем снова.
+                print("⚠️  Токен протух при отправке результата, переавторизуюсь.", flush=True)
+                try:
+                    token = _auth(base_url, password)
+                except Exception as e2:
+                    print(f"⚠️  Не смог переавторизоваться: {e2}", flush=True)
+            else:
+                print(f"⚠️  Не удалось отправить результат (попытка {attempt}/{RESULT_POST_RETRIES}): {e}",
+                      flush=True)
+            if attempt < RESULT_POST_RETRIES:
+                time.sleep(RESULT_POST_RETRY_DELAY)
         except Exception as e:
             print(f"⚠️  Не удалось отправить результат (попытка {attempt}/{RESULT_POST_RETRIES}): {e}",
                   flush=True)
@@ -94,7 +114,7 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
               f"в dispatch_agent_failed_results.jsonl — отправь вручную позже.", flush=True)
     except Exception as e:
         print(f"❌ Не смог даже сохранить результат локально: {e}", flush=True)
-    return False
+    return False, token
 
 
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
@@ -184,7 +204,11 @@ def _load_scenario_from_portal(base_url: str, scenario_id: str) -> dict:
     return _rpc(base_url, "GET", f"/voicecall/scripts/{quote(scenario_id, safe='')}")
 
 
-def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str) -> None:
+def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
+                   password: str) -> str:
+    """Возвращает актуальный токен — он мог обновиться внутри (см. ниже
+    про 401/403 в claim()/result()), вызывающий код (main()) должен
+    продолжать опрос с ВОЗВРАЩЁННЫМ токеном."""
     scenario = _load_scenario_from_portal(base_url, scenario_id)
     print(f"Прогрев TTS для сценария «{scenario['name']}»...", flush=True)
     prewarm_scenario(scenario, voice=DEFAULT_VOICE, verbose=False)
@@ -195,6 +219,24 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
         try:
             claim = _rpc(base_url, "POST", "/voicecall/dispatch/claim", token=token,
                          params={"campaign_id": campaign_id})
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                # Тот самый баг: токен протухает (например, портал
+                # передеплоился и секрет пересоздался) прямо посреди
+                # обзвона кампании — раньше этот цикл слал один и тот же
+                # мёртвый токен вечно и ни один контакт больше не
+                # забирался, пока агент не перезапустят руками.
+                print("⚠️  Токен протух, переавторизуюсь.", flush=True)
+                try:
+                    token = _auth(base_url, password)
+                    print("Авторизован на портале.", flush=True)
+                except Exception as e2:
+                    print(f"⚠️  Не смог переавторизоваться: {e2}", flush=True)
+                    time.sleep(RESULT_POST_RETRY_DELAY)
+                continue
+            print(f"⚠️  Не смог забрать следующий контакт: {e}", flush=True)
+            time.sleep(RESULT_POST_RETRY_DELAY)
+            continue
         except Exception as e:
             print(f"⚠️  Не смог забрать следующий контакт: {e}", flush=True)
             time.sleep(RESULT_POST_RETRY_DELAY)
@@ -205,7 +247,7 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
                 print(f"Кампания {campaign_id} на паузе, возвращаюсь к опросу.", flush=True)
             else:
                 print(f"Кампания {campaign_id} обзвонена, возвращаюсь к опросу.", flush=True)
-            return
+            return token
 
         contact_id = claim["contact_id"]
         phone = claim["phone"]
@@ -231,7 +273,7 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str)
             scenario=scenario, on_transcript_update=push_live,
         )
         print(f"← Итог: status={result.get('status')} verdict={result.get('verdict')}", flush=True)
-        posted = _post_result_with_retries(base_url, token, contact_id, result)
+        posted, token = _post_result_with_retries(base_url, token, contact_id, result, password)
         if posted and result.get("call_session_id"):
             # В фоне — следующий контакт в очереди не должен ждать, пока
             # Novofon обработает запись разговора (может занять десятки секунд).
@@ -284,7 +326,7 @@ def main():
             continue
 
         print(f"Портал попросил начать обзвон кампании {campaign_id}.", flush=True)
-        _run_campaign(base_url, token, campaign_id, poll["scenario_id"])
+        token = _run_campaign(base_url, token, campaign_id, poll["scenario_id"], password)
 
 
 if __name__ == "__main__":
