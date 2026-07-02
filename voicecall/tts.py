@@ -80,6 +80,12 @@ def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
     """Возвращает PCM 8000Hz mono 16bit (формат для SIP/телефонии).
     Использует ffmpeg из пакета imageio-ffmpeg. Кэширует результат на
     диске — повторные вызовы для тех же фраз мгновенные."""
+    if not text or not text.strip():
+        # Пустой текст (баг сценария — конструктор не должен такого
+        # допускать, но случалось) — edge-tts на пустую строку падает с
+        # "вернул пустой ответ", а это раньше рушило весь звонок целиком
+        # вместе с уже собранными ответами кандидата. Просто тишина.
+        return b""
     if use_cache:
         cache_path = CACHE_DIR / f"pcm_{_cache_key(text, voice)}.raw"
         if cache_path.exists():
