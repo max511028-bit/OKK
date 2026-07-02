@@ -106,6 +106,26 @@ def wait_for_contact_talking(access_token: str, call_session_id: int,
 # "получить ссылку по id звонка" в API нет — только полный отчёт за
 # период, в котором нужно найти свою строку.
 RECORDING_URL_TEMPLATE = "https://app.novofon.ru/system/media/talk/{communication_id}/{record_id}/"
+WAV_URL_TEMPLATE = "https://app.novofon.ru/system/media/wav/{communication_id}/{record_id}/"
+
+
+def _find_call_report_row(access_token: str, call_session_id: int,
+                           lookback_minutes: float = 30.0) -> "dict | None":
+    """Общий поиск строки отчёта по call_session_id — используется и
+    get_recording_url(), и get_wav_track_urls(). Отдельного метода
+    "получить по id звонка" в API нет, только полный отчёт за период."""
+    now = datetime.now()
+    date_from = (now - timedelta(minutes=lookback_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    date_till = (now + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    result = _rpc(DATA_API_URL, "get.calls_report", {
+        "access_token": access_token,
+        "date_from": date_from,
+        "date_till": date_till,
+    })
+    for row in result.get("data", []):
+        if row.get("id") == call_session_id:
+            return row
+    return None
 
 
 def get_recording_url(access_token: str, call_session_id: int,
@@ -117,19 +137,29 @@ def get_recording_url(access_token: str, call_session_id: int,
     код должен повторить попытку через несколько секунд) или если звонок
     не был реально установлен (недозвон/автоответчик без разговора —
     записи в принципе не будет)."""
-    now = datetime.now()
-    date_from = (now - timedelta(minutes=lookback_minutes)).strftime("%Y-%m-%d %H:%M:%S")
-    date_till = (now + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
-    result = _rpc(DATA_API_URL, "get.calls_report", {
-        "access_token": access_token,
-        "date_from": date_from,
-        "date_till": date_till,
-    })
-    for row in result.get("data", []):
-        if row.get("id") == call_session_id:
-            records = row.get("call_records") or []
-            if not records:
-                return None
-            return RECORDING_URL_TEMPLATE.format(
-                communication_id=row["communication_id"], record_id=records[0])
-    return None
+    row = _find_call_report_row(access_token, call_session_id, lookback_minutes)
+    if not row:
+        return None
+    records = row.get("call_records") or []
+    if not records:
+        return None
+    return RECORDING_URL_TEMPLATE.format(
+        communication_id=row["communication_id"], record_id=records[0])
+
+
+def get_wav_track_urls(access_token: str, call_session_id: int,
+                        lookback_minutes: float = 30.0) -> "list[str] | None":
+    """Ссылки на WAV-дорожки разговора (wav_call_records) — обычно ДВЕ,
+    по одной на каждую «ногу» звонка (эмпирически проверено: одна почти
+    целиком голос кандидата, вторая — наша сторона/шум). Пригождаются
+    для повторного пакетного распознавания после звонка (см.
+    dispatch_agent._recheck_recording) — WAV не нужно перекодировать в
+    отличие от call_records (mp3)."""
+    row = _find_call_report_row(access_token, call_session_id, lookback_minutes)
+    if not row:
+        return None
+    records = row.get("wav_call_records") or []
+    if not records:
+        return None
+    return [WAV_URL_TEMPLATE.format(communication_id=row["communication_id"], record_id=r)
+            for r in records]

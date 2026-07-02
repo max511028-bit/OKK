@@ -386,6 +386,28 @@ class TestCallHistoryAndRecording:
                          json={"contact_id": 1, "recording_url": "https://x"})
         assert r.status_code == 403
 
+    def test_recheck_transcript_attached_to_latest_attempt(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330003")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed")
+
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] да мужской двадцать девять\n\n[Дорожка 2] здравствуйте меня зовут",
+        })
+        assert r.status_code == 200, r.text
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert "Дорожка 1" in detail["history"][-1]["recheck_transcript"]
+
+    def test_recheck_transcript_requires_password(self, client):
+        r = client.post("/voicecall/dispatch/recheck-transcript",
+                         json={"contact_id": 1, "recheck_transcript": "x"})
+        assert r.status_code == 403
+
 
 class TestPauseResume:
     def _campaign_with_two_pending(self, client, phone1, phone2):

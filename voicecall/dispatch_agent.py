@@ -97,13 +97,59 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
     return False
 
 
+def _recheck_transcript(base_url: str, token: str, contact_id: int,
+                         api_secret: str, call_session_id: int) -> None:
+    """Пакетная перепроверка распознавания по WAV-дорожкам разговора (без
+    потоковых огрехов реального времени — эмпирически заметно точнее).
+    Novofon хранит ОТДЕЛЬНУЮ дорожку на каждую «ногу» звонка, но
+    надёжного способа автоматически определить какая из них кандидата
+    не нашлось (пробовали сравнивать с текстом бота по пересечению
+    слов — на реальной записи ошиблось: короткие частые слова дают
+    случайные совпадения). Поэтому просто прикладываем ОБЕ дорожки с
+    пометкой — обычно человеку с одного взгляда понятно, где бот
+    (гладкие книжные фразы), а где кандидат (короткие живые ответы)."""
+    import tempfile
+    import urllib.request as _ur
+    import os as _os
+    from stt import recognize_wav_file
+
+    urls = call_api.get_wav_track_urls(api_secret, call_session_id)
+    if not urls:
+        return
+
+    transcripts = []
+    for url in urls:
+        tmp_path = tempfile.mktemp(suffix=".wav")
+        try:
+            _ur.urlretrieve(url, tmp_path)
+            transcripts.append(recognize_wav_file(tmp_path))
+        except Exception as e:
+            print(f"⚠️  Не смог обработать дорожку записи: {e}", flush=True)
+            transcripts.append("")
+        finally:
+            try: _os.remove(tmp_path)
+            except Exception: pass
+
+    if not any(t.strip() for t in transcripts):
+        return
+    combined = "\n\n".join(
+        f"[Дорожка {i+1}] {t.strip() or '(тишина/не распознано)'}"
+        for i, t in enumerate(transcripts)
+    )
+    _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+         json_body={"contact_id": contact_id, "recheck_transcript": combined}, timeout=15)
+    print(f"🔍 Перепроверенный транскрипт contact_id={contact_id} прикреплён.", flush=True)
+
+
 def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                                  call_session_id) -> None:
     """Фоновый поток (не блокирует основной цикл обзвона): Novofon
     обрабатывает запись разговора не мгновенно после звонка, поэтому
     пробуем несколько раз с паузой. Лучшее старание — если записи нет
     вообще (недозвон/автоответчик) или Novofon так и не отдал её за все
-    попытки, просто молча сдаёмся."""
+    попытки, просто молча сдаёмся. Как только запись готова — пробуем
+    заодно и перепроверку транскрипта (см. _recheck_transcript), т.к.
+    обе WAV-дорожки обычно готовы одновременно с mp3."""
     if not call_session_id:
         return
     try:
@@ -124,6 +170,10 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                 print(f"🎙 Запись звонка contact_id={contact_id} прикреплена.", flush=True)
             except Exception as e:
                 print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
+            try:
+                _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id)
+            except Exception as e:
+                print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
             return
 
 

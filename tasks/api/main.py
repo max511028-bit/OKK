@@ -265,6 +265,7 @@ def init_db() -> None:
             ("dropped_at_step", "TEXT"),
             ("recording_url", "TEXT"),
             ("call_session_id", "INTEGER"),
+            ("recheck_transcript", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE candidate_validations ADD COLUMN {_cv_col} {_cv_type}")
@@ -4158,7 +4159,8 @@ def vc_contact_detail(cid: int):
             raise HTTPException(404, "Contact not found")
         history_rows = conn.execute(
             "SELECT id, started_at, ended_at, verdict, stop_reason, call_status, "
-            "       dropped_at_step, recording_url, answers_json, transcript_json, summary "
+            "       dropped_at_step, recording_url, answers_json, transcript_json, summary, "
+            "       recheck_transcript "
             "FROM candidate_validations WHERE contact_id=? ORDER BY started_at ASC, id ASC",
             (cid,)).fetchall()
     d = dict(row)
@@ -4175,6 +4177,7 @@ def vc_contact_detail(cid: int):
             "answers": json.loads(h["answers_json"] or "{}"),
             "transcript": json.loads(h["transcript_json"] or "[]"),
             "summary": h["summary"],
+            "recheck_transcript": h["recheck_transcript"],
         }
         for h in history_rows
     ]
@@ -4458,6 +4461,30 @@ def vc_dispatch_recording(req: VCDispatchRecordingReq, request: Request):
             "  SELECT id FROM candidate_validations WHERE contact_id=? "
             "  ORDER BY id DESC LIMIT 1)",
             (req.recording_url, req.contact_id),
+        )
+    return {"ok": True}
+
+
+class VCDispatchRecheckReq(BaseModel):
+    contact_id: int
+    recheck_transcript: str
+
+
+@app.post("/voicecall/dispatch/recheck-transcript")
+def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
+    """Агент шлёт сюда текст ПОВТОРНОГО распознавания разговора — по
+    отдельной дорожке записи с голосом только кандидата (без бота),
+    пакетно (не потоково, как во время живого звонка) через Vosk. Обычно
+    точнее того, что успели распознать в реальном времени. Отдельный
+    текстовый блок для сверки рекрутёром, не подменяет структурированные
+    answers по вопросам — сопоставление таймингов слишком ненадёжно."""
+    _vcs_check_password(request)
+    with db() as conn:
+        conn.execute(
+            "UPDATE candidate_validations SET recheck_transcript=? WHERE id = ("
+            "  SELECT id FROM candidate_validations WHERE contact_id=? "
+            "  ORDER BY id DESC LIMIT 1)",
+            (req.recheck_transcript, req.contact_id),
         )
     return {"ok": True}
 

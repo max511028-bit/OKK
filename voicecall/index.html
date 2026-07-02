@@ -976,6 +976,13 @@ async function openContactModal(id){
             if((h.transcript || []).length){
               part += renderTranscriptMsgs(h.transcript);
             }
+            if(h.recheck_transcript){
+              part += "<details style='margin-top:8px;'>"
+                + "<summary style='cursor:pointer; font-size:11px; color:var(--muted);'>🔍 Перепроверка распознавания (по записи, точнее реалтайма)</summary>"
+                + "<pre style='white-space:pre-wrap; font-size:12px; color:var(--text); background:var(--surface2); "
+                +   "border-radius:6px; padding:8px 10px; margin-top:6px;'>" + escHtml(h.recheck_transcript) + "</pre>"
+                + "</details>";
+            }
             return part + "</div>";
           }).join("");
     } else if(ct.status === "pending"){
