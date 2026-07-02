@@ -751,9 +751,11 @@ async function loadFunnel(cid){
 var _LCS_LABEL = {voicemail:"автоответчик", no_answer:"не взял трубку", busy:"занято",
                    error:"ошибка звонка", answered_completed:"поговорили", hangup_by_candidate:"бросил трубку"};
 
-function ctStatusPill(ct){
+function ctStatusPill(ct, talking){
   return ct.status === "pending" ? "<span class='pill pending'>⏳ ждёт</span>" :
-    ct.status === "calling" ? "<span class='pill calling'>📞 звоним</span>" :
+    ct.status === "calling" ? (talking
+      ? "<span class='pill calling'>🗣 идёт разговор</span>"
+      : "<span class='pill calling'>📞 звоним</span>") :
     ct.status === "done"    ? (
       ct.verdict === "passed"  ? "<span class='pill passed'>✓ годен</span>" :
       ct.verdict === "stopped" ? "<span class='pill stopped'>✗ "+escHtml(ct.stop_reason||"стоп")+"</span>" :
@@ -782,8 +784,24 @@ async function loadContacts(cid, silent){
     var r = await fetch(API + "/voicecall/contacts?campaign_id="+cid+"&limit=1000");
     var data = await r.json();
     var items = data.items || [];
+
+    // Пока набор/ожидание ответа кандидата — статус "звоним"; как только
+    // реально начался разговор (есть хоть одна реплика в живом
+    // транскрипте) — "идёт разговор". Максимум один звонящий контакт
+    // одновременно (одна SIP-линия), так что это максимум один лишний
+    // запрос за обновление.
+    var callingContact = items.find(function(ct){ return ct.status === "calling"; });
+    var isTalking = false;
+    if(callingContact){
+      try{
+        var lr = await fetch(API + "/voicecall/contacts/" + callingContact.id + "/live");
+        var ld = await lr.json();
+        isTalking = !!((ld.transcript || []).length);
+      }catch(e){ /* не критично — просто останется "звоним" */ }
+    }
+
     var rowsHtml = items.map(function(ct){
-      var statusPill = ctStatusPill(ct);
+      var statusPill = ctStatusPill(ct, ct.status === "calling" && isTalking);
       var actions = ct.status === "pending"
         ? "<button class='small' onclick='skipContact("+ct.id+")'>Пропустить</button>"
         : ct.status === "skipped" || ct.status === "done" || ct.status === "failed"
@@ -850,12 +868,22 @@ async function refreshLiveOpenCampaigns(){
 
 setInterval(function(){
   if(_openCampaignIds.size === 0) return;
-  var anyRunning = false;
+  // ВАЖНО: раньше здесь проверялся ЗАКЭШИРОВАННЫЙ dispatch_state и
+  // обновление запускалось, только если кэш УЖЕ считал кампанию
+  // 'running' — но единственный способ узнать, что она стала 'running'
+  // (после того как нажали «Начать обзвон», агент подхватывает её не
+  // сразу) — это как раз это самое обновление. Кэш никогда не
+  // переходил из 'requested' в 'running' сам по себе, поэтому статусы
+  // не подтягивались без ручного F5. Теперь обновляем всегда, пока
+  // кампания не завершена (или мы вообще ничего не знаем о ней).
+  var anyActive = false;
   _openCampaignIds.forEach(function(cid){
     var camp = _campaignsCache.find(function(c){ return c.id === cid; });
-    if(camp && camp.dispatch_state === "running") anyRunning = true;
+    var finished = camp && camp.dispatch_state === "done"
+      && (camp.pending||0) === 0 && (camp.calling||0) === 0;
+    if(!finished) anyActive = true;
   });
-  if(!anyRunning) return;
+  if(!anyActive) return;
   refreshLiveOpenCampaigns();
 }, 5000);
 
