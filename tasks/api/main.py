@@ -3896,6 +3896,7 @@ def vc_manual_entry(req: VCManualEntryReq):
 
     parsed = []
     skipped_bad_phone = 0
+    skipped_duplicate_phone = 0
     seen_phones = set()
     for row in req.rows:
         if not isinstance(row, dict):
@@ -3906,6 +3907,7 @@ def vc_manual_entry(req: VCManualEntryReq):
             skipped_bad_phone += 1
             continue
         if phone_norm in seen_phones:
+            skipped_duplicate_phone += 1
             continue
         seen_phones.add(phone_norm)
         cname = str(row.get("name") or row.get("Имя") or "").strip()
@@ -3914,7 +3916,8 @@ def vc_manual_entry(req: VCManualEntryReq):
 
     if not parsed:
         raise HTTPException(400, f"Ни одного валидного контакта. "
-                                 f"Строк всего: {len(req.rows)}, с плохим телефоном: {skipped_bad_phone}")
+                                 f"Строк всего: {len(req.rows)}, с плохим телефоном: {skipped_bad_phone}, "
+                                 f"дублей телефона: {skipped_duplicate_phone}")
 
     screened_out = 0
     precheck_done = 0
@@ -3942,6 +3945,7 @@ def vc_manual_entry(req: VCManualEntryReq):
         "campaign_name": campaign_name,
         "total": len(parsed),
         "skipped_bad_phone": skipped_bad_phone,
+        "skipped_duplicate_phone": skipped_duplicate_phone,
         "screened_out": screened_out,
         "precheck_done": precheck_done,
         "queued": len(parsed) - screened_out - precheck_done,
@@ -3949,22 +3953,12 @@ def vc_manual_entry(req: VCManualEntryReq):
     }
 
 
-@app.post("/voicecall/upload-contacts")
-async def vc_upload_contacts(
-    file: UploadFile = File(...),
-    name: str = "",
-    scenario_id: str = "tander-sterlitamak-pack",
-    source: str = "manual",
-):
-    """Загрузка Excel/CSV с контактами кандидатов.
-    Парсит, создаёт campaign + contacts, возвращает превью и счётчики."""
-    body = await file.read()
-    if not body:
-        raise HTTPException(400, "Empty file")
-    if len(body) > 5 * 1024 * 1024:
-        raise HTTPException(413, "Файл больше 5 МБ")
-
-    filename = (file.filename or "upload").lower()
+def _vc_parse_uploaded_file(body: bytes, filename: str, scenario_id: str) -> dict:
+    """Общий разбор Excel/CSV с контактами — используется и одношаговой
+    загрузкой (/upload-contacts, коммитит сразу), и предпросмотром
+    (/preview-contacts-file, ничего не коммитит, отдаёт строки на
+    проверку/правку перед отправкой через /manual-entry)."""
+    filename = (filename or "upload").lower()
     if filename.endswith(".csv"):
         headers, rows = _vc_parse_csv(body)
     elif filename.endswith(".xlsx") or filename.endswith(".xlsm"):
@@ -3972,7 +3966,6 @@ async def vc_upload_contacts(
     else:
         raise HTTPException(400, "Поддерживаются только .csv, .xlsx, .xlsm")
 
-    # Определяем колонки
     name_col = _vc_find_col(headers, _VC_NAME_KEYS)
     phone_col = _vc_find_col(headers, _VC_PHONE_KEYS)
     source_col = _vc_find_col(headers, _VC_SOURCE_KEYS)
@@ -3985,30 +3978,32 @@ async def vc_upload_contacts(
             + ", ".join(str(h) for h in headers[:10])
         )
 
-    # Сценарий нужен и для колонок вопросов (crit), и для предпроверки
     scenario = _vt_load_scenario(scenario_id) if _VT_DIALOG_OK else {"steps": []}
     crits = _vc_scenario_crits(scenario)
-    # Точное совпадение заголовка с crit-именем вопроса сценария
     crit_cols = {crit: i for crit in crits for i, h in enumerate(headers)
                  if str(h).strip() == crit}
 
-    # Парсим строки
     parsed = []
     skipped_bad_phone = 0
+    skipped_duplicate_phone = 0
     seen_phones = set()
     for r in rows:
         if not r or all(not str(c).strip() for c in r):
             continue
         phone_raw = r[phone_col] if phone_col < len(r) else ""
-        if not _vc_normalize_phone(phone_raw):
+        phone_norm = _vc_normalize_phone(phone_raw)
+        if not phone_norm:
             skipped_bad_phone += 1
             continue
-        phone_norm = _vc_normalize_phone(phone_raw)
         if phone_norm in seen_phones:
+            # Один и тот же телефон дважды в файле — раньше молча
+            # схлопывалось без единого слова об этом, выглядело как
+            # "загрузка потеряла часть строк". Считаем отдельно.
+            skipped_duplicate_phone += 1
             continue
         seen_phones.add(phone_norm)
         cname = r[name_col].strip() if name_col >= 0 and name_col < len(r) else ""
-        csource = r[source_col].strip() if source_col >= 0 and source_col < len(r) else source
+        csource = r[source_col].strip() if source_col >= 0 and source_col < len(r) else ""
         raw = {str(headers[i] if i < len(headers) else f"col{i}"): str(r[i] if i < len(r) else "")
                for i in range(max(len(headers), len(r)))}
         crit_map = {crit: r[idx] for crit, idx in crit_cols.items() if idx < len(r)}
@@ -4017,7 +4012,80 @@ async def vc_upload_contacts(
 
     if not parsed:
         raise HTTPException(400, f"Ни одного валидного контакта не распознано. "
-                                 f"Строк всего: {len(rows)}, с плохим телефоном: {skipped_bad_phone}")
+                                 f"Строк всего: {len(rows)}, с плохим телефоном: {skipped_bad_phone}, "
+                                 f"дублей телефона: {skipped_duplicate_phone}")
+
+    return {
+        "parsed": parsed,
+        "skipped_bad_phone": skipped_bad_phone,
+        "skipped_duplicate_phone": skipped_duplicate_phone,
+        "headers_detected": {
+            "name_col": (headers[name_col] if name_col >= 0 else None),
+            "phone_col": (headers[phone_col] if phone_col >= 0 else None),
+            "source_col": (headers[source_col] if source_col >= 0 else None),
+            "crit_cols": list(crit_cols.keys()),
+        },
+        "crits": crits,
+    }
+
+
+@app.post("/voicecall/preview-contacts-file")
+async def vc_preview_contacts_file(
+    file: UploadFile = File(...),
+    scenario_id: str = "tander-sterlitamak-pack",
+    source: str = "manual",
+):
+    """Разбирает файл и отдаёт ВСЕ строки на предпросмотр — ничего не
+    пишет в БД. Портал показывает редактируемую таблицу, оператор
+    проверяет/правит и уже подтверждённые строки отправляет через
+    /voicecall/manual-entry (тот же формат, что и ручной ввод)."""
+    body = await file.read()
+    if not body:
+        raise HTTPException(400, "Empty file")
+    if len(body) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Файл больше 5 МБ")
+    result = _vc_parse_uploaded_file(body, file.filename or "upload", scenario_id)
+    rows = []
+    for p in result["parsed"]:
+        row = {"name": p["name"], "phone": p["phone"]}
+        row.update({k: v for k, v in p["crit_map"].items()})
+        rows.append(row)
+    return {
+        "rows": rows,
+        "skipped_bad_phone": result["skipped_bad_phone"],
+        "skipped_duplicate_phone": result["skipped_duplicate_phone"],
+        "headers_detected": result["headers_detected"],
+        "crits": result["crits"],
+        "source": source,
+    }
+
+
+@app.post("/voicecall/upload-contacts")
+async def vc_upload_contacts(
+    file: UploadFile = File(...),
+    name: str = "",
+    scenario_id: str = "tander-sterlitamak-pack",
+    source: str = "manual",
+):
+    """Загрузка Excel/CSV с контактами кандидатов — одношаговый вариант
+    (коммитит сразу, без предпросмотра). Оставлен для обратной
+    совместимости; портал теперь ведёт через /preview-contacts-file →
+    правка в таблице → /manual-entry."""
+    body = await file.read()
+    if not body:
+        raise HTTPException(400, "Empty file")
+    if len(body) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Файл больше 5 МБ")
+
+    parsed_result = _vc_parse_uploaded_file(body, file.filename or "upload", scenario_id)
+    parsed = parsed_result["parsed"]
+    for p in parsed:
+        if not p["source"]:
+            p["source"] = source
+    skipped_bad_phone = parsed_result["skipped_bad_phone"]
+    skipped_duplicate_phone = parsed_result["skipped_duplicate_phone"]
+    headers_detected = parsed_result["headers_detected"]
+    scenario = _vt_load_scenario(scenario_id) if _VT_DIALOG_OK else {"steps": []}
 
     # Создаём campaign и contacts
     campaign_name = name.strip() or f"Загрузка {_vc_dt.datetime.now().strftime('%d.%m.%Y %H:%M')}"
@@ -4049,15 +4117,11 @@ async def vc_upload_contacts(
         "campaign_name": campaign_name,
         "total": len(parsed),
         "skipped_bad_phone": skipped_bad_phone,
+        "skipped_duplicate_phone": skipped_duplicate_phone,
         "screened_out": screened_out,
         "precheck_done": precheck_done,
         "queued": len(parsed) - screened_out - precheck_done,
-        "headers_detected": {
-            "name_col": (headers[name_col] if name_col >= 0 else None),
-            "phone_col": (headers[phone_col] if phone_col >= 0 else None),
-            "source_col": (headers[source_col] if source_col >= 0 else None),
-            "crit_cols": list(crit_cols.keys()),
-        },
+        "headers_detected": headers_detected,
         "preview": [{"name": p["name"], "phone": p["phone"], "source": p["source"]} for p in parsed[:5]],
     }
 

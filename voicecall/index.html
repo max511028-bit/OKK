@@ -281,7 +281,21 @@
         </div>
         <div id="uFileName" style="font-size:12px; color:var(--accent); margin-top:8px; display:none;"></div>
         <div style="margin-top:14px; text-align:right">
-          <button id="uBtn" class="primary" disabled>Загрузить</button>
+          <button id="uBtn" class="primary" disabled>Проверить файл</button>
+        </div>
+
+        <div id="uFilePreviewWrap" style="margin-top:14px; display:none;">
+          <div id="uFilePreviewInfo" style="font-size:12px; color:var(--muted); margin-bottom:8px;"></div>
+          <div style="overflow-x:auto;">
+            <table class="ct-table" id="uFilePreviewTable">
+              <thead><tr id="uFilePreviewHead"></tr></thead>
+              <tbody id="uFilePreviewBody"></tbody>
+            </table>
+          </div>
+          <div style="margin-top:10px; display:flex; justify-content:space-between;">
+            <button class="small" onclick="uAddFilePreviewRow()">+ Добавить строку</button>
+            <button id="uFilePreviewSubmitBtn" class="primary">Всё верно, отправить на обзвон</button>
+          </div>
         </div>
       </div>
 
@@ -357,55 +371,133 @@ function onFileChange(){
   uUpdateGating();
 }
 
+// ── Предпросмотр файла перед загрузкой: разбираем на сервере, но НЕ
+// коммитим — оператор видит таблицу, может поправить/удалить строки,
+// и только после явного подтверждения контакты уходят на обзвон (через
+// тот же /manual-entry что и ручной ввод — один код пути на коммит).
+var uFilePreviewCols = ["Имя", "Телефон"];
+
 uBtn.addEventListener("click", async function(){
   var f = fileInput.files[0];
   if(!f) return;
   var fd = new FormData();
   fd.append("file", f);
-  var name = document.getElementById("uName").value.trim();
   var scenario = document.getElementById("uScenario").value;
-  var source = "manual";
-  var url = API + "/voicecall/upload-contacts?name=" + encodeURIComponent(name)
-    + "&scenario_id=" + encodeURIComponent(scenario)
-    + "&source=" + encodeURIComponent(source);
 
-  var preview = document.getElementById("uPreview");
+  var previewWrap = document.getElementById("uFilePreviewWrap");
   var err = document.getElementById("uErr");
-  preview.classList.remove("show");
   err.classList.remove("show");
+  previewWrap.style.display = "none";
 
-  uBtn.disabled = true; uBtn.textContent = "Загружаю...";
+  uBtn.disabled = true; uBtn.textContent = "Проверяю...";
   try{
-    var r = await fetch(url, { method: "POST", body: fd });
+    var r = await fetch(API + "/voicecall/preview-contacts-file?scenario_id=" + encodeURIComponent(scenario) + "&source=manual",
+      { method: "POST", body: fd });
     var data = await r.json();
     if(!r.ok){
       err.textContent = "❌ " + (data.detail || r.statusText);
       err.classList.add("show");
-    } else {
-      var hd = data.headers_detected || {};
-      var rows = "";
-      (data.preview || []).forEach(function(p){
-        rows += "<tr><td>" + escHtml(p.name || "—") + "</td><td>+" + escHtml(p.phone) + "</td></tr>";
-      });
-      preview.innerHTML =
-        "<b>✅ Загружено " + data.total + " контактов</b><br>" +
-        (data.skipped_bad_phone ? "Пропущено с плохим телефоном: " + data.skipped_bad_phone + "<br>" : "") +
-        "В очереди: <b>" + data.queued + "</b>, отсеяно предпроверкой: <b>" + data.screened_out +
-        "</b>, готово без звонка: <b>" + data.precheck_done + "</b><br>" +
-        "Обзвон: <b>" + escHtml(data.campaign_name) + "</b> (id " + data.campaign_id + ")<br>" +
-        "Распознанные колонки: имя=«" + escHtml(hd.name_col || "не найдено") + "», " +
-        "телефон=«" + escHtml(hd.phone_col || "не найдено") + "»" +
-        (hd.crit_cols && hd.crit_cols.length ? ", вопросы: " + hd.crit_cols.map(escHtml).join(", ") : "") +
-        (rows ? "<table class='preview-table'><tr><td colspan='2'>Превью первых:</td></tr>" + rows + "</table>" : "");
-      preview.classList.add("show");
-      fileInput.value = ""; onFileChange();
-      loadCampaigns();
+      return;
     }
+    var hd = data.headers_detected || {};
+    uFilePreviewCols = ["Имя", "Телефон"].concat(hd.crit_cols || []);
+    document.getElementById("uFilePreviewInfo").innerHTML =
+      "Распознано строк: <b>" + data.rows.length + "</b>"
+      + (data.skipped_bad_phone ? " · пропущено с плохим телефоном: <b>" + data.skipped_bad_phone + "</b>" : "")
+      + (data.skipped_duplicate_phone ? " · пропущено дублей телефона: <b>" + data.skipped_duplicate_phone + "</b>" : "")
+      + "<br>Проверь данные ниже (можно поправить прямо в таблице) и подтверди отправку.";
+    uBuildFilePreviewTable(data.rows);
+    previewWrap.style.display = "block";
   } catch(e){
     err.textContent = "❌ Сетевая ошибка: " + e.message;
     err.classList.add("show");
   } finally {
-    uBtn.disabled = false; uBtn.textContent = "Загрузить";
+    uBtn.disabled = false; uBtn.textContent = "Проверить файл";
+  }
+});
+
+function uBuildFilePreviewTable(rows){
+  var head = document.getElementById("uFilePreviewHead");
+  var body = document.getElementById("uFilePreviewBody");
+  head.innerHTML = uFilePreviewCols.map(function(c){
+    var req = c === "Телефон";
+    return "<th" + (req ? " style='background:var(--warn-soft); color:var(--warn);'" : "") + ">"
+      + escHtml(c) + (req ? " *" : "") + "</th>";
+  }).join("") + "<th></th>";
+  body.innerHTML = "";
+  rows.forEach(function(row){
+    var tr = document.createElement("tr");
+    tr.innerHTML = uFilePreviewCols.map(function(c){
+      var req = c === "Телефон";
+      var key = c === "Имя" ? "name" : c === "Телефон" ? "phone" : c;
+      var val = row[key] != null ? String(row[key]) : "";
+      return "<td><input type='text' data-col='" + escHtml(c) + "' value='" + escHtml(val) + "' "
+        + "style='width:100%;font-size:12px;padding:4px 6px;background:var(--surface2);"
+        + "border:1px solid " + (req ? "var(--warn)" : "var(--line)") + ";border-radius:6px;color:var(--text)' /></td>";
+    }).join("") + "<td><button class='small' onclick='this.closest(\"tr\").remove()'>✕</button></td>";
+    body.appendChild(tr);
+  });
+  if(!rows.length) uAddFilePreviewRow();
+}
+
+function uAddFilePreviewRow(){
+  var body = document.getElementById("uFilePreviewBody");
+  var tr = document.createElement("tr");
+  tr.innerHTML = uFilePreviewCols.map(function(c){
+    var req = c === "Телефон";
+    return "<td><input type='text' data-col='" + escHtml(c) + "' "
+      + "style='width:100%;font-size:12px;padding:4px 6px;background:var(--surface2);"
+      + "border:1px solid " + (req ? "var(--warn)" : "var(--line)") + ";border-radius:6px;color:var(--text)' /></td>";
+  }).join("") + "<td><button class='small' onclick='this.closest(\"tr\").remove()'>✕</button></td>";
+  body.appendChild(tr);
+}
+
+document.getElementById("uFilePreviewSubmitBtn").addEventListener("click", async function(){
+  var btn = this;
+  var name = document.getElementById("uName").value.trim();
+  var scenario = document.getElementById("uScenario").value;
+  var preview = document.getElementById("uPreview");
+  var err = document.getElementById("uErr");
+  preview.classList.remove("show"); err.classList.remove("show");
+
+  var rows = [];
+  document.querySelectorAll("#uFilePreviewBody tr").forEach(function(tr){
+    var row = {};
+    tr.querySelectorAll("input").forEach(function(inp){
+      var col = inp.dataset.col;
+      var key = col === "Имя" ? "name" : col === "Телефон" ? "phone" : col;
+      if(inp.value.trim()) row[key] = inp.value.trim();
+    });
+    if(row.phone) rows.push(row);
+  });
+  if(!rows.length){
+    err.textContent = "❌ Нет ни одной строки с телефоном"; err.classList.add("show"); return;
+  }
+
+  btn.disabled = true; btn.textContent = "Отправляю...";
+  try{
+    var r = await fetch(API + "/voicecall/manual-entry", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({campaign_name: name, scenario_id: scenario, source: "manual", rows: rows}),
+    });
+    var data = await r.json();
+    if(!r.ok){
+      err.textContent = "❌ " + (data.detail || r.statusText); err.classList.add("show");
+    } else {
+      preview.innerHTML =
+        "<b>✅ Добавлено " + data.total + " контактов</b><br>" +
+        "В очереди: <b>" + data.queued + "</b>, отсеяно предпроверкой: <b>" + data.screened_out +
+        "</b>, готово без звонка: <b>" + data.precheck_done + "</b><br>" +
+        "Обзвон: <b>" + escHtml(data.campaign_name) + "</b> (id " + data.campaign_id + ")";
+      preview.classList.add("show");
+      document.getElementById("uFilePreviewWrap").style.display = "none";
+      fileInput.value = ""; onFileChange();
+      loadCampaigns();
+    }
+  } catch(e){
+    err.textContent = "❌ Сетевая ошибка: " + e.message; err.classList.add("show");
+  } finally {
+    btn.disabled = false; btn.textContent = "Всё верно, отправить на обзвон";
   }
 });
 
@@ -563,7 +655,11 @@ document.getElementById("uManualBtn").addEventListener("click", async function()
 });
 
 function escHtml(s){
-  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // Экранируем и кавычки (не только &/</>) — значения из загруженного
+  // файла подставляются в HTML-атрибуты (value='...'), апостроф в
+  // реальных данных (имя, адрес и т.п.) без этого сломал бы атрибут.
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/'/g,"&#39;").replace(/"/g,"&quot;");
 }
 function fmtTs(iso){
   if(!iso) return "";

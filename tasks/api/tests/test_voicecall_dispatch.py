@@ -50,6 +50,63 @@ class TestUploadTemplate:
         assert name_cell.fill.start_color.rgb in (None, "00000000")
 
 
+class TestPreviewContactsFile:
+    def test_preview_returns_all_rows_without_committing(self, client):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Иван", "79991110011"], ["Пётр", "79991110022"]])
+        r = client.post(
+            "/voicecall/preview-contacts-file",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"scenario_id": SCENARIO, "source": "manual"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body["rows"]) == 2
+        assert body["rows"][0]["name"] == "Иван"
+        assert body["rows"][0]["phone"] == "79991110011"
+        # Предпросмотр ничего не должен коммитить в БД
+        camps = client.get("/voicecall/campaigns").json()["items"]
+        assert len(camps) == 0
+
+    def test_preview_reports_duplicate_phone(self, client):
+        """Раньше повторный телефон в файле молча схлопывался без единого
+        слова об этом — выглядело как «загрузка потеряла часть строк»."""
+        content = _xlsx_bytes(["Имя", "Телефон"], [["А", "79991110033"], ["Б", "79991110033"]])
+        r = client.post(
+            "/voicecall/preview-contacts-file",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"scenario_id": SCENARIO, "source": "manual"},
+        )
+        body = r.json()
+        assert len(body["rows"]) == 1
+        assert body["skipped_duplicate_phone"] == 1
+
+    def test_preview_then_manual_entry_full_flow(self, client):
+        """Итоговый сценарий использования: предпросмотр → правка на
+        портале → отправка через manual-entry (не через upload-contacts)."""
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Иван", "79991110044"]])
+        r = client.post(
+            "/voicecall/preview-contacts-file",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"scenario_id": SCENARIO, "source": "manual"},
+        )
+        rows = r.json()["rows"]
+        rows[0]["name"] = "Иван Исправленный"  # оператор поправил в таблице
+
+        r2 = client.post("/voicecall/manual-entry", json={
+            "campaign_name": "Из предпросмотра",
+            "scenario_id": SCENARIO,
+            "source": "manual",
+            "rows": rows,
+        })
+        assert r2.status_code == 200, r2.text
+        cid = r2.json()["campaign_id"]
+        contacts = client.get("/voicecall/contacts", params={"campaign_id": cid}).json()["items"]
+        assert contacts[0]["name"] == "Иван Исправленный"
+
+
 class TestUploadContactsPrecheck:
     def test_stop_factor_screens_out_without_calling(self, client):
         """Пол=женский в файле — известный стоп-фактор, контакт не должен
