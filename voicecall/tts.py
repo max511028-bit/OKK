@@ -123,7 +123,13 @@ def prewarm_scenario(scenario_dict: dict, voice: str = DEFAULT_VOICE,
     Возвращает кол-во новых сгенерированных файлов."""
     texts = []
     for st in scenario_dict.get("steps", []):
-        for key in ("bot", "on_no", "on_no_follow", "stop_msg"):
+        # on_yes пропускали — а это реальная озвучиваемая фраза (см.
+        # dialog.py, last_bot=step.get("on_yes") на "да" в yesno-вопросе
+        # с концом сценария), из-за чего она синтезировалась вживую
+        # прямо посреди звонка вместо кэша — заметная пауза, а если
+        # текст вдруг пуст — падение всего звонка (edge-tts не
+        # переваривает пустую строку).
+        for key in ("bot", "on_yes", "on_no", "on_no_follow", "stop_msg"):
             v = st.get(key)
             if v:
                 texts.append(v)

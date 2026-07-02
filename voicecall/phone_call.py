@@ -693,7 +693,7 @@ def _prewarm_tts_for_name(scenario: dict, candidate_name: str) -> None:
     try:
         texts = []
         for st in scenario.get("steps", []):
-            for key in ("bot", "on_no", "on_no_follow", "stop_msg"):
+            for key in ("bot", "on_yes", "on_no", "on_no_follow", "stop_msg"):
                 v = st.get(key)
                 if v and "{name}" in v:
                     texts.append(render_name(v, candidate_name))
