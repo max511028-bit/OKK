@@ -3056,7 +3056,7 @@ import re as _re_mod
 import socket as _socket
 import uuid as _uuid
 import time as _time_mod
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, quote
 
 
 _FETCH_MAX_BYTES = 50 * 1024 * 1024  # 50 МБ
@@ -3693,6 +3693,18 @@ def _vc_scenario_crits(scenario: dict) -> list:
     return out
 
 
+def _vc_content_disposition(filename: str) -> str:
+    """HTTP-заголовки обязаны быть latin-1 — кириллица в filename="..."
+    напрямую (как было раньше с f'attachment; filename="shablon_{scenario_id}.xlsx"'
+    для сценариев с кириллическим id) роняет весь ответ UnicodeEncodeError
+    ДО того как FastAPI успевает его отправить (500 без какого-либо
+    осмысленного тела ответа). filename* по RFC 6266 — правильный способ
+    отдать не-ASCII имя файла, plain filename — ASCII-safe запасной
+    вариант для совсем старых клиентов."""
+    ascii_fallback = filename.encode("ascii", "ignore").decode("ascii") or "file"
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{quote(filename)}"
+
+
 def _vc_build_xlsx_bytes(headers: list, rows: list, required_cols: set = None) -> bytes:
     """Собирает .xlsx в памяти: headers — первая строка, rows — список
     списков значений. required_cols — заголовки, которые нужно выделить
@@ -3858,7 +3870,7 @@ def vc_upload_template(scenario_id: str = "tander-sterlitamak-pack"):
     return StreamingResponse(
         _vc_io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={"Content-Disposition": _vc_content_disposition(fname)},
     )
 
 
