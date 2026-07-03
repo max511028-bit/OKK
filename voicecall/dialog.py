@@ -562,7 +562,14 @@ class DialogSession:
         step = self.steps[self.i]
         if not self.reasked:
             self.reasked = True
-            t = reask_text(step)
+            # Если не распознано вообще НИЧЕГО (raw пуст — тишина, шум,
+            # ложное срабатывание barge-in на кашель/шорох), кандидат мог
+            # физически не услышать сам вопрос (бота оборвало раньше
+            # времени). Абстрактный шаблон "да или нет?" в таком случае
+            # ничего не объясняет — повторяем ИСХОДНЫЙ вопрос целиком.
+            # Уточняющий шаблон оставляем только когда что-то РАСПОЗНАНО,
+            # но не понято (raw непустой) — там переспрос в тему.
+            t = step["bot"] if not raw else reask_text(step)
             self._log("bot", t)
             return Action(kind="speak_then_listen", text=t)
         crit = step.get("crit", step["id"])

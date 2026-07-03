@@ -818,6 +818,29 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                 + (f", усилено x{m_listen['agc_gain']}" if m_listen["agc_gain"] > 1.05 else ""))
         if call_metrics:
             call_metrics[-1].update(m_listen)
+
+        # detect_voicemail() проверяет автоответчик/сообщение оператора
+        # ТОЛЬКО один раз, до первой фразы бота. Если такое сообщение
+        # начинает играть с задержкой (например бот уже успел поздороваться,
+        # прежде чем сеть перевела звонок на "абонент не берёт трубку") —
+        # раньше диалог продолжался как ни в чём не бывало, реально
+        # разговаривая с автоответчиком весь звонок целиком (все шаги
+        # "не распознано", реальные деньги за эфирное время потрачены
+        # впустую). Проверяем ту же фразу-детекцию на КАЖДОЙ распознанной
+        # реплике кандидата — если похоже на автоответчик, останавливаем
+        # сценарий сразу, а не доигрываем его до конца вхолостую.
+        if answer and is_voicemail_phrase(answer):
+            log(f"📼 Похоже на автоответчик/сообщение оператора посреди разговора: «{answer}» — вешаю трубку.")
+            result["status"] = "voicemail"
+            result["error"] = answer
+            result["answers"] = sess.answers
+            result["notes"] = sess.notes
+            result["transcript"] = sess.transcript
+            _attach_call_quality_note(result["notes"], call_metrics, log)
+            try: call.hangup()
+            except Exception: pass
+            return
+
         if answer:
             heard_anything = True
         action = sess.submit_answer(answer)
