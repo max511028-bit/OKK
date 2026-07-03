@@ -1056,6 +1056,69 @@ td {
   transition: opacity 0.15s;
 }
 
+/* ── GANTT v2 (реальные задачи, скролл по времени) ── */
+.gantt2-scroll {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  overflow-x: auto; overflow-y: hidden; box-shadow: var(--shadow);
+}
+.g2-inner { min-width: 100%; }
+.g2-head { display: flex; border-bottom: 2px solid var(--border); background: var(--surface-2); }
+.g2-left {
+  display: flex; width: 340px; flex-shrink: 0; position: sticky; left: 0; z-index: 3;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.g2-head .g2-left { background: var(--surface-2); }
+.g2-row:hover .g2-left { background: var(--surface-2); }
+.g2-task { width: 240px; flex-shrink: 0; padding: 8px 12px; overflow: hidden; }
+.g2-task .gantt-task-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g2-assignee { width: 100px; flex-shrink: 0; padding: 8px; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; border-left: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g2-head .g2-task, .g2-head .g2-assignee { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; align-items: center; display: flex; }
+.g2-timeline { position: relative; height: 46px; flex-shrink: 0; }
+.g2-months { position: relative; height: 22px; border-bottom: 1px solid var(--border); }
+.g2-month { position: absolute; top: 0; height: 22px; font-size: 11px; font-weight: 700; color: var(--text-secondary); border-right: 1px solid var(--border); padding: 3px 8px; overflow: hidden; white-space: nowrap; }
+.g2-weeks { position: relative; height: 24px; }
+.g2-week { position: absolute; top: 0; height: 24px; font-size: 10px; color: var(--text-tertiary); border-right: 1px solid var(--border); padding: 5px 4px; overflow: hidden; white-space: nowrap; }
+.g2-row { display: flex; border-bottom: 1px solid var(--border); cursor: pointer; height: 44px; }
+.g2-row:last-child { border-bottom: none; }
+.g2-lane { position: relative; flex-shrink: 0; height: 44px; background-image: repeating-linear-gradient(to right, transparent, transparent 55px, var(--border) 55px, var(--border) 56px); }
+.g2-lane .gantt-bar { top: 50%; transform: translateY(-50%); height: 20px; }
+.g2-lane .gantt-bar:hover { transform: translateY(-50%) scaleY(1.15); }
+.g2-orig-due { position: absolute; top: 2px; color: var(--purple); font-size: 11px; z-index: 2; }
+.g2-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red); z-index: 2; pointer-events: none; }
+.g2-today .gantt-today-label { position: absolute; top: 2px; left: 4px; }
+
+/* ── ROADMAP v2 — интерактивная карта ── */
+.rm-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.rm-canvas-wrap {
+  position: relative; height: 580px; overflow: hidden; cursor: grab;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 26px 26px;
+}
+.rm-minimap {
+  position: absolute; right: 12px; bottom: 12px; width: 160px; height: 96px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  box-shadow: var(--shadow); cursor: pointer; z-index: 5; overflow: hidden; opacity: .92;
+}
+.rm-hovercard {
+  display: none; position: absolute; z-index: 6; max-width: 280px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-lg); padding: 10px 12px; font-size: 12px; line-height: 1.55; pointer-events: none;
+}
+.rm-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+.rm-tick { font-size: 10px; fill: var(--text-tertiary); }
+.rm-sys-label { font-size: 13px; font-weight: 700; }
+.rm-proj-label { font-size: 11px; fill: var(--text-secondary); }
+.rm-node { cursor: pointer; animation: rmFade .5s ease both; }
+.rm-proj { cursor: pointer; animation: rmFade .5s ease both; }
+.rm-proj:hover circle { r: 12; }
+.rm-curve { fill: none; stroke-width: 1.6; opacity: .55; stroke-dasharray: 800; stroke-dashoffset: 800; animation: rmDraw 1.1s ease forwards; }
+.rm-dep { fill: none; stroke: var(--text-tertiary); stroke-width: 1.3; stroke-dasharray: 5 4; opacity: .7; }
+.rm-dim { opacity: .13 !important; animation: none !important; }
+.rm-hit circle { stroke: var(--accent); stroke-width: 4; animation: rmPulse 1.2s ease infinite; }
+@keyframes rmDraw { to { stroke-dashoffset: 0; } }
+@keyframes rmFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes rmPulse { 0%,100% { stroke-opacity: 1; } 50% { stroke-opacity: .3; } }
+
 /* ── ROADMAP ── */
 .roadmap-grid {
   display: grid;
@@ -1360,130 +1423,11 @@ td {
       <div class="section-header">
         <div>
           <div class="section-title">Executive Dashboard</div>
-          <div class="section-sub">Статус IT-процессов · Обновлено 28 апреля 2026</div>
+          <div class="section-sub" id="dashUpdatedSub">Статус IT-процессов</div>
         </div>
       </div>
 
-      <div class="exec-grid">
-        <div class="exec-main">
-          <div class="health-label">IT Health Score</div>
-          <div class="health-score">82</div>
-          <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:4px;">из 100 баллов</div>
-          <div class="health-bar"><div class="health-fill"></div></div>
-          <div class="health-trend" style="margin-top:14px;">↑ <strong>+4</strong> к прошлой неделе · 47 активных задач</div>
-        </div>
-
-        <div class="exec-card risk">
-          <div class="exec-card-label">Главный риск недели</div>
-          <div class="exec-card-value" style="font-size:18px;line-height:1.4;">Интеграция<br>Яндекс / Bitrix</div>
-          <div class="exec-card-desc">IT-021 заблокирована — нет согласования обязательных полей. Риск срыва цепочки лидов.</div>
-        </div>
-
-        <div class="exec-card warn">
-          <div class="exec-card-label">Задачи под угрозой</div>
-          <div class="exec-card-value">8</div>
-          <div class="exec-card-desc">5 просрочены · 3 без ТЗ · без владельца результата. Нужно управленческое решение.</div>
-        </div>
-      </div>
-
-      <div class="exec-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px;">
-        <div class="exec-card info">
-          <div class="exec-card-label">Bottleneck</div>
-          <div class="exec-card-value" style="font-size:16px;">Максим — перегруз</div>
-          <div class="exec-card-desc">6 задач в работе одновременно. Рекомендуется перераспределение до пятницы.</div>
-        </div>
-
-        <div class="exec-card" style="border-left:3px solid var(--green);">
-          <div class="exec-card-label">Рекомендованное действие</div>
-          <div class="exec-card-value" style="font-size:14px;line-height:1.4;">Назначить владельца IT-021</div>
-          <div class="exec-card-desc">Определить дедлайн согласования ≤ 02.05. Провести встречу с Яндексом по полям CRM.</div>
-        </div>
-      </div>
-
-      <!-- AI BLOCK -->
-      <div class="ai-block">
-        <div class="ai-header">
-          <div class="ai-badge"><div class="ai-pulse"></div> AI Insights</div>
-          <span style="font-size:13px;color:var(--text-secondary);">Автоматический анализ состояния задач</span>
-        </div>
-        <div class="ai-insights-grid">
-          <div class="ai-insight danger">
-            <div class="ai-insight-icon">⏰</div>
-            <div class="ai-insight-text">5 задач просрочены</div>
-            <div class="ai-insight-sub">IT-021, IT-027, IT-033, IT-041, IT-051</div>
-          </div>
-          <div class="ai-insight danger">
-            <div class="ai-insight-icon">📄</div>
-            <div class="ai-insight-text">3 задачи без ТЗ</div>
-            <div class="ai-insight-sub">Риск разного понимания результата</div>
-          </div>
-          <div class="ai-insight warning">
-            <div class="ai-insight-icon">📊</div>
-            <div class="ai-insight-text">5 задач без метрики</div>
-            <div class="ai-insight-sub">Невозможно измерить эффект внедрения</div>
-          </div>
-          <div class="ai-insight warning">
-            <div class="ai-insight-icon">🔥</div>
-            <div class="ai-insight-text">Максим — перегруз</div>
-            <div class="ai-insight-sub">6 задач в работе, 3 в зоне риска срыва</div>
-          </div>
-          <div class="ai-insight danger">
-            <div class="ai-insight-icon">⛔</div>
-            <div class="ai-insight-text">Интеграция Яндекс/Bitrix</div>
-            <div class="ai-insight-sub">Блокирует 4 downstream-задачи</div>
-          </div>
-          <div class="ai-insight recommendation">
-            <div class="ai-insight-icon">💡</div>
-            <div class="ai-insight-text">Рекомендация</div>
-            <div class="ai-insight-sub">Назначить владельца IT-021, дедлайн согласования ≤ 02.05</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- METRICS -->
-      <div class="section-header">
-        <div class="section-title">Метрики</div>
-      </div>
-
-      <div class="metrics-grid">
-        <div class="metric-card" onclick="showView(&#39;tasks&#39;)">
-          <div class="metric-number">47</div>
-          <div class="metric-label">Всего задач</div>
-          <div class="metric-delta up">↑ +6 за неделю</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:78%"></div></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-number">68%</div>
-          <div class="metric-label">Выполнено в срок</div>
-          <div class="metric-delta down">↓ −5% к плану</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:68%;background:var(--yellow)"></div></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-number">8.4</div>
-          <div class="metric-label">Средний цикл, дни</div>
-          <div class="metric-delta neutral">→ без изменений</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:55%;background:var(--text-tertiary)"></div></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-number">124h</div>
-          <div class="metric-label">Экономия времени</div>
-          <div class="metric-delta up">↑ +18h к прошлой</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:82%;background:var(--green)"></div></div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-number">3.2×</div>
-          <div class="metric-label">ROI внедрений</div>
-          <div class="metric-delta up">↑ +0.4 за квартал</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:70%;background:var(--purple)"></div></div>
-        </div>
-        <div class="metric-card" onclick="showView(&#39;tasks&#39;)">
-          <div class="metric-number" style="color:var(--red)">8</div>
-          <div class="metric-label">В зоне риска</div>
-          <div class="metric-delta down">↑ +3 за неделю</div>
-          <div class="metric-mini-bar"><div class="metric-mini-fill" style="width:25%;background:var(--red)"></div></div>
-        </div>
-      </div>
-
+      <div id="dashRoot"><div style="padding:40px;text-align:center;color:var(--text-tertiary);">Загрузка данных...</div></div>
     </div>
 
     <!-- ── ANALYTICS ── -->
@@ -1644,6 +1588,17 @@ td {
           <option value="Автоматизация">Автоматизация</option>
           <option value="Аналитика">Аналитика</option>
         </select>
+        <select class="filter-select" id="filterSpecial" onchange="filterTasks()">
+          <option value="">Все задачи</option>
+          <option value="overdue">🔴 Просроченные</option>
+          <option value="rescheduled">🟣 С изменённым сроком</option>
+          <option value="notz">📄 Без ТЗ</option>
+          <option value="nometric">📊 Без метрики</option>
+          <option value="noeffect">💡 Без эффекта</option>
+          <option value="noowner">👤 Без ответственного</option>
+          <option value="blocked">⛔ Заблокированные</option>
+          <option value="highrisk">🔥 Высокий риск</option>
+        </select>
         <select class="filter-select" id="sortBy" onchange="filterTasks()">
           <option value="">Сортировка</option>
           <option value="deadline">По сроку</option>
@@ -1662,6 +1617,7 @@ td {
                 <th class="sortable" data-sortcol="system">Система<span class="sort-ind"></span></th>
                 <th class="sortable" data-sortcol="assignee">Ответственный<span class="sort-ind"></span></th>
                 <th class="sortable" data-sortcol="deadline">Срок<span class="sort-ind"></span></th>
+                <th class="sortable" data-sortcol="newDueDate">Новый срок<span class="sort-ind"></span></th>
                 <th class="sortable" data-sortcol="status">Статус<span class="sort-ind"></span></th>
                 <th class="sortable" data-sortcol="risk">Риск<span class="sort-ind"></span></th>
                 <th class="sortable" data-sortcol="metric">Метрика<span class="sort-ind"></span></th>
@@ -2185,279 +2141,8 @@ td {
         </div>
       </div>
 
-      <div class="gantt-container" id="ganttContainer">
-        <div class="gantt-header-row">
-          <div class="gantt-task-col">Задача</div>
-          <div class="gantt-info-col">Ответств.</div>
-          <div class="gantt-timeline" id="ganttWeekHeaders"><div class="gantt-week">Н20</div><div class="gantt-week">Н21</div><div class="gantt-week">Н22</div><div class="gantt-week">Н23</div><div class="gantt-week">Н24</div><div class="gantt-week">Н25</div><div class="gantt-week">Н26</div><div class="gantt-week">Н27</div><div class="gantt-week">Н28</div><div class="gantt-week">Н29</div><div class="gantt-week">Н30</div><div class="gantt-week">Н31</div></div>
-        </div>
-        <div id="ganttRows"><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-021</div>
-        <div class="gantt-task-title">Интеграция Яндекс/Bitrix</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Д.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar overdue" style="left:0%;width:25%" title="IT-021: Интеграция Яндекс/Bitrix (Н20–Н22)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-021&#39;))">
-          IT-021
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-014</div>
-        <div class="gantt-task-title">GPT-4.1 тест звонков</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">М.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar overdue" style="left:0%;width:16.666666666666664%" title="IT-014: GPT-4.1 тест звонков (Н20–Н21)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-014&#39;))">
-          IT-014
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-033</div>
-        <div class="gantt-task-title">Рабочее время бота</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">М.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar overdue" style="left:0%;width:8.333333333333332%" title="IT-033: Рабочее время бота (Н20–Н20)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-033&#39;))">
-          
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-027</div>
-        <div class="gantt-task-title">Исправить города/должности</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">А.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar inprogress" style="left:8.333333333333332%;width:25%" title="IT-027: Исправить города/должности (Н21–Н23)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-027&#39;))">
-          IT-027
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-062</div>
-        <div class="gantt-task-title">Транскрибация звонков</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">М.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar inprogress" style="left:8.333333333333332%;width:16.666666666666664%" title="IT-062: Транскрибация звонков (Н21–Н22)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-062&#39;))">
-          IT-062
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-051</div>
-        <div class="gantt-task-title">Спам-фильтр лидов</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">И.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar inprogress" style="left:16.666666666666664%;width:25%" title="IT-051: Спам-фильтр лидов (Н22–Н24)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-051&#39;))">
-          IT-051
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-041</div>
-        <div class="gantt-task-title">Статистика подбора</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Е.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar planned" style="left:16.666666666666664%;width:33.33333333333333%" title="IT-041: Статистика подбора (Н22–Н25)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-041&#39;))">
-          IT-041
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-083</div>
-        <div class="gantt-task-title">BI-дашборд директора</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Е.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar inprogress" style="left:25%;width:33.33333333333333%" title="IT-083: BI-дашборд директора (Н23–Н26)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-083&#39;))">
-          IT-083
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-058</div>
-        <div class="gantt-task-title">Мессенджеры в CRM</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Д.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar planned" style="left:33.33333333333333%;width:33.33333333333333%" title="IT-058: Мессенджеры в CRM (Н24–Н27)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-058&#39;))">
-          IT-058
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-079</div>
-        <div class="gantt-task-title">ЭЦП интеграция</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Д.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar planned" style="left:41.66666666666667%;width:41.66666666666667%" title="IT-079: ЭЦП интеграция (Н25–Н29)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-079&#39;))">
-          IT-079
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-071</div>
-        <div class="gantt-task-title">Корпоративные почты</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">И.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar done" style="left:0%;width:16.666666666666664%" title="IT-071: Корпоративные почты (Н20–Н21)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-071&#39;))">
-          IT-071
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-075</div>
-        <div class="gantt-task-title">Шаблоны задач</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">Е.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar paused" style="left:16.666666666666664%;width:25%" title="IT-075: Шаблоны задач (Н22–Н24)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-075&#39;))">
-          IT-075
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-068</div>
-        <div class="gantt-task-title">Оценка ботов (NPS)</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">А.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar planned" style="left:41.66666666666667%;width:33.33333333333333%" title="IT-068: Оценка ботов (NPS) (Н25–Н28)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-068&#39;))">
-          IT-068
-        </div>
-      </div>
-    </div><div class="gantt-row">
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">IT-087</div>
-        <div class="gantt-task-title">Хранилище резюме S3</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">И.</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          <div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div><div class="gantt-grid-line"></div>
-        </div>
-        <div class="gantt-today-line" style="left:8.333333333333332%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar planned" style="left:50%;width:41.66666666666667%" title="IT-087: Хранилище резюме S3 (Н26–Н30)" onclick="openPanel(TASKS.find(t=&gt;t.id===&#39;IT-087&#39;))">
-          IT-087
-        </div>
-      </div>
-    </div></div>
+      <div class="gantt2-scroll" id="gantt2Scroll">
+        <div class="loading">Загрузка...</div>
       </div>
 
       <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;">
@@ -2466,163 +2151,75 @@ td {
         <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:var(--red);border-radius:3px;"></div>Просрочено</div>
         <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:#94a3b8;border-radius:3px;"></div>Запланировано</div>
         <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><div style="width:16px;height:10px;background:var(--yellow);border-radius:3px;"></div>На паузе</div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--red);font-weight:600;">— Сегодня</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="color:var(--purple);font-weight:700;">◆</span>Исходный срок (при переносе)</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--red);font-weight:600;">│ Сегодня</div>
       </div>
+      <div id="gantt2NoDates" style="margin-top:14px;"></div>
     </div>
 
     <!-- ── ROADMAP ── -->
     <div class="view" id="view-roadmap">
       <div class="section-header">
         <div>
-          <div class="section-title">Roadmap</div>
-          <div class="section-sub">Стратегические внедрения 2026</div>
+          <div class="section-title">Roadmap — карта развития IT</div>
+          <div class="section-sub">Системы → проекты на оси времени · клик по проекту открывает карточку</div>
         </div>
       </div>
-      <div class="roadmap-grid" id="roadmapGrid">
-    <div class="roadmap-item risk">
-      <div class="roadmap-quarter">Q2</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Интеграция Яндекс → Bitrix24</div>
-        <div class="roadmap-meta">
-          <span>🏗 Bitrix24</span>
-          <span>👤 Дмитрий</span>
-          <span>📅 01.06.2026</span>
+
+      <div class="metrics-grid" id="rmKpi" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-bottom:16px;"></div>
+
+      <div class="rm-toolbar">
+        <div class="search-box" style="max-width:220px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="rmSearch" placeholder="Поиск проекта..." oninput="renderRoadmap()">
+        </div>
+        <select class="filter-select" id="rmFilterSystem" onchange="renderRoadmap()"><option value="">Все системы</option></select>
+        <select class="filter-select" id="rmFilterAssignee" onchange="renderRoadmap()"><option value="">Все ответственные</option></select>
+        <select class="filter-select" id="rmFilterStatus" onchange="renderRoadmap()">
+          <option value="">Все статусы</option>
+          <option value="planned">Запланировано</option>
+          <option value="inprogress">В работе</option>
+          <option value="done">Завершено</option>
+          <option value="overdue">Просрочено</option>
+          <option value="paused">На паузе</option>
+          <option value="rescheduled">Перенесён срок</option>
+        </select>
+        <select class="filter-select" id="rmFilterRisk" onchange="renderRoadmap()">
+          <option value="">Любой риск</option><option value="high">Высокий</option><option value="med">Средний</option><option value="low">Низкий</option>
+        </select>
+        <select class="filter-select" id="rmFilterQuarter" onchange="renderRoadmap()"><option value="">Все кварталы</option></select>
+        <select class="filter-select" id="rmScale" onchange="renderRoadmap(true)">
+          <option value="week">Масштаб: неделя</option>
+          <option value="month" selected>Масштаб: месяц</option>
+          <option value="quarter">Масштаб: квартал</option>
+          <option value="year">Масштаб: год</option>
+          <option value="multi">Несколько лет</option>
+        </select>
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button class="filter-select" style="cursor:pointer;" onclick="rmExport('png')">PNG</button>
+          <button class="filter-select" style="cursor:pointer;" onclick="rmExport('svg')">SVG</button>
+          <button class="filter-select" style="cursor:pointer;" onclick="rmExport('excel')">Excel</button>
+          <button class="filter-select" style="cursor:pointer;" onclick="window.print()">PDF</button>
         </div>
       </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">15%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:15%"></div>
-        </div>
+
+      <div class="rm-canvas-wrap" id="rmWrap">
+        <div id="rmCanvas"></div>
+        <div class="rm-minimap" id="rmMinimap" title="Мини-карта: клик — перейти"></div>
+        <div class="rm-hovercard" id="rmHover"></div>
       </div>
-    </div>
-  
-    <div class="roadmap-item q2">
-      <div class="roadmap-quarter">Q2</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Голосовой бот GPT-4.1</div>
-        <div class="roadmap-meta">
-          <span>🏗 AI</span>
-          <span>👤 Максим</span>
-          <span>📅 15.05.2026</span>
-        </div>
+
+      <div style="display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;font-size:12px;">
+        <span><span class="rm-dot" style="background:#1a56db;"></span> В работе</span>
+        <span><span class="rm-dot" style="background:#16a34a;"></span> Завершён</span>
+        <span><span class="rm-dot" style="background:#94a3b8;"></span> Запланирован</span>
+        <span><span class="rm-dot" style="background:#d97706;"></span> На паузе</span>
+        <span><span class="rm-dot" style="background:#dc2626;"></span> Просрочен</span>
+        <span><span class="rm-dot" style="background:#7c3aed;"></span> Изменён срок</span>
+        <span style="color:var(--red);font-weight:600;">│ Сегодня</span>
+        <span style="color:var(--text-tertiary);">— — → зависимость</span>
+        <span style="color:var(--text-tertiary);margin-left:auto;">Перетаскивание мышью · зум колесом (Ctrl) · клик по системе — фокус</span>
       </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">40%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:40%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item q2">
-      <div class="roadmap-quarter">Q2</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Транскрибация звонков</div>
-        <div class="roadmap-meta">
-          <span>🏗 AI</span>
-          <span>👤 Максим</span>
-          <span>📅 10.05.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">55%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:55%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item risk">
-      <div class="roadmap-quarter">Q2</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Статистика массового подбора</div>
-        <div class="roadmap-meta">
-          <span>🏗 Аналитика</span>
-          <span>👤 Екатерина</span>
-          <span>📅 15.05.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">5%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:5%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item q2">
-      <div class="roadmap-quarter">Q2</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">BI-дашборд директора</div>
-        <div class="roadmap-meta">
-          <span>🏗 Аналитика</span>
-          <span>👤 Екатерина</span>
-          <span>📅 01.06.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">35%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:35%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item q3">
-      <div class="roadmap-quarter">Q3</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">ЭЦП интеграция (Диадок)</div>
-        <div class="roadmap-meta">
-          <span>🏗 Документооборот</span>
-          <span>👤 Дмитрий</span>
-          <span>📅 10.06.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">0%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:0%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item q3">
-      <div class="roadmap-quarter">Q3</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Мессенджеры в CRM</div>
-        <div class="roadmap-meta">
-          <span>🏗 Bitrix24</span>
-          <span>👤 Дмитрий</span>
-          <span>📅 01.06.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">0%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:0%"></div>
-        </div>
-      </div>
-    </div>
-  
-    <div class="roadmap-item q3">
-      <div class="roadmap-quarter">Q3</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">Хранилище резюме S3</div>
-        <div class="roadmap-meta">
-          <span>🏗 Хранилища</span>
-          <span>👤 Иван</span>
-          <span>📅 15.06.2026</span>
-        </div>
-      </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">0%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:0%"></div>
-        </div>
-      </div>
-    </div>
-  </div>
     </div>
 
     <!-- ── TZ ── -->
@@ -2982,6 +2579,92 @@ let GANTT_TASKS = [
 const GANTT_WEEKS = ['Н20','Н21','Н22','Н23','Н24','Н25','Н26','Н27','Н28','Н29','Н30','Н31'];
 const GANTT_TODAY = 1; // Current position in weeks
 
+// ═══════════════════════════════════════════════
+// ДАТЫ / ПРОСРОЧКА / ПЕРЕНОС СРОКА (единые правила для
+// таблицы, Gantt, Roadmap и Dashboard — см. ТЗ)
+// Актуальный срок = newDueDate, если заполнен, иначе deadline.
+// Просрочено = актуальный срок < сегодня И статус не завершённый.
+// ═══════════════════════════════════════════════
+const DONE_STATUSES = ['Выполнено','Неактуально'];
+
+function parseRuDate(s){
+  if(!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if(!m) return null;
+  const d = new Date(+m[3], +m[2]-1, +m[1]);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtRuDate(d){
+  if(!d) return '';
+  return String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+d.getFullYear();
+}
+function _today0(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+
+function actualDueStr(t){ return String(t.newDueDate||'').trim() || String(t.deadline||'').trim(); }
+function actualDueDate(t){ return parseRuDate(actualDueStr(t)); }
+function isTaskDone(t){ return DONE_STATUSES.includes(t.status); }
+function isRescheduled(t){
+  const nd = String(t.newDueDate||'').trim();
+  return !!nd && nd !== String(t.deadline||'').trim();
+}
+function isOverdue(t){
+  if(isTaskDone(t)) return false;
+  const due = actualDueDate(t);
+  if(due) return due < _today0();
+  // у старых задач дат может не быть — уважаем вручную выставленный статус
+  return t.status === 'Просрочено';
+}
+function overdueDays(t){
+  if(!isOverdue(t)) return 0;
+  const due = actualDueDate(t);
+  return due ? Math.floor((_today0() - due) / 86400000) : 0;
+}
+function taskStartDate(t){
+  return parseRuDate(t.startDate) || parseRuDate(t.createdAt) || null;
+}
+function displayStatus(t){ return isOverdue(t) ? 'Просрочено' : t.status; }
+
+// Дата завершения — из истории (записи вида «ДД.ММ: ...Выполнено...»).
+// Год в history не пишется, берём из актуального срока либо текущий.
+function completionDate(t){
+  if(!isTaskDone(t)) return null;
+  const yr = (actualDueDate(t) || _today0()).getFullYear();
+  for(const h of (t.history||[])){
+    if(/выполнено/i.test(h)){
+      const m = String(h).match(/^(\d{1,2})\.(\d{1,2})/);
+      if(m) return new Date(yr, +m[2]-1, +m[1]);
+    }
+  }
+  return actualDueDate(t); // нет записи — считаем что закрыли в срок
+}
+
+// Средний перенос срока в днях (по задачам с изменённым сроком)
+function rescheduleDays(t){
+  if(!isRescheduled(t)) return 0;
+  const a = parseRuDate(t.deadline), b = parseRuDate(t.newDueDate);
+  return (a && b) ? Math.round((b - a) / 86400000) : 0;
+}
+
+// «Спец-фильтры» раздела Задачи — используются и выпадашкой в таблице,
+// и кликами по KPI-карточкам дашборда
+const SPECIAL_FILTERS = {
+  overdue:      { label:'Просроченные',        fn: t => isOverdue(t) },
+  rescheduled:  { label:'С изменённым сроком', fn: t => isRescheduled(t) },
+  notz:         { label:'Без ТЗ',              fn: t => t.tz !== '✅ Есть' && !isTaskDone(t) },
+  nometric:     { label:'Без метрики',         fn: t => !String(t.metric||'').trim() && !isTaskDone(t) },
+  noeffect:     { label:'Без эффекта',         fn: t => !String(t.effect||'').trim() && !isTaskDone(t) },
+  noowner:      { label:'Без ответственного',  fn: t => !String(t.assignee||'').trim() && !isTaskDone(t) },
+  blocked:      { label:'Заблокированные',     fn: t => String(t.blockers||'Нет').trim() !== 'Нет' && !isTaskDone(t) },
+  highrisk:     { label:'Высокий риск',        fn: t => t.risk === 'high' && !isTaskDone(t) },
+  nodesc:       { label:'Без описания',        fn: t => !String(t.desc||'').trim() && !isTaskDone(t) },
+};
+function applySpecialFilter(name){
+  showView('tasks');
+  const sel = document.getElementById('filterSpecial');
+  if(sel) sel.value = SPECIAL_FILTERS[name] ? name : '';
+  renderTasks();
+}
+
 const KANBAN_COLUMNS = [
   { id:'notstarted', label:'Не начато', color:'#94a3b8', statuses:['Не начато'] },
   { id:'inprogress', label:'В работе', color:'#2563eb', statuses:['В процессе'] },
@@ -3026,6 +2709,7 @@ function showView(id) {
     setTimeout(initCharts, 100);
     chartsInitialized = true;
   }
+  if (id === 'dashboard') renderDashboard();
   if (id === 'gantt') renderGantt();
   if (id === 'kanban') renderKanban();
   if (id === 'tasks') renderTasks();
@@ -3072,9 +2756,9 @@ function _cmpTasks(a, b, col) {
   const STATUS_ORDER = { 'Просрочено':0,'В процессе':1,'На доработке':2,'На паузе':3,'Не начато':4,'Проблемы':5,'Выполнено':6,'Неактуально':7 };
   const TZ_ORDER = { '❌ Нет':0,'✅ Есть':1 };
   const va = a[col], vb = b[col];
-  if (col === 'deadline') {
-    const da = va ? new Date(va.split('.').reverse().join('-')).getTime() : Infinity;
-    const db = vb ? new Date(vb.split('.').reverse().join('-')).getTime() : Infinity;
+  if (col === 'deadline' || col === 'newDueDate') {
+    const da = parseRuDate(va)?.getTime() ?? Infinity;
+    const db = parseRuDate(vb)?.getTime() ?? Infinity;
     return da - db;
   }
   if (col === 'risk') return (RISK_ORDER[va] ?? 99) - (RISK_ORDER[vb] ?? 99);
@@ -3092,12 +2776,17 @@ function renderTasks() {
   const status = document.getElementById('filterStatus')?.value || '';
   const assignee = document.getElementById('filterAssignee')?.value || '';
   const system = document.getElementById('filterSystem')?.value || '';
+  const special = document.getElementById('filterSpecial')?.value || '';
   const sort = document.getElementById('sortBy')?.value || '';
 
   if (search) data = data.filter(t => t.title.toLowerCase().includes(search) || t.id.toLowerCase().includes(search));
-  if (status) data = data.filter(t => t.status === status);
+  // «Просрочено» — вычисляемое состояние (актуальный срок < сегодня),
+  // а не только вручную выставленный статус
+  if (status === 'Просрочено') data = data.filter(t => isOverdue(t));
+  else if (status) data = data.filter(t => t.status === status);
   if (assignee) data = data.filter(t => t.assignee === assignee);
   if (system) data = data.filter(t => t.system.includes(system));
+  if (special && SPECIAL_FILTERS[special]) data = data.filter(SPECIAL_FILTERS[special].fn);
 
   // Сортировка из выпадашки (если выбрана и нет клика по колонке)
   if (!window._tableSort.col) {
@@ -3123,10 +2812,12 @@ function renderTasks() {
   });
 
   data.forEach(t => {
-    const isOverdue = t.status === 'Просрочено';
+    const overdue = isOverdue(t);
+    const resched = isRescheduled(t);
+    const st = displayStatus(t);
     const isHigh = t.priority === 'high';
     const noTZ = t.tz === '❌ Нет';
-    const showInFocus = isOverdue || isHigh || noTZ;
+    const showInFocus = overdue || isHigh || noTZ;
     const hide = focusMode && !showInFocus;
 
     const tr = document.createElement('tr');
@@ -3136,8 +2827,9 @@ function renderTasks() {
       <td class="td-task">${t.title}<small>${t.system}</small></td>
       <td><span class="tag system">${t.system}</span></td>
       <td>${t.assignee}</td>
-      <td class="${isOverdue?'due-date overdue':'due-date'}">${t.deadline}</td>
-      <td><span class="status-pill ${getStatusClass(t.status)}">${getStatusEmoji(t.status)} ${t.status}</span></td>
+      <td class="due-date ${overdue && !resched ? 'overdue':''}" style="${resched ? 'text-decoration:line-through;color:var(--text-tertiary);' : ''}">${t.deadline || '—'}</td>
+      <td class="due-date ${overdue && resched ? 'overdue':''}" style="${resched && !overdue ? 'color:var(--purple);font-weight:600;' : ''}">${resched ? (t.newDueDate + ' 🟣') : (t.newDueDate || '—')}</td>
+      <td><span class="status-pill ${getStatusClass(st)}">${getStatusEmoji(st)} ${st}</span>${overdue ? `<div style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px;">+${overdueDays(t)} дн.</div>` : ''}</td>
       <td><span class="risk-dot risk-${t.risk}">● ${t.risk==='high'?'Высокий':t.risk==='med'?'Средний':'Низкий'}</span></td>
       <td style="font-size:11px;color:var(--text-secondary);max-width:120px;white-space:normal;">${t.metric}</td>
       <td><span class="${t.tz==='✅ Есть'?'status-pill status-done':'status-pill status-blocked'}">${t.tz}</span>${(t.attachments&&t.attachments.length)?`<span style="font-size:10px;color:var(--text-tertiary);margin-left:4px;" title="${t.attachments.length} файл(ов)">📎${t.attachments.length}</span>`:''}</td>
@@ -3206,78 +2898,874 @@ function kanbanCard(t) {
 // GANTT
 // ═══════════════════════════════════════════════
 
+// Gantt v2 — строится напрямую из TASKS (единый источник данных, без
+// отдельного мока GANTT_TASKS). Начало = startDate || createdAt ||
+// (срок − 14 дней), конец = актуальный срок (newDueDate || deadline).
+// Шкала — автодиапазон от самой ранней до самой поздней даты, с
+// горизонтальным скроллом; колонки Задача/Ответственный закреплены слева.
+const G2_LEFT_W = 340;   // px, ширина закреплённых колонок
+const G2_DAY_PX = 8;     // px на день (56px на неделю)
+
+function _g2StatusClass(t){
+  if (isOverdue(t)) return 'overdue';
+  if (t.status === 'Выполнено') return 'done';
+  if (t.status === 'В процессе' || t.status === 'На доработке') return 'inprogress';
+  if (t.status === 'На паузе' || t.status === 'Проблемы') return 'paused';
+  return 'planned';
+}
+
+function _g2Monday(d){ const x = new Date(d); const wd = (x.getDay()+6)%7; x.setDate(x.getDate()-wd); x.setHours(0,0,0,0); return x; }
+function _g2AddDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+
 function renderGantt() {
-  const weeksEl = document.getElementById('ganttWeekHeaders');
-  const rowsEl = document.getElementById('ganttRows');
-  if (!weeksEl || !rowsEl) return;
+  const scroll = document.getElementById('gantt2Scroll');
+  if (!scroll) return;
 
-  weeksEl.innerHTML = GANTT_WEEKS.map(w => `<div class="gantt-week">${w}</div>`).join('');
-  rowsEl.innerHTML = '';
-
-  const totalWeeks = GANTT_WEEKS.length;
-
-  GANTT_TASKS.forEach(task => {
-    const row = document.createElement('div');
-    row.className = 'gantt-row';
-
-    const startPct = (task.start / totalWeeks) * 100;
-    const widthPct = ((task.end - task.start) / totalWeeks) * 100;
-
-    const todayPct = (GANTT_TODAY / totalWeeks) * 100;
-
-    row.innerHTML = `
-      <div class="gantt-task-name">
-        <div class="gantt-task-id">${task.id}</div>
-        <div class="gantt-task-title">${task.title}</div>
-      </div>
-      <div class="gantt-info-cell">
-        <div class="gantt-assignee">${task.assignee.charAt(0)+'.'}</div>
-      </div>
-      <div class="gantt-bars">
-        <div class="gantt-grid-lines">
-          ${GANTT_WEEKS.map(() => '<div class="gantt-grid-line"></div>').join('')}
-        </div>
-        <div class="gantt-today-line" style="left:${todayPct}%">
-          <div class="gantt-today-label">сег.</div>
-        </div>
-        <div class="gantt-bar ${task.status}"
-          style="left:${startPct}%;width:${widthPct}%"
-          title="${task.id}: ${task.title} (${GANTT_WEEKS[task.start]}–${GANTT_WEEKS[task.end-1]})"
-          onclick="openPanel(TASKS.find(t=>t.id==='${task.id}'))">
-          ${widthPct > 12 ? task.id : ''}
-        </div>
-      </div>
-    `;
-    rowsEl.appendChild(row);
+  const today = _today0();
+  const rows = [];
+  const noDates = [];
+  TASKS.forEach(t => {
+    const due = actualDueDate(t);
+    let start = taskStartDate(t);
+    if (!start && due) start = _g2AddDays(due, -14);   // разумная ширина полосы, когда начало не задано
+    const end = due || (start ? _g2AddDays(start, 14) : null);
+    if (!start || !end) { noDates.push(t); return; }
+    rows.push({ t, start, end: end >= start ? end : start });
   });
+  rows.sort((a,b) => a.start - b.start || a.end - b.end);
+
+  if (!rows.length) {
+    scroll.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-tertiary);">Нет задач с датами — укажи сроки в карточках задач.</div>';
+    return;
+  }
+
+  // Диапазон: от понедельника перед самой ранней датой до воскресенья
+  // после самой поздней (+ неделя запаса с обеих сторон), сегодня всегда внутри
+  let minD = _g2Monday(new Date(Math.min(...rows.map(r => +r.start), +today)));
+  minD = _g2AddDays(minD, -7);
+  let maxD = new Date(Math.max(...rows.map(r => +r.end), +today));
+  maxD = _g2AddDays(_g2Monday(maxD), 21);
+
+  const totalDays = Math.round((maxD - minD) / 86400000);
+  const totalPx = totalDays * G2_DAY_PX;
+  const dayX = d => Math.round((d - minD) / 86400000) * G2_DAY_PX;
+
+  // Заголовки: месяцы (верхний ряд) и недели (нижний ряд, дата понедельника)
+  const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  let monthsHtml = '';
+  let mCur = new Date(minD.getFullYear(), minD.getMonth(), 1);
+  while (mCur < maxD) {
+    const mEnd = new Date(mCur.getFullYear(), mCur.getMonth()+1, 1);
+    const from = Math.max(dayX(mCur), 0);
+    const to = Math.min(dayX(mEnd), totalPx);
+    if (to > from) monthsHtml += `<div class="g2-month" style="left:${from}px;width:${to-from}px;">${MONTHS_RU[mCur.getMonth()]} ${mCur.getFullYear()}</div>`;
+    mCur = mEnd;
+  }
+  let weeksHtml = '';
+  for (let w = new Date(minD); w < maxD; w = _g2AddDays(w, 7)) {
+    weeksHtml += `<div class="g2-week" style="left:${dayX(w)}px;width:${7*G2_DAY_PX}px;">${String(w.getDate()).padStart(2,'0')}.${String(w.getMonth()+1).padStart(2,'0')}</div>`;
+  }
+
+  const todayX = dayX(today) + Math.round(G2_DAY_PX/2);
+
+  const rowsHtml = rows.map(({t, start, end}) => {
+    const cls = _g2StatusClass(t);
+    const x = dayX(start);
+    const w = Math.max(dayX(end) - x + G2_DAY_PX, 10);
+    const resched = isRescheduled(t);
+    const origX = resched && parseRuDate(t.deadline) ? dayX(parseRuDate(t.deadline)) : null;
+    const tip = `${t.id}: ${t.title}\nОтветственный: ${t.assignee||'—'}\nСтатус: ${displayStatus(t)}${isOverdue(t)?` (просрочка ${overdueDays(t)} дн.)`:''}\nПериод: ${fmtRuDate(start)} — ${fmtRuDate(end)}\nСрок: ${t.deadline||'—'}${resched?`\nНовый срок: ${t.newDueDate}`:''}`;
+    return `
+      <div class="g2-row" onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))">
+        <div class="g2-left">
+          <div class="g2-task">
+            <div class="gantt-task-id">${escTxt(t.id)}</div>
+            <div class="gantt-task-title" title="${escAttr(t.title)}">${escTxt(t.title)}</div>
+          </div>
+          <div class="g2-assignee">${escTxt(t.assignee||'—')}</div>
+        </div>
+        <div class="g2-lane" style="width:${totalPx}px;">
+          ${origX !== null ? `<div class="g2-orig-due" style="left:${origX + Math.round(G2_DAY_PX/2) - 5}px;" title="Исходный срок: ${escAttr(t.deadline)}">◆</div>` : ''}
+          <div class="gantt-bar ${cls}" style="left:${x}px;width:${w}px;position:absolute;" title="${escAttr(tip)}">${w > 70 ? escTxt(t.id) : ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  scroll.innerHTML = `
+    <div class="g2-inner" style="width:${G2_LEFT_W + totalPx}px;">
+      <div class="g2-head">
+        <div class="g2-left g2-head-left"><div class="g2-task" style="font-weight:600;">Задача</div><div class="g2-assignee" style="font-weight:600;">Ответственный</div></div>
+        <div class="g2-timeline" style="width:${totalPx}px;">
+          <div class="g2-months">${monthsHtml}</div>
+          <div class="g2-weeks">${weeksHtml}</div>
+        </div>
+      </div>
+      <div class="g2-body" style="position:relative;">
+        <div class="g2-today" style="left:${G2_LEFT_W + todayX}px;"><div class="gantt-today-label">сегодня</div></div>
+        ${rowsHtml}
+      </div>
+    </div>`;
+
+  // Без дат — отдельным списком, не ломая диаграмму (по ТЗ)
+  const nd = document.getElementById('gantt2NoDates');
+  if (nd) nd.innerHTML = noDates.length ? `
+    <div style="font-size:12px;color:var(--text-tertiary);font-weight:600;margin-bottom:6px;">Без сроков (${noDates.length}) — не отображаются на шкале:</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">${noDates.map(t =>
+      `<span class="tag system" style="cursor:pointer;" onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))">${escTxt(t.id)} · ${escTxt(t.title)}</span>`).join('')}
+    </div>` : '';
+
+  // Автоскролл к сегодняшнему дню при первом открытии
+  if (!scroll._g2Scrolled) {
+    scroll.scrollLeft = Math.max(0, todayX - (scroll.clientWidth - G2_LEFT_W) / 3);
+    scroll._g2Scrolled = true;
+  }
 }
 
 // ═══════════════════════════════════════════════
-// ROADMAP
+// EXECUTIVE DASHBOARD — всё считается из TASKS, без
+// собственной базы (по ТЗ). Каждая карточка кликабельна.
 // ═══════════════════════════════════════════════
+let HEALTH_HISTORY = [];
 
-function renderRoadmap() {
-  const grid = document.getElementById('roadmapGrid');
-  if (!grid) return;
-  grid.innerHTML = ROADMAP_ITEMS.map(r => `
-    <div class="roadmap-item ${r.status}">
-      <div class="roadmap-quarter">${r.quarter}</div>
-      <div class="roadmap-body">
-        <div class="roadmap-title">${r.title}</div>
-        <div class="roadmap-meta">
-          <span>🏗 ${r.system}</span>
-          <span>👤 ${r.owner}</span>
-          <span>📅 ${r.deadline}</span>
-        </div>
+function _postHealthSnapshot(score){
+  if (window._healthPosted === score) return;
+  window._healthPosted = score;
+  fetch(API_BASE + '/health-snapshot', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ score })
+  }).catch(()=>{});
+}
+
+// Горизонтальные мини-бары для диаграмм (без сторонних библиотек)
+function _hbars(pairs, color){
+  const max = Math.max(...pairs.map(p => p[1]), 1);
+  return pairs.map(p => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="width:110px;font-size:11px;color:var(--text-secondary);text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(p[0])}">${escTxt(p[0])}</div>
+      <div style="flex:1;background:var(--surface-2);border-radius:5px;height:16px;position:relative;">
+        <div style="width:${Math.round(p[1]/max*100)}%;background:${p[2]||color};height:16px;border-radius:5px;min-width:2px;"></div>
       </div>
-      <div class="roadmap-progress-wrap">
-        <div class="roadmap-pct">${r.progress}%</div>
-        <div class="roadmap-progress-bar">
-          <div class="roadmap-progress-fill" style="width:${r.progress}%"></div>
-        </div>
+      <div style="width:28px;font-size:11px;font-weight:700;color:var(--text-primary);">${p[1]}</div>
+    </div>`).join('');
+}
+
+function _dashTaskRows(list, cols){
+  if (!list.length) return '<div style="padding:14px;text-align:center;color:var(--text-tertiary);font-size:12px;">Пусто — отличная новость 🎉</div>';
+  return `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <thead><tr>${cols.map(c=>`<th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text-tertiary);text-transform:uppercase;border-bottom:1px solid var(--border);">${c[0]}</th>`).join('')}</tr></thead>
+    <tbody>${list.map(t => `<tr style="cursor:pointer;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''" onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))">
+      ${cols.map(c=>`<td style="padding:7px 8px;border-bottom:1px solid var(--border);">${c[1](t)}</td>`).join('')}
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function renderDashboard(){
+  const root = document.getElementById('dashRoot');
+  if (!root) return;
+
+  const sub = document.getElementById('dashUpdatedSub');
+  if (sub) sub.textContent = 'Статус IT-процессов · Обновлено ' + fmtRuDate(new Date());
+
+  const all = TASKS;
+  const active = all.filter(t => !isTaskDone(t));
+  const done = all.filter(t => t.status === 'Выполнено');
+  const overdue = active.filter(isOverdue).sort((a,b) => overdueDays(b) - overdueDays(a));
+  const resched = all.filter(isRescheduled);
+  const reschedActive = resched.filter(t => !isTaskDone(t));
+  const F = SPECIAL_FILTERS;
+  const noTz = all.filter(F.notz.fn), noMetric = all.filter(F.nometric.fn),
+        noEffect = all.filter(F.noeffect.fn), noOwner = all.filter(F.noowner.fn),
+        blocked = all.filter(F.blocked.fn), highRisk = all.filter(F.highrisk.fn);
+  const critRisk = highRisk.filter(t => isOverdue(t) || String(t.blockers||'Нет') !== 'Нет');
+  const inWork = all.filter(t => t.status === 'В процессе' || t.status === 'На доработке');
+  const paused = all.filter(t => t.status === 'На паузе');
+  const dependents = id => all.filter(t => String(t.deps||'').includes(id));
+
+  // ── IT Health Score ──
+  // Формула (веса можно менять): 100 минус нормированные штрафы по доле
+  // проблемных задач среди активных: просрочка ×35, высокий риск ×20,
+  // блокеры ×15, нет ТЗ ×10, нет метрики ×10, перенос срока ×10.
+  const n = Math.max(active.length, 1);
+  const penalty = 35*(overdue.length/n) + 20*(highRisk.length/n) + 15*(blocked.length/n)
+                + 10*(noTz.length/n) + 10*(noMetric.length/n) + 10*(reschedActive.length/n);
+  const score = Math.max(5, Math.round(100 - penalty));
+  _postHealthSnapshot(score);
+  let trendHtml = '→ нет данных за прошлую неделю';
+  const weekAgoISO = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
+  const past = (HEALTH_HISTORY||[]).filter(h => h.date <= weekAgoISO);
+  if (past.length){
+    const d = score - past[past.length-1].score;
+    trendHtml = d > 0 ? `↑ <strong>+${d}</strong> к прошлой неделе` : d < 0 ? `↓ <strong>${d}</strong> к прошлой неделе` : '→ без изменений за неделю';
+  }
+  const scoreColor = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+  // ── Главный риск недели ──
+  const riskScore = t => overdueDays(t)*2 + (t.risk==='high'?20:t.risk==='med'?8:0)
+    + dependents(t.id).length*10 + (String(t.blockers||'Нет')!=='Нет'?12:0) + (t.tz!=='✅ Есть'?5:0);
+  const mainRisk = [...active].sort((a,b) => riskScore(b) - riskScore(a))[0];
+  const mainRiskWhy = t => {
+    if (!t) return '';
+    const parts = [];
+    if (isOverdue(t)) parts.push(`просрочка ${overdueDays(t)} дн.`);
+    if (String(t.blockers||'Нет') !== 'Нет') parts.push('блокер: ' + t.blockers);
+    const dep = dependents(t.id).length;
+    if (dep) parts.push(`блокирует ${dep} задач(и)`);
+    if (t.risk === 'high') parts.push('высокий риск');
+    if (t.tz !== '✅ Есть') parts.push('нет ТЗ');
+    return parts.join(' · ') || 'наивысший суммарный риск';
+  };
+
+  // ── Bottleneck ──
+  const byAssignee = {};
+  active.forEach(t => { const a = t.assignee || 'Без владельца'; byAssignee[a] = (byAssignee[a]||0)+1; });
+  const bn = Object.entries(byAssignee).sort((a,b) => b[1]-a[1])[0] || ['—', 0];
+  const bnOverloaded = bn[1] >= 5;
+
+  // ── Рекомендованное действие ──
+  let recTitle, recDesc;
+  if (overdue.length)      { recTitle = `Закрыть просрочку: ${overdue.length} задач`; recDesc = 'Наибольшая: ' + overdue[0].id + ' · ' + overdue[0].title + ` (+${overdueDays(overdue[0])} дн.)`; }
+  else if (noOwner.length) { recTitle = 'Назначить владельца'; recDesc = noOwner.slice(0,3).map(t=>t.id).join(', ') + ' без ответственного'; }
+  else if (noTz.length)    { recTitle = `Согласовать ТЗ: ${noTz.length} задач`; recDesc = noTz.slice(0,3).map(t=>t.id).join(', '); }
+  else if (noMetric.length){ recTitle = `Указать метрики: ${noMetric.length} задач`; recDesc = 'Без метрики эффект внедрения не измерить'; }
+  else                     { recTitle = 'Процессы в норме'; recDesc = 'Критичных управленческих действий не требуется'; }
+
+  // ── AI Insights (rule-based из данных) ──
+  const insights = [];
+  if (overdue.length) insights.push({icon:'⏰', cls:'danger', text:`${overdue.length} задач просрочено`, sub:overdue.slice(0,5).map(t=>t.id).join(', '), click:`applySpecialFilter('overdue')`});
+  if (noTz.length) insights.push({icon:'📄', cls:'danger', text:`${noTz.length} задач без ТЗ`, sub:'Риск разного понимания результата', click:`applySpecialFilter('notz')`});
+  if (noMetric.length) insights.push({icon:'📊', cls:'warning', text:`${noMetric.length} задач без метрики`, sub:'Невозможно измерить эффект внедрения', click:`applySpecialFilter('nometric')`});
+  if (bnOverloaded) insights.push({icon:'🔥', cls:'warning', text:`${bn[0]} — перегруз`, sub:`${bn[1]} активных задач, рекомендуется перераспределить`, click:`applySpecialFilter('')`});
+  const topBlocker = [...active].filter(t => dependents(t.id).length).sort((a,b)=>dependents(b.id).length-dependents(a.id).length)[0];
+  if (topBlocker) insights.push({icon:'⛔', cls:'danger', text:`${topBlocker.id} блокирует ${dependents(topBlocker.id).length} задач(и)`, sub:topBlocker.title, click:`openPanel(TASKS.find(x=>x.id==='${escAttr(topBlocker.id)}'))`});
+  if (reschedActive.length) insights.push({icon:'🟣', cls:'warning', text:`${reschedActive.length} задач с переносом срока`, sub:'Средний перенос: ' + Math.round(resched.map(rescheduleDays).reduce((a,b)=>a+b,0)/Math.max(resched.length,1)) + ' дн.', click:`applySpecialFilter('rescheduled')`});
+  if (noOwner.length) insights.push({icon:'👤', cls:'danger', text:`${noOwner.length} задач без владельца`, sub:noOwner.slice(0,4).map(t=>t.id).join(', '), click:`applySpecialFilter('noowner')`});
+  insights.push({icon:'💡', cls:'recommendation', text:'Рекомендация', sub:recTitle + '. ' + recDesc, click:`applySpecialFilter('overdue')`});
+
+  // ── Метрики ──
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const cycle = [], lead = [];
+  done.forEach(t => {
+    const c = completionDate(t);
+    const s0 = taskStartDate(t);
+    const cr = parseRuDate(t.createdAt);
+    if (c && s0 && c >= s0) cycle.push((c - s0)/86400000);
+    if (c && cr && c >= cr) lead.push((c - cr)/86400000);
+  });
+  const inTime = done.filter(t => { const c = completionDate(t), d = actualDueDate(t); return !(c && d && c > d); });
+  const avgShift = avg(resched.map(rescheduleDays));
+  const maxDelay = overdue.length ? Math.max(...overdue.map(overdueDays)) : 0;
+  const commentsTotal = all.reduce((a,t) => a + ((t.comments||[]).length), 0);
+  const historyTotal = all.reduce((a,t) => a + ((t.history||[]).length), 0);
+
+  // ── Ближайшие дедлайны ──
+  const daysTo = t => { const d = actualDueDate(t); return d ? Math.round((d - _today0())/86400000) : null; };
+  const upcoming = active.map(t => [t, daysTo(t)]).filter(([,d]) => d !== null && d >= 0 && d <= 7).sort((a,b) => a[1]-b[1]);
+  const bucketName = d => d === 0 ? 'Сегодня' : d === 1 ? 'Завтра' : d <= 3 ? 'Через ' + d + ' дня' : 'На неделе';
+
+  // ── Последние изменения (история + комментарии) ──
+  const changes = [];
+  const nowY = new Date().getFullYear();
+  all.forEach(t => {
+    (t.history||[]).forEach(h => {
+      const m = String(h).match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?:\s*(.*)/);
+      if (!m) return;
+      let d = new Date(m[3] ? +m[3] : nowY, +m[2]-1, +m[1]);
+      if (d > _g2AddDays(new Date(), 30)) d = new Date(d.getFullYear()-1, d.getMonth(), d.getDate());
+      changes.push({ d, text: `${t.id}: ${m[4]}`, tid: t.id });
+    });
+    (t.comments||[]).forEach(c => {
+      const d = new Date(c.ts);
+      if (!isNaN(d)) changes.push({ d, text: `${t.id}: 💬 ${String(c.text).slice(0,80)}`, tid: t.id });
+    });
+  });
+  changes.sort((a,b) => b.d - a.d);
+
+  // ── Финансовый эффект / лучшие результаты ──
+  const fxDone = done.filter(t => String(t.effect||'').trim());
+  const fxWork = inWork.filter(t => String(t.effect||'').trim());
+  const fxPlan = active.filter(t => String(t.effect||'').trim() && !fxWork.includes(t));
+  const fxChip = (t, color) => `<span onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))" style="cursor:pointer;flex-shrink:0;background:${color}12;border:1px solid ${color}44;color:${color};font-size:12px;font-weight:600;padding:6px 12px;border-radius:10px;" title="${escAttr(t.id + ': ' + t.title)}">${escTxt(t.effect)}</span>`;
+
+  const lastDone = [...done].map(t => [t, completionDate(t)]).filter(([,d])=>d).sort((a,b) => b[1]-a[1]).slice(0,5);
+
+  // ── Диаграммы ──
+  const cnt = (arr, key) => { const m = {}; arr.forEach(t => { const k = key(t) || '—'; m[k] = (m[k]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
+  const stColors = {'Выполнено':'#16a34a','В процессе':'var(--accent)','Просрочено':'var(--red)','Не начато':'#94a3b8','На паузе':'var(--yellow)','Проблемы':'var(--red)','На доработке':'var(--purple)','Неактуально':'#cbd5e1'};
+  const statusPairs = cnt(all, displayStatus).map(p => [p[0], p[1], stColors[p[0]] || 'var(--accent)']);
+  const systemPairs = cnt(all, t => t.system);
+  const loadPairs = cnt(active, t => t.assignee || 'Без владельца');
+  const shiftPairs = resched.map(t => [t.id, Math.abs(rescheduleDays(t))]).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const riskPairs = [['Высокий', highRisk.length, 'var(--red)'], ['Средний', active.filter(t=>t.risk==='med').length, 'var(--yellow)'], ['Низкий', active.filter(t=>t.risk==='low').length, 'var(--green)']];
+  // Динамика закрытия по неделям (последние 8)
+  const weekLabel = d => { const m0 = _g2Monday(d); return String(m0.getDate()).padStart(2,'0')+'.'+String(m0.getMonth()+1).padStart(2,'0'); };
+  const closures = {};
+  done.forEach(t => { const c = completionDate(t); if (c) closures[weekLabel(c)] = (closures[weekLabel(c)]||0)+1; });
+  const weekPairs = [];
+  for (let i = 7; i >= 0; i--) {
+    const wl = weekLabel(_g2AddDays(new Date(), -7*i));
+    weekPairs.push(['нед. ' + wl, closures[wl] || 0]);
+  }
+
+  const kpi = [
+    ['Всего задач', all.length, '', 'var(--accent)'],
+    ['В работе', inWork.length, '', 'var(--accent)'],
+    ['Выполнено', done.length, '', 'var(--green)'],
+    ['На паузе', paused.length, '', 'var(--yellow)'],
+    ['Просрочено', overdue.length, 'overdue', 'var(--red)'],
+    ['Заблокировано', blocked.length, 'blocked', 'var(--red)'],
+    ['С новым сроком', resched.length, 'rescheduled', 'var(--purple)'],
+    ['Без ТЗ', noTz.length, 'notz', 'var(--yellow)'],
+    ['Без метрик', noMetric.length, 'nometric', 'var(--yellow)'],
+    ['Без эффекта', noEffect.length, 'noeffect', 'var(--yellow)'],
+    ['Высокий риск', highRisk.length, 'highrisk', 'var(--red)'],
+    ['Критический риск', critRisk.length, 'highrisk', 'var(--red)'],
+  ];
+
+  root.innerHTML = `
+    <div class="exec-grid">
+      <div class="exec-main">
+        <div class="health-label">IT Health Score</div>
+        <div class="health-score">${score}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:4px;">из 100 баллов</div>
+        <div class="health-bar"><div class="health-fill" style="width:${score}%;background:${scoreColor};"></div></div>
+        <div class="health-trend" style="margin-top:14px;">${trendHtml} · ${active.length} активных задач</div>
+      </div>
+      <div class="exec-card risk" ${mainRisk?`onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(mainRisk.id)}'))" style="cursor:pointer;"`:''}>
+        <div class="exec-card-label">Главный риск недели</div>
+        <div class="exec-card-value" style="font-size:17px;line-height:1.35;">${mainRisk ? escTxt(mainRisk.title) : 'Рисков нет'}</div>
+        <div class="exec-card-desc">${mainRisk ? `${escTxt(mainRisk.id)} · 👤 ${escTxt(mainRisk.assignee||'—')} · риск: ${mainRisk.risk==='high'?'высокий':mainRisk.risk==='med'?'средний':'низкий'}<br>${escTxt(mainRiskWhy(mainRisk))}` : 'Все задачи под контролем'}</div>
+      </div>
+      <div class="exec-card warn" onclick="applySpecialFilter('overdue')" style="cursor:pointer;">
+        <div class="exec-card-label">Задачи под угрозой</div>
+        <div class="exec-card-value">${new Set([...overdue,...noOwner,...noTz,...noMetric,...noEffect].map(t=>t.id)).size}</div>
+        <div class="exec-card-desc">${overdue.length} просрочено · ${noOwner.length} без владельца · ${noTz.length} без ТЗ · ${noMetric.length} без метрик · ${noEffect.length} без эффекта</div>
       </div>
     </div>
-  `).join('');
+
+    <div class="exec-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px;">
+      <div class="exec-card info">
+        <div class="exec-card-label">Bottleneck</div>
+        <div class="exec-card-value" style="font-size:16px;">${bnOverloaded ? escTxt(bn[0]) + ' — перегруз' : 'Нагрузка сбалансирована'}</div>
+        <div class="exec-card-desc">${bnOverloaded ? `${bn[1]} активных задач одновременно. Рекомендуется перераспределение.` : `Максимум у ${escTxt(bn[0])}: ${bn[1]} задач(и) — в пределах нормы.`}</div>
+      </div>
+      <div class="exec-card" style="border-left:3px solid var(--green);">
+        <div class="exec-card-label">Рекомендованное действие</div>
+        <div class="exec-card-value" style="font-size:14px;line-height:1.4;">${escTxt(recTitle)}</div>
+        <div class="exec-card-desc">${escTxt(recDesc)}</div>
+      </div>
+    </div>
+
+    <div class="ai-block">
+      <div class="ai-header">
+        <div class="ai-badge"><div class="ai-pulse"></div> AI Insights</div>
+        <span style="font-size:13px;color:var(--text-secondary);">Автоматический анализ состояния задач</span>
+      </div>
+      <div class="ai-insights-grid">
+        ${insights.map(i => `
+          <div class="ai-insight ${i.cls}" onclick="${i.click}" style="cursor:pointer;">
+            <div class="ai-insight-icon">${i.icon}</div>
+            <div class="ai-insight-text">${i.text}</div>
+            <div class="ai-insight-sub">${i.sub}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="section-header"><div class="section-title">Показатели</div></div>
+    <div class="metrics-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));">
+      ${kpi.map(([label, num, filt, color]) => `
+        <div class="metric-card" onclick="${filt !== '' ? `applySpecialFilter('${filt}')` : `applySpecialFilter('')`}" style="cursor:pointer;">
+          <div class="metric-number" style="color:${num > 0 && (color==='var(--red)') ? color : 'var(--text-primary)'};">${num}</div>
+          <div class="metric-label">${label}</div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="dash-two">
+      <div class="chart-card" style="overflow-x:auto;">
+        <div class="chart-title" style="color:var(--red);">🔴 Просроченные задачи (${overdue.length})</div>
+        <div class="chart-subtitle">Актуальный срок прошёл, статус не завершён</div>
+        ${_dashTaskRows(overdue, [
+          ['Задача', t => `<b>${escTxt(t.id)}</b> ${escTxt(t.title)}`],
+          ['Отв.', t => escTxt(t.assignee||'—')],
+          ['Срок', t => escTxt(t.deadline||'—')],
+          ['Новый', t => escTxt(t.newDueDate||'—')],
+          ['Дней', t => `<b style="color:var(--red);">+${overdueDays(t)}</b>`],
+          ['Статус', t => escTxt(t.status)],
+          ['Риск', t => t.risk==='high'?'🔴':t.risk==='med'?'🟡':'🟢'],
+        ])}
+      </div>
+      <div class="chart-card" style="overflow-x:auto;">
+        <div class="chart-title" style="color:var(--purple);">🟣 С изменённым сроком (${resched.length})</div>
+        <div class="chart-subtitle">Исходный дедлайн сохранён, работает новый</div>
+        ${_dashTaskRows(resched, [
+          ['Задача', t => `<b>${escTxt(t.id)}</b> ${escTxt(t.title)}`],
+          ['Отв.', t => escTxt(t.assignee||'—')],
+          ['Было', t => `<s style="color:var(--text-tertiary);">${escTxt(t.deadline||'—')}</s>`],
+          ['Стало', t => `<b style="color:var(--purple);">${escTxt(t.newDueDate)}</b>`],
+          ['Сдвиг', t => `+${rescheduleDays(t)} дн.`],
+          ['Статус', t => escTxt(displayStatus(t))],
+          ['Риск', t => t.risk==='high'?'🔴':t.risk==='med'?'🟡':'🟢'],
+        ])}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="dash-two">
+      <div class="chart-card">
+        <div class="chart-title">📅 Ближайшие дедлайны</div>
+        <div class="chart-subtitle">Сегодня · завтра · 3 дня · неделя</div>
+        ${upcoming.length ? upcoming.map(([t,d]) => `
+          <div onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px;">
+            <span style="flex-shrink:0;background:${d<=1?'var(--red-bg)':'var(--surface-2)'};color:${d<=1?'var(--red)':'var(--text-secondary)'};font-weight:700;font-size:11px;padding:3px 8px;border-radius:8px;">${bucketName(d)}</span>
+            <span style="flex:1;"><b>${escTxt(t.id)}</b> ${escTxt(t.title)}</span>
+            <span style="color:var(--text-tertiary);">${escTxt(t.assignee||'—')}</span>
+          </div>`).join('') : '<div style="padding:14px;color:var(--text-tertiary);font-size:12px;">На ближайшую неделю дедлайнов нет</div>'}
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🕓 Последние изменения</div>
+        <div class="chart-subtitle">Новые задачи, комментарии, переносы, статусы</div>
+        ${changes.slice(0,8).map(c => `
+          <div onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(c.tid)}'))" style="display:flex;gap:10px;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12px;">
+            <span style="color:var(--text-tertiary);flex-shrink:0;">${fmtRuDate(c.d).slice(0,5)}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escTxt(c.text)}</span>
+          </div>`).join('') || '<div style="padding:14px;color:var(--text-tertiary);font-size:12px;">Изменений пока нет</div>'}
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:20px;">
+      <div class="chart-title">🏆 Лучшие результаты внедрений</div>
+      <div class="chart-subtitle">Эффекты завершённых задач — клик открывает проект</div>
+      <div style="display:flex;gap:10px;overflow-x:auto;padding:8px 0;">
+        ${fxDone.length ? fxDone.map(t => fxChip(t, '#16a34a')).join('') : '<span style="color:var(--text-tertiary);font-size:12px;">Завершённых внедрений с эффектом пока нет</span>'}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;" class="dash-two">
+      <div class="chart-card">
+        <div class="chart-title">💰 Финансовый эффект (из поля «Эффект»)</div>
+        <div class="chart-subtitle">Реализовано ${fxDone.length} · В процессе ${fxWork.length} · Потенциал ${fxPlan.length}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--green);margin:8px 0 4px;">✅ Уже реализовано</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${fxDone.map(t=>fxChip(t,'#16a34a')).join('') || '<span style="font-size:11px;color:var(--text-tertiary);">—</span>'}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin:10px 0 4px;">🔵 В процессе</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${fxWork.map(t=>fxChip(t,'#1a56db')).join('') || '<span style="font-size:11px;color:var(--text-tertiary);">—</span>'}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-tertiary);margin:10px 0 4px;">⏳ Потенциал</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${fxPlan.map(t=>fxChip(t,'#64748b')).join('') || '<span style="font-size:11px;color:var(--text-tertiary);">—</span>'}</div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">✅ Последние завершённые внедрения</div>
+        <div class="chart-subtitle">Название · дата · ответственный · эффект</div>
+        ${lastDone.length ? lastDone.map(([t,d]) => `
+          <div onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(t.id)}'))" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px;">
+            <span style="flex:1;"><b>${escTxt(t.id)}</b> ${escTxt(t.title)}</span>
+            <span style="color:var(--text-tertiary);flex-shrink:0;">${fmtRuDate(d)}</span>
+            <span style="color:var(--text-secondary);flex-shrink:0;">${escTxt(t.assignee||'—')}</span>
+            <span style="color:var(--green);font-weight:600;flex-shrink:0;">${escTxt(t.effect||'')}</span>
+          </div>`).join('') : '<div style="padding:14px;color:var(--text-tertiary);font-size:12px;">Завершённых пока нет</div>'}
+      </div>
+    </div>
+
+    <div class="section-header"><div class="section-title">Диаграммы</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:20px;">
+      <div class="chart-card"><div class="chart-title">Задачи по статусам</div><div style="margin-top:10px;">${_hbars(statusPairs, 'var(--accent)')}</div></div>
+      <div class="chart-card"><div class="chart-title">Задачи по системам</div><div style="margin-top:10px;">${_hbars(systemPairs, 'var(--accent)')}</div></div>
+      <div class="chart-card"><div class="chart-title">Нагрузка сотрудников</div><div style="margin-top:10px;">${_hbars(loadPairs, '#1a56db')}</div></div>
+      <div class="chart-card"><div class="chart-title">Динамика закрытия задач</div><div class="chart-subtitle">Выполнено за неделю, последние 8 недель</div><div style="margin-top:10px;">${_hbars(weekPairs, 'var(--green)')}</div></div>
+      <div class="chart-card"><div class="chart-title">Переносы сроков</div><div class="chart-subtitle">Дней сдвига на задачу</div><div style="margin-top:10px;">${shiftPairs.length ? _hbars(shiftPairs, 'var(--purple)') : '<div style="color:var(--text-tertiary);font-size:12px;">Переносов нет</div>'}</div></div>
+      <div class="chart-card"><div class="chart-title">Риски (активные задачи)</div><div style="margin-top:10px;">${_hbars(riskPairs, 'var(--red)')}</div></div>
+    </div>
+
+    <div class="section-header"><div class="section-title">Метрики</div></div>
+    <div class="metrics-grid">
+      <div class="metric-card" onclick="applySpecialFilter('')"><div class="metric-number">${all.length}</div><div class="metric-label">Всего задач</div></div>
+      <div class="metric-card"><div class="metric-number">${done.length ? Math.round(inTime.length/done.length*100) : 0}%</div><div class="metric-label">Выполнено в срок</div></div>
+      <div class="metric-card"><div class="metric-number">${avg(cycle) !== null ? avg(cycle).toFixed(1) : '—'}</div><div class="metric-label">Средний цикл, дни</div></div>
+      <div class="metric-card"><div class="metric-number">${avg(lead) !== null ? avg(lead).toFixed(1) : '—'}</div><div class="metric-label">Lead Time, дни</div></div>
+      <div class="metric-card" onclick="applySpecialFilter('rescheduled')"><div class="metric-number" style="color:var(--purple);">${avgShift !== null ? '+' + Math.round(avgShift) : '—'}</div><div class="metric-label">Средний перенос, дни</div></div>
+      <div class="metric-card" onclick="applySpecialFilter('overdue')"><div class="metric-number" style="color:${maxDelay?'var(--red)':'var(--text-primary)'};">${maxDelay}</div><div class="metric-label">Макс. просрочка, дни</div></div>
+      <div class="metric-card"><div class="metric-number">${commentsTotal}</div><div class="metric-label">Комментариев</div></div>
+      <div class="metric-card"><div class="metric-number">${historyTotal}</div><div class="metric-label">Изменений</div></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// ROADMAP v2 — интерактивная карта развития IT.
+// Строится ИЗ TASKS (единый источник, без ROADMAP_ITEMS):
+// системы = узлы слева, проекты = точки на оси времени,
+// связи системы→проекты и зависимости — кривые Безье.
+// ═══════════════════════════════════════════════
+const RM_SYS_ICONS = { 'Bitrix24':'💼','AI':'🤖','ATS':'🗂️','Аналитика':'📊','Телефония':'☎️','Документооборот':'📄','Автоматизация':'⚙️','Хранилища':'💾','Бот':'🎙️','1C':'🧾' };
+const RM_SYS_COLORS = ['#1a56db','#7c3aed','#0e9f6e','#d97706','#dc2626','#0891b2','#be185d','#4d7c0f','#6d28d9','#b45309'];
+const RM_STATUS_COLORS = { done:'#16a34a', inprogress:'#1a56db', planned:'#94a3b8', paused:'#d97706', overdue:'#dc2626', rescheduled:'#7c3aed' };
+
+window._rm = window._rm || { pan:{x:0,y:0}, zoom:1, sel:null, collapsed:{}, inited:false };
+
+function _rmStatus(t){
+  if (isOverdue(t)) return 'overdue';
+  if (isRescheduled(t) && !isTaskDone(t)) return 'rescheduled';
+  if (t.status === 'Выполнено') return 'done';
+  if (t.status === 'В процессе' || t.status === 'На доработке') return 'inprogress';
+  if (t.status === 'На паузе' || t.status === 'Проблемы') return 'paused';
+  return 'planned';
+}
+function _rmProgress(t){
+  if (t.status === 'Выполнено') return 100;
+  if (t.status === 'В процессе' || t.status === 'На доработке') return 50;
+  if (t.status === 'На паузе') return 30;
+  return 0;
+}
+function _rmQuarter(d){ return d ? 'Q' + (Math.floor(d.getMonth()/3)+1) + ' ' + d.getFullYear() : ''; }
+
+function _rmFillFilters(projects){
+  const fill = (id, values, cur) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const first = sel.querySelector('option');
+    sel.innerHTML = '';
+    sel.appendChild(first);
+    [...new Set(values)].sort().forEach(v => {
+      const o = document.createElement('option'); o.value = v; o.textContent = v;
+      if (v === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+  };
+  fill('rmFilterSystem', projects.map(p => p.system), document.getElementById('rmFilterSystem')?.value);
+  fill('rmFilterAssignee', projects.map(p => p.t.assignee).filter(Boolean), document.getElementById('rmFilterAssignee')?.value);
+  fill('rmFilterQuarter', projects.map(p => _rmQuarter(p.end)).filter(Boolean), document.getElementById('rmFilterQuarter')?.value);
+}
+
+function renderRoadmap(resetView){
+  const canvas = document.getElementById('rmCanvas');
+  if (!canvas) return;
+
+  // ── Проекты из задач ──
+  const noDates = [];
+  const projects = [];
+  TASKS.forEach(t => {
+    const due = actualDueDate(t);
+    let start = taskStartDate(t);
+    if (!start && due) start = _g2AddDays(due, -14);
+    const end = due || (start ? _g2AddDays(start, 14) : null);
+    if (!start || !end) { noDates.push(t); return; }
+    projects.push({ t, id: t.id, system: t.system || 'Прочее', start, end: end >= start ? end : start, status: _rmStatus(t) });
+  });
+
+  _rmFillFilters(projects);
+
+  // ── KPI ──
+  const kpiEl = document.getElementById('rmKpi');
+  if (kpiEl) {
+    const systems = [...new Set(projects.map(p => p.system))];
+    const c = st => projects.filter(p => p.status === st).length;
+    const kpis = [
+      ['Всего систем', systems.length, ''],
+      ['Всего проектов', projects.length, ''],
+      ['Запланировано', c('planned'), 'planned'],
+      ['В работе', c('inprogress'), 'inprogress'],
+      ['Завершено', c('done'), 'done'],
+      ['Просрочено', c('overdue'), 'overdue'],
+      ['Перенесён срок', projects.filter(p => isRescheduled(p.t)).length, 'rescheduled'],
+    ];
+    kpiEl.innerHTML = kpis.map(([label, num, filt]) => `
+      <div class="metric-card" style="cursor:pointer;" onclick="const s=document.getElementById('rmFilterStatus'); if(s){s.value='${filt}'; renderRoadmap();}">
+        <div class="metric-number" style="color:${filt==='overdue'&&num?'var(--red)':filt==='rescheduled'&&num?'var(--purple)':'var(--text-primary)'};">${num}</div>
+        <div class="metric-label">${label}</div>
+      </div>`).join('');
+  }
+
+  // ── Фильтры/поиск: непрошедшие проекты не скрываем, а приглушаем ──
+  const q = (document.getElementById('rmSearch')?.value || '').toLowerCase().trim();
+  const fSys = document.getElementById('rmFilterSystem')?.value || '';
+  const fAss = document.getElementById('rmFilterAssignee')?.value || '';
+  const fSt  = document.getElementById('rmFilterStatus')?.value || '';
+  const fRisk = document.getElementById('rmFilterRisk')?.value || '';
+  const fQ   = document.getElementById('rmFilterQuarter')?.value || '';
+  const passes = p =>
+    (!q || p.t.title.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)) &&
+    (!fSys || p.system === fSys) &&
+    (!fAss || p.t.assignee === fAss) &&
+    (!fSt || (fSt === 'rescheduled' ? isRescheduled(p.t) : p.status === fSt)) &&
+    (!fRisk || p.t.risk === fRisk) &&
+    (!fQ || _rmQuarter(p.end) === fQ);
+  const anyFilter = !!(q || fSys || fAss || fSt || fRisk || fQ);
+
+  if (!projects.length) {
+    canvas.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-tertiary);">Нет задач с датами для карты. Заполни сроки в задачах.</div>';
+    return;
+  }
+
+  // ── Масштаб ──
+  const scale = document.getElementById('rmScale')?.value || 'month';
+  const PX_PER_DAY = { week: 12, month: 4.5, quarter: 1.8, year: 0.7, multi: 0.3 }[scale] || 4.5;
+
+  const today = _today0();
+  let minD = new Date(Math.min(...projects.map(p => +p.start), +today));
+  let maxD = new Date(Math.max(...projects.map(p => +p.end), +today));
+  minD = _g2AddDays(_g2Monday(minD), -14);
+  maxD = _g2AddDays(maxD, 30);
+
+  const NODE_ZONE = 200;                       // зона узлов систем слева
+  const dayX = d => NODE_ZONE + Math.round((d - minD) / 86400000 * PX_PER_DAY);
+  const W = dayX(maxD) + 100;
+
+  // ── Раскладка: системы чередуются над/под центральной осью ──
+  const bySystem = {};
+  projects.forEach(p => { (bySystem[p.system] = bySystem[p.system] || []).push(p); });
+  const sysNames = Object.keys(bySystem).sort((a,b) => bySystem[b].length - bySystem[a].length);
+  const LANE_H = 92;
+  const laneOffsets = sysNames.map((_, i) => { const k = Math.floor(i/2) + 1; return (i % 2 === 0 ? -1 : 1) * k; });
+  const maxK = Math.max(...laneOffsets.map(Math.abs), 1);
+  const centerY = maxK * LANE_H + 80;
+  const H = centerY * 2;
+
+  const sysMeta = {};
+  sysNames.forEach((name, i) => {
+    sysMeta[name] = {
+      color: RM_SYS_COLORS[i % RM_SYS_COLORS.length],
+      icon: RM_SYS_ICONS[name] || '🧩',
+      y: centerY + laneOffsets[i] * LANE_H,
+      collapsed: !!window._rm.collapsed[name],
+    };
+    bySystem[name].sort((a,b) => a.end - b.end);
+    bySystem[name].forEach((p, j) => {
+      p.x = dayX(p.end);
+      p.y = sysMeta[name].y + (j % 2 ? 16 : -16) * (laneOffsets[i] < 0 ? 1 : -1) * 0.6;
+      p.color = RM_STATUS_COLORS[p.status];
+      p.dim = (anyFilter && !passes(p)) || (window._rm.sel && p.system !== window._rm.sel) || sysMeta[name].collapsed;
+    });
+  });
+
+  // ── Ось времени: подписи по масштабу ──
+  const MONTHS_RU_S = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  let ticks = '';
+  if (scale === 'week') {
+    for (let d = _g2Monday(minD); d < maxD; d = _g2AddDays(d, 7))
+      ticks += `<line x1="${dayX(d)}" y1="${centerY-6}" x2="${dayX(d)}" y2="${centerY+6}" stroke="var(--border)" stroke-width="1"/><text x="${dayX(d)+3}" y="${centerY+20}" class="rm-tick">${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}</text>`;
+  } else if (scale === 'year' || scale === 'multi') {
+    for (let y = minD.getFullYear(); y <= maxD.getFullYear(); y++) {
+      const d = new Date(y, 0, 1);
+      if (d >= minD && d <= maxD) ticks += `<line x1="${dayX(d)}" y1="${centerY-8}" x2="${dayX(d)}" y2="${centerY+8}" stroke="var(--text-tertiary)" stroke-width="1.5"/><text x="${dayX(d)+5}" y="${centerY+22}" class="rm-tick" style="font-weight:700;">${y}</text>`;
+    }
+    for (let d = new Date(minD.getFullYear(), Math.floor(minD.getMonth()/3)*3, 1); d < maxD; d = new Date(d.getFullYear(), d.getMonth()+3, 1))
+      if (d >= minD) ticks += `<line x1="${dayX(d)}" y1="${centerY-4}" x2="${dayX(d)}" y2="${centerY+4}" stroke="var(--border)" stroke-width="1"/><text x="${dayX(d)+3}" y="${centerY-10}" class="rm-tick">Q${Math.floor(d.getMonth()/3)+1}</text>`;
+  } else if (scale === 'quarter') {
+    for (let d = new Date(minD.getFullYear(), Math.floor(minD.getMonth()/3)*3, 1); d < maxD; d = new Date(d.getFullYear(), d.getMonth()+3, 1))
+      if (d >= minD) ticks += `<line x1="${dayX(d)}" y1="${centerY-6}" x2="${dayX(d)}" y2="${centerY+6}" stroke="var(--border)" stroke-width="1"/><text x="${dayX(d)+4}" y="${centerY+20}" class="rm-tick">Q${Math.floor(d.getMonth()/3)+1} ${d.getFullYear()}</text>`;
+  } else {
+    for (let d = new Date(minD.getFullYear(), minD.getMonth(), 1); d < maxD; d = new Date(d.getFullYear(), d.getMonth()+1, 1))
+      if (d >= minD) ticks += `<line x1="${dayX(d)}" y1="${centerY-6}" x2="${dayX(d)}" y2="${centerY+6}" stroke="var(--border)" stroke-width="1"/><text x="${dayX(d)+4}" y="${centerY+20}" class="rm-tick">${MONTHS_RU_S[d.getMonth()]} ${String(d.getFullYear()).slice(2)}</text>`;
+  }
+
+  // ── Кривые: система → проекты цепочкой (как в Obsidian-примере из ТЗ) ──
+  const bez = (x1,y1,x2,y2) => `M ${x1} ${y1} C ${x1 + (x2-x1)*0.5} ${y1}, ${x1 + (x2-x1)*0.5} ${y2}, ${x2} ${y2}`;
+  let curves = '', depLines = '', dots = '', nodes = '';
+  const projById = {};
+  projects.forEach(p => projById[p.id] = p);
+
+  sysNames.forEach(name => {
+    const m = sysMeta[name];
+    const list = bySystem[name];
+    const nodeX = 70, nodeY = m.y;
+    const dimSys = window._rm.sel && name !== window._rm.sel;
+
+    // узел системы
+    nodes += `
+      <g class="rm-node ${dimSys ? 'rm-dim' : ''}" onclick="rmToggleSystem('${escAttr(name)}', event)">
+        <circle cx="${nodeX}" cy="${nodeY}" r="27" fill="${m.color}18" stroke="${m.color}" stroke-width="2.5"/>
+        <text x="${nodeX}" y="${nodeY+6}" text-anchor="middle" style="font-size:20px;">${m.icon}</text>
+        <text x="${nodeX}" y="${nodeY-36}" text-anchor="middle" class="rm-sys-label" fill="${m.color}">${escTxt(name)}</text>
+        <g onclick="rmToggleCollapse('${escAttr(name)}', event)" style="cursor:pointer;">
+          <circle cx="${nodeX+22}" cy="${nodeY-20}" r="10" fill="${m.color}"/>
+          <text x="${nodeX+22}" y="${nodeY-16.5}" text-anchor="middle" style="font-size:10px;fill:#fff;font-weight:700;">${m.collapsed ? '+' : list.length}</text>
+        </g>
+      </g>`;
+
+    if (m.collapsed) return;
+
+    // цепочка: узел → первый проект → второй → ...
+    let px = nodeX + 27, py = nodeY;
+    list.forEach(p => {
+      curves += `<path class="rm-curve ${p.dim ? 'rm-dim' : ''}" d="${bez(px, py, p.x - 9, p.y)}" stroke="${m.color}" />`;
+      px = p.x + 9; py = p.y;
+    });
+
+    // точки проектов
+    list.forEach((p, idx) => {
+      dots += `
+        <g class="rm-proj ${p.dim ? 'rm-dim' : ''} ${q && passes(p) && q ? 'rm-hit' : ''}" style="animation-delay:${Math.min(idx*0.08, 1)}s"
+           onclick="openPanel(TASKS.find(x=>x.id==='${escAttr(p.id)}'))"
+           onmouseenter="rmHover(event, '${escAttr(p.id)}')" onmouseleave="rmHoverHide()">
+          <circle cx="${p.x}" cy="${p.y}" r="9" fill="${p.color}" stroke="#fff" stroke-width="2"/>
+          <text x="${p.x + 13}" y="${p.y + 4}" class="rm-proj-label">${escTxt(p.t.title.length > 34 ? p.t.title.slice(0,32) + '…' : p.t.title)}</text>
+        </g>`;
+    });
+  });
+
+  // ── Зависимости (deps: "IT-021, IT-014") ──
+  projects.forEach(p => {
+    const ids = String(p.t.deps || '').match(/[A-ZА-Я]+-\d+/g) || [];
+    ids.forEach(depId => {
+      const dep = projById[depId];
+      if (!dep || dep.dim || p.dim) return;
+      depLines += `<path class="rm-dep" d="${bez(dep.x + 9, dep.y, p.x - 9, p.y)}"><title>${escAttr(depId + ' → ' + p.id + ': зависимость')}</title></path>`;
+    });
+  });
+
+  const todayXpx = dayX(today);
+  canvas.innerHTML = `
+    <svg id="rmSvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+      <g id="rmWorld">
+        <line x1="${NODE_ZONE}" y1="${centerY}" x2="${W-40}" y2="${centerY}" stroke="var(--border)" stroke-width="2"/>
+        ${ticks}
+        <line x1="${todayXpx}" y1="20" x2="${todayXpx}" y2="${H-20}" stroke="#dc2626" stroke-width="2" stroke-dasharray="none"/>
+        <text x="${todayXpx+6}" y="34" style="font-size:11px;fill:#dc2626;font-weight:700;">сегодня ${fmtRuDate(today)}</text>
+        ${depLines}
+        ${curves}
+        ${nodes}
+        ${dots}
+      </g>
+    </svg>
+    ${noDates.length ? `<div style="padding:8px 12px;font-size:11px;color:var(--text-tertiary);">Без дат (не на карте): ${noDates.map(t=>escTxt(t.id)).join(', ')}</div>` : ''}`;
+
+  window._rmProjects = projects;
+  window._rmSize = { W, H };
+  if (resetView || !window._rm.inited) { window._rm.pan = {x:0, y:0}; window._rm.zoom = 1; window._rm.inited = true; }
+  rmApplyTransform();
+  rmDrawMinimap();
+  if (!window._rmPanBound) { rmBindPanZoom(); window._rmPanBound = true; }
+}
+
+function rmToggleSystem(name, ev){
+  if (ev) ev.stopPropagation();
+  window._rm.sel = window._rm.sel === name ? null : name;
+  renderRoadmap();
+}
+function rmToggleCollapse(name, ev){
+  if (ev) ev.stopPropagation();
+  window._rm.collapsed[name] = !window._rm.collapsed[name];
+  renderRoadmap();
+}
+
+function rmHover(ev, id){
+  const p = (window._rmProjects || []).find(x => x.id === id);
+  const card = document.getElementById('rmHover');
+  if (!p || !card) return;
+  const t = p.t;
+  card.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;">${escTxt(t.id)} · ${escTxt(t.title)}</div>
+    <div>👤 ${escTxt(t.assignee || '—')} · 🏗 ${escTxt(p.system)}</div>
+    <div>Статус: <b style="color:${p.color}">${escTxt(displayStatus(t))}</b> · Риск: ${t.risk === 'high' ? '🔴 высокий' : t.risk === 'med' ? '🟡 средний' : '🟢 низкий'}</div>
+    <div>Срок: ${escTxt(t.deadline || '—')}${isRescheduled(t) ? ` → <b style="color:var(--purple)">${escTxt(t.newDueDate)}</b>` : ''}</div>
+    <div>Прогресс: ${_rmProgress(t)}%</div>`;
+  const wrap = document.getElementById('rmWrap').getBoundingClientRect();
+  card.style.left = Math.min(ev.clientX - wrap.left + 14, wrap.width - 280) + 'px';
+  card.style.top  = Math.min(ev.clientY - wrap.top + 14, wrap.height - 120) + 'px';
+  card.style.display = 'block';
+}
+function rmHoverHide(){ const c = document.getElementById('rmHover'); if (c) c.style.display = 'none'; }
+
+function rmApplyTransform(){
+  const world = document.getElementById('rmWorld');
+  if (world) world.setAttribute('transform', `translate(${window._rm.pan.x} ${window._rm.pan.y}) scale(${window._rm.zoom})`);
+  rmDrawMinimap();
+}
+
+function rmBindPanZoom(){
+  const wrap = document.getElementById('rmWrap');
+  if (!wrap) return;
+  let dragging = false, sx = 0, sy = 0, px0 = 0, py0 = 0;
+  wrap.addEventListener('mousedown', e => {
+    if (e.target.closest('.rm-proj') || e.target.closest('.rm-node')) return;
+    dragging = true; sx = e.clientX; sy = e.clientY; px0 = window._rm.pan.x; py0 = window._rm.pan.y;
+    wrap.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    window._rm.pan.x = px0 + (e.clientX - sx);
+    window._rm.pan.y = py0 + (e.clientY - sy);
+    rmApplyTransform();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; wrap.style.cursor = 'grab'; });
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const old = window._rm.zoom;
+    const z = Math.min(3, Math.max(0.3, old * (e.deltaY < 0 ? 1.12 : 0.89)));
+    // зум к точке под курсором
+    const r = wrap.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    window._rm.pan.x = mx - (mx - window._rm.pan.x) * (z / old);
+    window._rm.pan.y = my - (my - window._rm.pan.y) * (z / old);
+    window._rm.zoom = z;
+    rmApplyTransform();
+  }, { passive: false });
+  // мини-карта: клик = перейти
+  const mm = document.getElementById('rmMinimap');
+  if (mm) mm.addEventListener('click', e => {
+    const r = mm.getBoundingClientRect();
+    const { W, H } = window._rmSize || { W: 1000, H: 600 };
+    const wrapR = wrap.getBoundingClientRect();
+    window._rm.pan.x = -((e.clientX - r.left) / r.width * W * window._rm.zoom - wrapR.width / 2);
+    window._rm.pan.y = -((e.clientY - r.top) / r.height * H * window._rm.zoom - wrapR.height / 2);
+    rmApplyTransform();
+  });
+}
+
+function rmDrawMinimap(){
+  const mm = document.getElementById('rmMinimap');
+  const wrap = document.getElementById('rmWrap');
+  if (!mm || !wrap || !window._rmSize) return;
+  const { W, H } = window._rmSize;
+  const pts = (window._rmProjects || []).map(p =>
+    `<circle cx="${p.x / W * 100}" cy="${p.y / H * 60}" r="1.3" fill="${p.color}"/>`).join('');
+  const vw = wrap.clientWidth / (W * window._rm.zoom) * 100;
+  const vh = wrap.clientHeight / (H * window._rm.zoom) * 60;
+  const vx = -window._rm.pan.x / (W * window._rm.zoom) * 100;
+  const vy = -window._rm.pan.y / (H * window._rm.zoom) * 60;
+  mm.innerHTML = `<svg width="160" height="96" viewBox="0 0 100 60">
+    <rect x="0" y="0" width="100" height="60" fill="var(--surface-2)" rx="3"/>
+    ${pts}
+    <rect x="${vx}" y="${vy}" width="${Math.min(vw,100)}" height="${Math.min(vh,60)}" fill="none" stroke="var(--accent)" stroke-width="1" rx="1"/>
+  </svg>`;
+}
+
+// ── Экспорт карты: PNG / SVG / Excel(CSV) ──
+function rmExport(kind){
+  if (kind === 'excel') {
+    const rows = [['Система','ID','Проект','Ответственный','Статус','Начало','Срок','Новый срок','Риск','Приоритет','Эффект']];
+    (window._rmProjects || []).forEach(p => rows.push([
+      p.system, p.id, p.t.title, p.t.assignee || '', displayStatus(p.t),
+      fmtRuDate(p.start), p.t.deadline || '', p.t.newDueDate || '', p.t.risk, p.t.priority, p.t.effect || ''
+    ]));
+    const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'roadmap.csv'; a.click();
+    return;
+  }
+  const svg = document.getElementById('rmSvg');
+  if (!svg) return;
+  const clone = svg.cloneNode(true);
+  clone.querySelector('#rmWorld')?.setAttribute('transform', '');
+  // инлайним CSS-переменные, чтобы экспорт не зависел от страницы
+  const css = `text{font-family:Arial,sans-serif;} .rm-tick{font-size:10px;fill:#94a3b8;} .rm-sys-label{font-size:13px;font-weight:700;} .rm-proj-label{font-size:11px;fill:#334155;} .rm-curve{fill:none;stroke-width:1.6;opacity:.55;} .rm-dep{fill:none;stroke:#94a3b8;stroke-width:1.3;stroke-dasharray:5 4;opacity:.7;}`;
+  const st = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  st.textContent = css;
+  clone.insertBefore(st, clone.firstChild);
+  const xml = new XMLSerializer().serializeToString(clone).replace(/var\(--border\)/g, '#e2e8f0');
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+  if (kind === 'svg') {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'roadmap.svg'; a.click();
+    return;
+  }
+  // PNG через canvas
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.width * 1.5; c.height = img.height * 1.5;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.scale(1.5, 1.5); ctx.drawImage(img, 0, 0);
+    const a = document.createElement('a');
+    a.href = c.toDataURL('image/png'); a.download = 'roadmap.png'; a.click();
+  };
+  img.src = URL.createObjectURL(blob);
 }
 
 // ═══════════════════════════════════════════════
@@ -3338,8 +3826,10 @@ function openPanel(task) {
   document.getElementById('panelTitle').textContent = task.title;
 
   const tagsEl = document.getElementById('panelTags');
+  const _pst = displayStatus(task);
   tagsEl.innerHTML = `
-    <span class="status-pill ${getStatusClass(task.status)}">${getStatusEmoji(task.status)} ${task.status}</span>
+    <span class="status-pill ${getStatusClass(_pst)}">${getStatusEmoji(_pst)} ${_pst}</span>
+    ${isRescheduled(task)?'<span class="tag" style="background:#f3e8ff;color:var(--purple);">🟣 Срок перенесён</span>':''}
     <span class="tag prio-${task.priority}">${task.priority==='high'?'Высокий':task.priority==='med'?'Средний':'Низкий'} приоритет</span>
     <span class="tag system">${task.system}</span>
   `;
@@ -3360,9 +3850,21 @@ function openPanel(task) {
         <div class="panel-field-value">👤 ${task.assignee}</div>
       </div>
       <div class="panel-field">
-        <div class="panel-field-label">Срок</div>
-        <div class="panel-field-value" style="color:${task.status==='Просрочено'?'var(--red)':'inherit'}">📅 ${task.deadline}</div>
+        <div class="panel-field-label">Исходный срок</div>
+        <div class="panel-field-value" style="${isRescheduled(task)?'text-decoration:line-through;color:var(--text-tertiary);':(isOverdue(task)?'color:var(--red);':'')}">📅 ${task.deadline || '—'}</div>
       </div>
+      <div class="panel-field">
+        <div class="panel-field-label">Новый срок</div>
+        <div class="panel-field-value" style="color:${isRescheduled(task)?(isOverdue(task)?'var(--red)':'var(--purple)'):'var(--text-tertiary)'}">${isRescheduled(task)?'🟣 '+task.newDueDate:(task.newDueDate||'—')}</div>
+      </div>
+      ${isOverdue(task)?`<div class="panel-field">
+        <div class="panel-field-label">Просрочка</div>
+        <div class="panel-field-value" style="color:var(--red);font-weight:700;">⏰ ${overdueDays(task)} дн.</div>
+      </div>`:''}
+      ${task.startDate?`<div class="panel-field">
+        <div class="panel-field-label">Начало работ</div>
+        <div class="panel-field-value">🚀 ${task.startDate}</div>
+      </div>`:''}
       <div class="panel-field">
         <div class="panel-field-label">Риск</div>
         <div class="panel-field-value risk-${task.risk}">● ${task.risk==='high'?'Высокий':task.risk==='med'?'Средний':'Низкий'}</div>
@@ -3381,6 +3883,13 @@ function openPanel(task) {
       <div class="panel-field-label">Зависимости</div>
       <div class="panel-field-value">${task.deps}</div>
     </div>
+    ${(() => {
+      const linked = TASKS.filter(x => x.id !== task.id && String(x.deps||'').includes(task.id));
+      return linked.length ? `<div class="panel-field">
+        <div class="panel-field-label">Связанные проекты (зависят от этой)</div>
+        <div class="panel-field-value">${linked.map(x => `<span class="tag system" style="cursor:pointer;margin:2px;" onclick="openPanel(TASKS.find(y=>y.id==='${escAttr(x.id)}'))">${escTxt(x.id)} · ${escTxt(x.title)}</span>`).join('')}</div>
+      </div>` : '';
+    })()}
     <div class="panel-field">
       <div class="panel-field-label">ТЗ / Документация</div>
       <div class="panel-field-value"><span class="status-pill ${task.tz==='✅ Есть'?'status-done':'status-blocked'}">${task.tz}</span></div>
@@ -4012,6 +4521,7 @@ async function apiLoadAll(retries){
     if(Array.isArray(data.roadmap)) ROADMAP_ITEMS = data.roadmap;
     if(Array.isArray(data.tz)) TZ_ITEMS = data.tz;
     if(Array.isArray(data.gantt)) GANTT_TASKS = data.gantt;
+    if(Array.isArray(data.health_history)) HEALTH_HISTORY = data.health_history;
     window.API_ONLINE = true;
     showToast('✅ Подключено к серверу','ok');
   }catch(e){
@@ -4062,6 +4572,7 @@ function showToast(msg,kind){
   setTimeout(()=>t.remove(),3500);
 }
 function rerenderAll(){
+  if(typeof renderDashboard==='function') renderDashboard();
   if(typeof renderTasks==='function') renderTasks();
   if(typeof renderKanban==='function') renderKanban();
   if(typeof renderRoadmap==='function') renderRoadmap();
@@ -4076,7 +4587,7 @@ function escTxt(s){return String(s==null?'':s).replace(/</g,'&lt;');}
 // TASK EDITOR MODAL
 // ═══════════════════════════════════════════════
 function openTaskEditor(existing){
-  const t = existing || {id:'',title:'',desc:'',system:'Bitrix24',type:'Фича',priority:'med',assignee:'',deadline:'',status:'Не начато',risk:'med',metric:'',tz:'❌ Нет',effect:'',blockers:'Нет',deps:'—',history:[]};
+  const t = existing || {id:'',title:'',desc:'',system:'Bitrix24',type:'Фича',priority:'med',assignee:'',deadline:'',newDueDate:'',startDate:'',createdAt:'',status:'Не начато',risk:'med',metric:'',tz:'❌ Нет',effect:'',blockers:'Нет',deps:'—',history:[]};
   const isNew = !existing;
   const overlay = document.createElement('div');
   overlay.id='_taskEditOverlay';
@@ -4097,7 +4608,9 @@ function openTaskEditor(existing){
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Приоритет</div><select id="te_priority" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"><option value="high" ${t.priority==='high'?'selected':''}>Высокий</option><option value="med" ${t.priority==='med'?'selected':''}>Средний</option><option value="low" ${t.priority==='low'?'selected':''}>Низкий</option></select></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Риск</div><select id="te_risk" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"><option value="high" ${t.risk==='high'?'selected':''}>Высокий</option><option value="med" ${t.risk==='med'?'selected':''}>Средний</option><option value="low" ${t.risk==='low'?'selected':''}>Низкий</option></select></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Ответственный</div><input id="te_assignee" value="${escAttr(t.assignee)}" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
-        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Дедлайн (ДД.ММ.ГГГГ)</div><input id="te_deadline" value="${escAttr(t.deadline)}" placeholder="01.06.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Дедлайн (ДД.ММ.ГГГГ) — исходный, не меняется при переносе</div><input id="te_deadline" value="${escAttr(t.deadline)}" placeholder="01.06.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--purple);font-weight:600;margin-bottom:4px;">Новый срок (если переносится)</div><input id="te_newduedate" value="${escAttr(t.newDueDate||'')}" placeholder="15.06.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
+        <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Дата начала работ (для Gantt)</div><input id="te_startdate" value="${escAttr(t.startDate||'')}" placeholder="20.05.2026" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;"></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">Статус</div><select id="te_status" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['Не начато','В процессе','На доработке','Просрочено','На паузе','Выполнено','Проблемы','Неактуально'],t.status)}</select></label>
         <label><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:4px;">ТЗ (статус)</div><select id="te_tz" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">${opts(['✅ Есть','❌ Нет'],t.tz)}</select></label>
         <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text-tertiary);font-weight:600;margin-bottom:6px;">Файлы ТЗ / документы</div><div id="te_attach_list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div><label style="display:inline-block;cursor:pointer;background:var(--surface-2);border:1px dashed var(--border);padding:8px 14px;border-radius:8px;font-size:12px;color:var(--text-secondary);"><span id="te_attach_btnlabel">📎 Прикрепить файл</span><input type="file" id="te_attach_input" style="display:none" onchange="uploadAttachmentFromEditor('${escAttr(t.id)}', this)"></label><div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">До 25 МБ. ${isNew?'Сохраните задачу, чтобы прикрепить файлы.':''}</div></div>
@@ -4121,6 +4634,15 @@ async function saveTaskFromEditor(isNew, oldId){
   const exist = TASKS.find(x=>x.id===oldId);
   const today = new Date();
   const dd = String(today.getDate()).padStart(2,'0')+'.'+String(today.getMonth()+1).padStart(2,'0');
+  const newDue = v('te_newduedate').trim();
+  const histAdd = [];
+  // Перенос срока фиксируем отдельной строкой истории — по ТЗ история
+  // исходного дедлайна должна сохраняться и быть видимой
+  if(newDue && newDue !== ((exist && exist.newDueDate) || '')){
+    const from = (exist && (exist.newDueDate || exist.deadline)) || v('te_deadline').trim() || '—';
+    histAdd.push(`${dd}: Срок перенесён: ${from} → ${newDue}`);
+  }
+  histAdd.push(`${dd}: ${isNew?'Создана':'Обновлена'}`);
   const task = {
     id: isNew ? v('te_id').trim() : oldId,
     title: v('te_title').trim(),
@@ -4131,16 +4653,21 @@ async function saveTaskFromEditor(isNew, oldId){
     risk: v('te_risk'),
     assignee: v('te_assignee').trim(),
     deadline: v('te_deadline').trim(),
+    newDueDate: newDue,
+    startDate: v('te_startdate').trim(),
+    createdAt: (exist && exist.createdAt) || (isNew ? fmtRuDate(today) : ''),
     status: v('te_status'),
     tz: v('te_tz'),
     metric: v('te_metric').trim(),
     effect: v('te_effect').trim(),
     blockers: v('te_blockers').trim() || 'Нет',
     deps: v('te_deps').trim() || '—',
-    history: [...((exist&&exist.history)||[]), `${dd}: ${isNew?'Создана':'Обновлена'}`],
+    history: [...((exist&&exist.history)||[]), ...histAdd],
     attachments: (exist && exist.attachments) || []
   };
   if(!task.id || !task.title){ showToast('❌ Заполните ID и название','err'); return; }
+  if(task.newDueDate && !parseRuDate(task.newDueDate)){ showToast('❌ Новый срок: формат ДД.ММ.ГГГГ','err'); return; }
+  if(task.startDate && !parseRuDate(task.startDate)){ showToast('❌ Дата начала: формат ДД.ММ.ГГГГ','err'); return; }
   const result = isNew ? await apiCreateTask(task) : await apiSaveTask(task);
   if(result){
     if(isNew) TASKS.push(result);

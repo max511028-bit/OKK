@@ -411,7 +411,10 @@ class Task(BaseModel):
     priority: str = "med"
     risk: str = "med"
     assignee: str = ""
-    deadline: str = ""
+    deadline: str = ""             # исходный плановый срок, ДД.ММ.ГГГГ — НЕ перезаписывается при переносе
+    newDueDate: str = ""           # перенесённый срок, ДД.ММ.ГГГГ; пусто = срок не переносился
+    startDate: str = ""            # дата начала работ, ДД.ММ.ГГГГ (для Gantt/Roadmap)
+    createdAt: str = ""            # дата создания, ДД.ММ.ГГГГ (fallback начала для Gantt)
     status: str = "Не начато"
     tz: str = "❌ Нет"
     metric: str = ""
@@ -538,7 +541,37 @@ def get_state():
             "roadmap": get_list(conn, "roadmap"),
             "tz": get_list(conn, "tz"),
             "gantt": get_list(conn, "gantt"),
+            "health_history": get_list(conn, "health_history"),
         }
+
+
+class HealthSnapshotReq(BaseModel):
+    score: int
+
+
+@app.post("/health-snapshot")
+def save_health_snapshot(req: HealthSnapshotReq):
+    """Снимок IT Health Score для тренда «к прошлой неделе» на дашборде.
+    Пишется автоматически при каждом открытии дашборда — максимум один
+    снимок в день (последний за день побеждает), храним последние 180.
+    Без авторизации: это одно вычисляемое число без чувствительных данных,
+    а требовать логин от каждого, кто просто открыл дашборд, нельзя —
+    тренд тогда не накапливался бы."""
+    import datetime as _hs_dt
+    today = _hs_dt.date.today().isoformat()
+    score = max(0, min(100, int(req.score)))
+    with db() as conn:
+        history = get_list(conn, "health_history")
+        if not isinstance(history, list):
+            history = []
+        history = [h for h in history if h.get("date") != today]
+        history.append({"date": today, "score": score})
+        history = sorted(history, key=lambda h: h.get("date", ""))[-180:]
+        conn.execute(
+            "INSERT OR REPLACE INTO lists(name,data) VALUES(?,?)",
+            ("health_history", json.dumps(history, ensure_ascii=False)),
+        )
+    return {"ok": True, "count": len(history)}
 
 
 @app.get("/tasks")
