@@ -4468,7 +4468,7 @@ def vc_dispatch_claim(campaign_id: int, request: Request):
 
 class VCDispatchResultReq(BaseModel):
     contact_id: int
-    status: str  # answered_completed|no_answer|busy|voicemail|hangup_by_candidate|error
+    status: str  # answered_completed|no_answer|busy|voicemail|low_recognition|hangup_by_candidate|error
     verdict: Optional[str] = None
     stop_reason: Optional[str] = None
     answers: dict = {}
@@ -4486,6 +4486,7 @@ _VC_STATUS_MAP = {
     "no_answer": "failed",
     "busy": "failed",
     "voicemail": "failed",
+    "low_recognition": "failed",
     "error": "failed",
 }
 
@@ -4632,6 +4633,7 @@ def vc_campaign_funnel(cid: int):
             " SUM(CASE WHEN verdict='stopped' THEN 1 ELSE 0 END) AS stopped, "
             " SUM(CASE WHEN verdict='declined' THEN 1 ELSE 0 END) AS declined, "
             " SUM(CASE WHEN last_call_status='voicemail' THEN 1 ELSE 0 END) AS voicemail, "
+            " SUM(CASE WHEN last_call_status='low_recognition' THEN 1 ELSE 0 END) AS low_recognition, "
             " SUM(CASE WHEN last_call_status='no_answer' THEN 1 ELSE 0 END) AS no_answer, "
             " SUM(CASE WHEN last_call_status='busy' THEN 1 ELSE 0 END) AS busy, "
             " SUM(CASE WHEN last_call_status='error' THEN 1 ELSE 0 END) AS call_error "
@@ -4645,6 +4647,7 @@ def vc_campaign_funnel(cid: int):
         "attempted": int(row["attempted"] or 0),
         "failed": int(row["failed"] or 0),
         "voicemail": int(row["voicemail"] or 0),
+        "low_recognition": int(row["low_recognition"] or 0),
         "no_answer": int(row["no_answer"] or 0),
         "busy": int(row["busy"] or 0),
         "error": int(row["call_error"] or 0),

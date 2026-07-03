@@ -41,6 +41,20 @@ RESULT_POST_RETRY_DELAY = 5
 RECORDING_FETCH_ATTEMPTS = 5
 RECORDING_FETCH_DELAY_SEC = 8
 
+# Перепроверка транскрипта (см. _recheck_transcript) реально грузит CPU —
+# распознаёт ДВЕ WAV-дорожки той же тяжёлой Vosk-моделью, что использует
+# ЖИВОЙ звонок в реальном времени. Фоновые потоки для НЕСКОЛЬКИХ подряд
+# завершённых звонков могут запуститься одновременно (кампания раздаёт
+# контакты быстро) — реальный случай на тесте 2026-07-03: пока 3-4 таких
+# фоновых потока одновременно скачивали и распознавали записи, у
+# ОДНОВРЕМЕННО идущего живого звонка не задетектировался ответ кандидата
+# (Диана сказала "алло алло", а wait_for_contact_talking всё равно не
+# поймал разговор за 45с) — похоже на нехватку CPU/сети в моменте.
+# Семафор не блокирует ОЖИДАНИЕ готовности записи у Novofon (это лёгкий
+# sleep+poll), только саму тяжёлую STT-перепроверку — она теперь всегда
+# идёт по одной штуке за раз, не наваливаясь на живой звонок скопом.
+_STT_RECHECK_BUSY = threading.Semaphore(1)
+
 
 def _rpc(base_url: str, method: str, path: str, token: str = "",
          params: dict = None, json_body: dict = None, timeout: float = 30) -> dict:
@@ -137,12 +151,18 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     if not urls:
         return
 
+    # Скачивание — лёгкое, распознавание — тяжёлое (та же Vosk-модель,
+    # что и живой звонок). Держим только STT-часть под семафором, чтобы
+    # несколько параллельных перепроверок не наваливались на CPU разом
+    # и не мешали текущему живому разговору (см. комментарий у
+    # _STT_RECHECK_BUSY).
     transcripts = []
     for url in urls:
         tmp_path = tempfile.mktemp(suffix=".wav")
         try:
             _ur.urlretrieve(url, tmp_path)
-            transcripts.append(recognize_wav_file(tmp_path))
+            with _STT_RECHECK_BUSY:
+                transcripts.append(recognize_wav_file(tmp_path))
         except Exception as e:
             print(f"⚠️  Не смог обработать дорожку записи: {e}", flush=True)
             transcripts.append("")
