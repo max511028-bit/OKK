@@ -762,6 +762,19 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     push_transcript()
     first_phrase = True
     heard_anything = False
+    # Сколько ПОДРЯД шагов не удалось распознать вообще ничего. Отдельно
+    # от is_voicemail_phrase(): на большинстве шагов (да/нет, возраст и
+    # т.п.) Vosk работает с ЖЁСТКО ограниченным словарём (см.
+    # vocab_for_step) и физически не может вывести литеральный текст
+    # объявления оператора/автоответчика — та проверка там просто не
+    # срабатывает (реальный случай на тесте 2026-07-03: Vosk увидел
+    # объявление "абонент не берёт трубку...", но с ограниченным словарём
+    # да/нет распознал из него только "спасибо", и is_voicemail_phrase()
+    # ни на что не среагировал — бот доиграл весь сценарий вслепую).
+    # Три подряд полностью нераспознанных шага — гораздо более надёжный
+    # сигнал "тут не с кем разговаривать", не зависящий от словаря.
+    consecutive_unrecognized = 0
+    UNRECOGNIZED_LIMIT = 3
 
     # Тайминги/качество связи по ходу разговора — чтобы при жалобе "были
     # большие паузы"/"плохое качество" можно было посмотреть в логе звонка,
@@ -872,6 +885,29 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
 
         if answer:
             heard_anything = True
+            consecutive_unrecognized = 0
+        else:
+            consecutive_unrecognized += 1
+            if consecutive_unrecognized >= UNRECOGNIZED_LIMIT:
+                # Три вопроса подряд без единого распознанного слова — почти
+                # наверняка не живой разговор (автоответчик/объявление сети,
+                # которое обошло словарную детекцию выше, либо совсем не
+                # тянущая линия). Доигрывать оставшиеся вопросы вслепую —
+                # только тратить эфирное время и портить статистику
+                # (реальный случай: весь сценарий из 9 вопросов "не
+                # распознано" и ложный вердикт "passed" в конце).
+                log(f"🔇 {consecutive_unrecognized} вопроса подряд без единого распознанного ответа — "
+                    f"похоже, разговаривать не с кем. Завершаю звонок.")
+                result["status"] = "voicemail"
+                result["error"] = f"{consecutive_unrecognized} шагов подряд без распознанного ответа"
+                result["answers"] = sess.answers
+                result["notes"] = sess.notes
+                result["transcript"] = sess.transcript
+                result["dropped_at_step"] = sess.steps[sess.i].get("crit", sess.steps[sess.i]["id"]) if sess.i < len(sess.steps) else None
+                _attach_call_quality_note(result["notes"], call_metrics, log)
+                try: call.hangup()
+                except Exception: pass
+                return
         action = sess.submit_answer(answer)
         push_transcript()
 
