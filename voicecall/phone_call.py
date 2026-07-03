@@ -407,7 +407,8 @@ BARGE_IN_WARMUP_MS = 300        # первые N мс фразы только к
 def speak(call, text: str, allow_interrupt: bool = True,
           interrupt_threshold_mult: float = BARGE_IN_THRESHOLD_MULT,
           interrupt_min_rms: float = BARGE_IN_MIN_RMS,
-          interrupt_sustain_ms: int = BARGE_IN_SUSTAIN_MS) -> Optional[bytes]:
+          interrupt_sustain_ms: int = BARGE_IN_SUSTAIN_MS,
+          metrics: Optional[dict] = None) -> Optional[bytes]:
     """Озвучивает фразу в трубку небольшими кусками (по 100мс), между
     которыми проверяет входящее аудио от кандидата на признаки речи —
     barge-in. Эхо колонок/микрофона тут не проблема (в отличие от
@@ -443,7 +444,13 @@ def speak(call, text: str, allow_interrupt: bool = True,
         # ответы кандидата, уже собранные за весь разговор, терялись
         # целиком. Просто молча пропускаем реплику вместо падения.
         return None
+    _tts_t0 = time.time()
     pcm16 = synthesize_telephony_pcm(text)
+    if metrics is not None:
+        # >~80мс почти наверняка означает промах кэша (живой синтез через
+        # edge-tts занимает секунды) — это и есть та самая "пауза перед
+        # фразой", на которую жалуются на реальных звонках.
+        metrics["tts_ms"] = round((time.time() - _tts_t0) * 1000)
     raw8 = _pcm16_to_pyvoip(pcm16)
 
     if not allow_interrupt:
@@ -542,7 +549,8 @@ def listen(call, vocab: Optional[list] = None,
            silence_before_speech_sec: float = 6.0,
            max_total_sec: float = 20.0,
            on_partial=None,
-           preroll_pcm16: Optional[bytes] = None) -> str:
+           preroll_pcm16: Optional[bytes] = None,
+           metrics: Optional[dict] = None) -> str:
     """Слушает ответ кандидата из телефонной линии до тишины.
     Останавливается досрочно если звонок оборвался (кандидат положил трубку).
 
@@ -639,6 +647,18 @@ def listen(call, vocab: Optional[list] = None,
     tail = rec.finalize()
     if tail:
         parts.append(tail)
+
+    if metrics is not None:
+        # Медиана громкости ДО усиления AGC — реальный уровень сигнала на
+        # линии от кандидата (сырой RMS у 16-bit PCM, тишина = 0). Высокий
+        # итоговый agc_gain — признак что кандидат говорил тихо/далеко от
+        # трубки, это и есть просадка "качества со стороны кандидата".
+        metrics["candidate_rms"] = (
+            sorted(agc_recent_rms)[len(agc_recent_rms) // 2] if agc_recent_rms else 0
+        )
+        metrics["agc_gain"] = round(agc_gain, 1)
+        metrics["listen_ms"] = round((time.time() - start) * 1000)
+
     return " ".join(p for p in parts if p).strip()
 
 
@@ -735,6 +755,18 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     push_transcript()
     first_phrase = True
     heard_anything = False
+
+    # Тайминги/качество связи по ходу разговора — чтобы при жалобе "были
+    # большие паузы"/"плохое качество" можно было посмотреть в логе звонка,
+    # а не гадать. latency_ms — пауза МЕЖДУ репликами (от момента когда
+    # кандидат замолчал/линия установилась до старта следующей фразы бота);
+    # tts_ms — сколько заняло непосредственно озвучивание (>~80мс = живой
+    # синтез, не кэш); candidate_rms/agc_gain — громкость и усиление на
+    # стороне кандидата (низкая громкость + большое усиление = плохая связь
+    # или тихий голос на его стороне).
+    call_metrics: list = []
+    last_event_at = time.time()
+
     while True:
         st = _call_state_name(call)
         if "ENDED" in st or "FAIL" in st:
@@ -746,18 +778,24 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             if sess.i < len(sess.steps):
                 step = sess.steps[sess.i]
                 result["dropped_at_step"] = step.get("crit", step["id"])
+            _attach_call_quality_note(result["notes"], call_metrics, log)
             return
 
         preroll = None
         if action.kind in ("speak_then_listen", "speak_then_end"):
             text = render_name(action.text, candidate_name)
             log(f"[БОТ] {text}")
+            latency_ms = round((time.time() - last_event_at) * 1000)
+            m = {"latency_ms": latency_ms}
             # Сразу после установки моста звук ещё не устаканился (эхо/
             # щелчки на подключении) — на самой первой фразе звонка
             # перебивание чаще ловит это как речь. Отключаем barge-in
             # только для первой фразы, дальше включаем как обычно.
-            preroll = speak(call, text, allow_interrupt=not first_phrase)
+            preroll = speak(call, text, allow_interrupt=not first_phrase, metrics=m)
             first_phrase = False
+            tts_note = " (вживую!)" if m.get("tts_ms", 0) > 80 else " (кэш)"
+            log(f"[тайминг] пауза перед фразой: {latency_ms}мс · синтез: {m.get('tts_ms', 0)}мс{tts_note}")
+            call_metrics.append(m)
             if preroll:
                 log("[КАНДИДАТ] (перебил бота)")
         if action.kind != "speak_then_listen":
@@ -769,8 +807,17 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             cur_step = sess.steps[sess.i] if sess.i < len(sess.steps) else {}
             vocab = vocab_for_step(cur_step)
 
-        answer = listen(call, vocab=vocab, preroll_pcm16=preroll)
+        m_listen = {}
+        answer = listen(call, vocab=vocab, preroll_pcm16=preroll, metrics=m_listen)
+        last_event_at = time.time()
         log(f"[КАНДИДАТ] {answer or '(тишина)'}")
+        if m_listen.get("candidate_rms"):
+            quality = ("тихо" if m_listen["candidate_rms"] < 800 else
+                       "нормально" if m_listen["candidate_rms"] < 2500 else "громко")
+            log(f"[аудио] кандидат: громкость ~{m_listen['candidate_rms']} ({quality})"
+                + (f", усилено x{m_listen['agc_gain']}" if m_listen["agc_gain"] > 1.05 else ""))
+        if call_metrics:
+            call_metrics[-1].update(m_listen)
         if answer:
             heard_anything = True
         action = sess.submit_answer(answer)
@@ -790,6 +837,36 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     # это резервный признак для последующего разбора.
     if not heard_anything:
         result["possible_voicemail"] = True
+    _attach_call_quality_note(result["notes"], call_metrics, log)
+
+
+def _attach_call_quality_note(notes: dict, call_metrics: list, log) -> None:
+    """Сводка тайминга/качества связи за звонок — и в лог (для быстрой
+    диагностики жалоб "были паузы"/"плохое качество"), и в notes звонка
+    (уже сохраняются на портале как есть, без миграций БД — см. ТЗ по
+    паузам от 2026-07-03)."""
+    if not call_metrics:
+        return
+    latencies = [m["latency_ms"] for m in call_metrics if "latency_ms" in m]
+    tts_times = [m["tts_ms"] for m in call_metrics if "tts_ms" in m]
+    live_tts = sum(1 for t in tts_times if t > 80)
+    rms_values = [m["candidate_rms"] for m in call_metrics if m.get("candidate_rms")]
+    max_gain = max((m.get("agc_gain", 1.0) for m in call_metrics), default=1.0)
+
+    first_latency = latencies[0] if latencies else None
+    avg_latency = round(sum(latencies) / len(latencies)) if latencies else None
+    max_latency = max(latencies) if latencies else None
+    avg_rms = round(sum(rms_values) / len(rms_values)) if rms_values else None
+
+    summary = (
+        f"первая фраза: {first_latency}мс · "
+        f"сред. пауза между репликами: {avg_latency}мс (макс {max_latency}мс) · "
+        f"живой синтез (не кэш): {live_tts}/{len(tts_times)} фраз · "
+        f"громкость кандидата: {'~'+str(avg_rms) if avg_rms else 'н/д'}"
+        + (f" (усиление до x{max_gain})" if max_gain > 1.05 else "")
+    )
+    log(f"[итог качества] {summary}")
+    notes["Тех. качество звонка"] = summary
 
 
 def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,

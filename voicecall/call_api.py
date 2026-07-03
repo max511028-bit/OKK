@@ -7,13 +7,30 @@
 инфраструктурой дозвониться до кандидата и свести разговор.
 """
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 
-CALL_API_URL = "https://callapi-jsonrpc.novofon.ru/v4.0"
-DATA_API_URL = "https://dataapi-jsonrpc.novofon.ru/v2.0"
+# По умолчанию ходим не напрямую в Novofon, а через прокси на нашем VPS
+# (postgresql.ru... портал, статический IP 195.208.119.67). Причина:
+# Call API Novofon требует IP-whitelist, а IP ПК-агента обзвона —
+# динамический (меняется провайдером), из-за чего whitelist регулярно
+# "слетает" и обзвон падает с ip_not_whitelisted. IP сервера-прокси не
+# меняется, поэтому в личном кабинете Novofon достаточно один раз
+# разрешить его и больше не возвращаться к этой проблеме.
+# Если прокси недоступен — можно временно вернуться на прямые URL через
+# переменные окружения NOVOFON_CALL_API_URL / NOVOFON_DATA_API_URL.
+#
+# ВАЖНО: URL обязательно со слэшем на конце — иначе nginx отвечает
+# 301-редиректом на .../ (location задан с trailing slash), а
+# urllib.request при следовании за 301 на POST-запрос переигрывает его
+# как GET без тела (историческое поведение, совместимое с браузерами) —
+# JSON-RPC тело терялось, и Novofon получал пустой запрос вместо
+# start.employee_call, отвечая непонятной ошибкой валидации.
+CALL_API_URL = os.environ.get("NOVOFON_CALL_API_URL", "https://portalsth.ru/novofon-callapi/")
+DATA_API_URL = os.environ.get("NOVOFON_DATA_API_URL", "https://portalsth.ru/novofon-dataapi/")
 
 # Состояние "ноги" звонка в list.calls, означающее что стороны реально
 # разговаривают (мост установлен, идёт живое аудио).
