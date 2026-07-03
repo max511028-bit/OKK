@@ -274,10 +274,18 @@ _VOICEMAIL_PATTERN = re.compile(
     r"недоступен|временно недоступен|вне зоны действия сети|"
     r"абонент не отвечает|абонент не берет трубку|абонент не берёт трубку|"
     r"не берет трубку|не берёт трубку|"
-    r"перезвоните позже|позвоните позже|попробуйте перезвонить|"
+    r"перезвоните\s+\S*\s*позже|позвоните\s+\S*\s*позже|попробуйте перезвонить|"
     r"перенаправлен на голосовой|голосовой почтовый ящик|голосовую почту|"
     r"выключен или находится|номер не обслуживается|заблокирован|"
-    r"продолжив договариваться|нажмите один)"
+    r"продолжив договариваться|нажмите один|"
+    # Синтетическая AI-болтовня некоторых операторов/приложений во время
+    # ожидания соединения (не человек, а сгенерированный "хостинг звонка")
+    # — реальный случай на тесте 2026-07-03: минуты бессвязной болтовни
+    # про "виртуальную реальность"/"курсы саморазвития" вместо ответа
+    # кандидата, при этом отдельные слова случайно распознались как
+    # да/нет и привели к ложному отказу настоящему кандидату.
+    r"не слышу человеческую речь|нет возможности взять трубку|"
+    r"виртуальном ожидании)"
 )
 
 
@@ -404,6 +412,7 @@ class DialogSession:
         self.transcript: list = []
         self.pending: Optional[str] = None
         self.reasked = False
+        self.follow_reasked = False  # переспрос уже был на доп.вопросе (lmk_follow)
         self.started_at = datetime.now().isoformat(timespec="seconds")
         self.ended = False
         self.verdict: Optional[str] = None
@@ -469,24 +478,50 @@ class DialogSession:
             return Action(kind="end", end_verdict=self.verdict, end_reason=self.stop_reason,
                           answers=self.answers, notes=self.notes, transcript=self.transcript)
         raw = (raw or "").strip()
-        if not raw:
-            return self._reask_or_skip()
-        self._log("user", raw)
         step = self.steps[self.i]
 
-        # Спецветка для on_no_follow (доп.вопрос про ЛМК)
+        # Спецветка для on_no_follow (доп.вопрос про ЛМК) — ПЕРЕД общим
+        # "raw пуст → _reask_or_skip()", потому что тот работает с
+        # self.steps[self.i] (исходный вопрос про ЛМК), а не с текстом
+        # доп.вопроса про доплату — иначе на пустой/невнятный ответ на
+        # "Стоимость 4000 рублей... Это подходит?" бот вместо повтора
+        # ЭТОГО вопроса переспрашивал заново "Есть ли у вас медкнижка?",
+        # что кандидату явно не в тему (реальный случай на тесте
+        # 2026-07-03: именно так и произошло).
         if self.pending == "lmk_follow":
-            r = interpret({"expect": "yesno"}, raw)
+            if raw:
+                self._log("user", raw)
+            follow_text = step.get("on_no_follow", "")
+            if not raw:
+                r = {"val": "unclear"}
+            else:
+                r = interpret({"expect": "yesno"}, raw)
+                if r["val"] == "unclear" and self.follow_reasked:
+                    rl = llm_classify({"expect": "yesno", "bot": follow_text}, raw)
+                    if rl:
+                        r = rl
             if r["val"] == "unclear":
-                rl = llm_classify({"expect": "yesno",
-                                    "bot": step.get("on_no_follow", "")}, raw)
-                if rl:
-                    r = rl
+                # Как и в основном пути: сначала честный переспрос ЭТОГО
+                # вопроса, LLM-фоллбэк — только со второй непонятной попытки.
+                # Раньше неясный ответ тут молча трактовался как согласие
+                # на удержание 4000₽ — рискованно приписывать кандидату
+                # согласие, которого он не давал.
+                if not self.follow_reasked:
+                    self.follow_reasked = True
+                    self._log("bot", follow_text)
+                    return Action(kind="speak_then_listen", text=follow_text)
+                self.notes["ЛМК"] = "не распознано (доп.вопрос про доплату)"
+                self.pending = None
+                return self._next()
             self.notes["ЛМК"] = ("нет, отказался от изготовления"
                                  if r["val"] == "no"
                                  else "нет, согласен на изготовление за 2 дня")
             self.pending = None
             return self._next()
+
+        if not raw:
+            return self._reask_or_skip()
+        self._log("user", raw)
 
         r = interpret(step, raw)
         if r.get("val") == "unclear":
@@ -579,6 +614,7 @@ class DialogSession:
     def _next(self) -> Action:
         self.i += 1
         self.reasked = False
+        self.follow_reasked = False
         if self.i >= len(self.steps):
             return self._end("passed", None, last_bot=self.scenario.get("closing"))
         return self._speak_current()

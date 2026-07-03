@@ -733,7 +733,8 @@ def _start_prewarm_for_name(scenario: dict, candidate_name: str) -> None:
 
 def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                       known_answers: Optional[dict] = None,
-                      on_transcript_update=None) -> None:
+                      on_transcript_update=None,
+                      bridge_established_at: Optional[float] = None) -> None:
     """Общий цикл диалога поверх уже установленного (отвеченного) звонка —
     используется и в run_call() (прямой исходящий SIP), и в
     run_call_via_bridge() (входящий звонок от Novofon после моста).
@@ -765,7 +766,14 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     # стороне кандидата (низкая громкость + большое усиление = плохая связь
     # или тихий голос на его стороне).
     call_metrics: list = []
-    last_event_at = time.time()
+    # Без bridge_established_at (звонок реально был отвечен, ДО проверки
+    # автоответчика) latency первой фразы всегда считался бы от входа в
+    # эту функцию — а это доли миллисекунды после detect_voicemail(),
+    # который сам может слушать линию до 8с. Получалась метрика "первая
+    # фраза: 0мс" на КАЖДОМ звонке — формально верная, но бесполезная:
+    # реальное время ожидания кандидата (гудки+проверка автоответчика)
+    # в неё не попадало вообще.
+    last_event_at = bridge_established_at if bridge_established_at is not None else time.time()
 
     while True:
         st = _call_state_name(call)
@@ -981,6 +989,7 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             except Exception: pass
             return result
 
+        bridge_established_at = time.time()
         log("Проверяю, не автоответчик ли это...")
         vm_text = detect_voicemail(call)
         if vm_text:
@@ -993,7 +1002,8 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
 
         log("✅ Ответили! Начинаю диалог.")
         _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
-                          on_transcript_update=on_transcript_update)
+                          on_transcript_update=on_transcript_update,
+                          bridge_established_at=bridge_established_at)
 
         try: call.hangup()
         except Exception: pass
@@ -1113,6 +1123,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             except Exception: pass
             return result
 
+        bridge_established_at = time.time()
         log("Проверяю, не автоответчик ли это...")
         vm_text = detect_voicemail(call)
         if vm_text:
@@ -1125,7 +1136,8 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
 
         log("✅ Кандидат на линии! Начинаю диалог.")
         _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
-                          on_transcript_update=on_transcript_update)
+                          on_transcript_update=on_transcript_update,
+                          bridge_established_at=bridge_established_at)
 
         try: call.hangup()
         except Exception: pass
