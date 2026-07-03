@@ -573,7 +573,7 @@ def listen(call, vocab: Optional[list] = None,
     # последующие чанки. Пересчёт раз в ~200мс, а не на каждый чанк —
     # иначе коэффициент дёргается и создаёт эффект "накачки" громкости.
     AGC_TARGET_RMS = 3200.0
-    AGC_MAX_GAIN = 6.0
+    AGC_MAX_GAIN = 9.0  # было 6.0 — на очень тихих линиях (RMS ~120-450) упирались в потолок
     AGC_MIN_RMS_FOR_CALC = 60.0
     AGC_RECALC_EVERY = 10  # чанков (~200мс при 20мс/чанк)
     agc_gain = 1.0
@@ -658,6 +658,12 @@ def listen(call, vocab: Optional[list] = None,
         )
         metrics["agc_gain"] = round(agc_gain, 1)
         metrics["listen_ms"] = round((time.time() - start) * 1000)
+        # Было ли хоть что-то похожее на речь (пусть и не распознанное в
+        # итоге) — отличает "кандидат реально что-то сказал, просто не
+        # разобрали" от "было тихо, никто ничего не говорил". См. вызов в
+        # _run_dialog_loop: на настоящей тишине переспрашивать вслух не
+        # нужно, лучше молча подождать ещё раз.
+        metrics["speech_started"] = speech_started
 
     return " ".join(p for p in parts if p).strip()
 
@@ -817,6 +823,21 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
 
         m_listen = {}
         answer = listen(call, vocab=vocab, preroll_pcm16=preroll, metrics=m_listen)
+        # Если не разобрано вообще НИЧЕГО, но при этом на линии не было даже
+        # намёка на речь (тишина всё время слушания) — не переспрашиваем
+        # вслух сразу. Кандидат мог просто думать дольше обычного или
+        # реагировать с задержкой; переспрос вслух в такой момент перебивает
+        # и раздражает чаще, чем помогает (жалоба с реальных тестов
+        # 2026-07-03). Один лишний молчаливый круг ожидания — и только если
+        # ПОСЛЕ него тоже тишина, переходим к обычному переспросу вслух.
+        # Если же что-то похожее на речь звучало (спикер начал говорить, но
+        # распознать не вышло — шум/невнятно), переспрос по делу, ждать
+        # молча смысла нет.
+        if not answer and not m_listen.get("speech_started") and not sess.reasked:
+            log("[тишина] ничего не услышано, жду ещё раз молча (без переспроса вслух)...")
+            m_listen2 = {}
+            answer = listen(call, vocab=vocab, metrics=m_listen2)
+            m_listen = m_listen2
         last_event_at = time.time()
         log(f"[КАНДИДАТ] {answer or '(тишина)'}")
         if m_listen.get("candidate_rms"):
