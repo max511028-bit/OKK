@@ -131,6 +131,56 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
     return False, token
 
 
+def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None:
+    """Ответы на свободные вопросы («Когда выйти?», «Опыт?») приходят
+    сырым STT-текстом («от дата», «опять так», «дабы») — рекрутеру
+    приходится гадать, что имел в виду кандидат. Прогоняем каждый такой
+    ответ через LLM портала и записываем понятную формулировку, сохраняя
+    сырьё рядом в скобках. Лучшее старание: любой сбой/таймаут — просто
+    оставляем сырой текст как был. Вызывается ДО отправки результата,
+    добавляет секунду-две между звонками — приемлемо."""
+    free_steps = {}
+    for st in scenario.get("steps", []):
+        if st.get("expect") == "free":
+            free_steps[st.get("crit", st.get("id"))] = st.get("bot", "")
+    if not free_steps:
+        return
+    for store_name in ("answers", "notes"):
+        store = result.get(store_name) or {}
+        for crit, raw_val in list(store.items()):
+            if crit not in free_steps:
+                continue
+            if not isinstance(raw_val, str) or not raw_val.strip():
+                continue
+            if raw_val.startswith("не распознано"):
+                continue
+            prompt = (
+                "Телефонный опрос кандидата на вакансию. Бот спросил: "
+                f"«{free_steps[crit]}»\n"
+                f"Распознанный (возможно с ошибками STT) ответ кандидата: «{raw_val}»\n\n"
+                "Сформулируй КРАТКО (2-6 слов), что кандидат скорее всего имел в виду. "
+                "Если из текста смысл извлечь нельзя — ответь ровно: неразборчиво. "
+                "Ответь только самой формулировкой, без пояснений и кавычек."
+            )
+            try:
+                data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
+                    "model": "qwen3:1.7b",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False, "think": False,
+                    "options": {"temperature": 0.2, "num_predict": 40},
+                }, timeout=20)
+                norm = ((data.get("message") or {}).get("content") or "").strip().strip('"«»')
+            except Exception:
+                continue
+            if not norm or len(norm) > 80:
+                continue
+            if norm.lower() == "неразборчиво":
+                store[crit] = f"не распознано: {raw_val}"
+            elif norm.lower() != raw_val.lower():
+                store[crit] = f"{norm} (дословно: {raw_val})"
+            print(f"✨ Нормализован ответ «{crit}»: {store[crit]}", flush=True)
+
+
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
                          api_secret: str, call_session_id: int) -> None:
     """Пакетная перепроверка распознавания по WAV-дорожкам разговора (без
@@ -293,6 +343,11 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
             scenario=scenario, on_transcript_update=push_live,
         )
         print(f"← Итог: status={result.get('status')} verdict={result.get('verdict')}", flush=True)
+        if result.get("status") == "answered_completed":
+            try:
+                _normalize_free_answers(base_url, scenario, result)
+            except Exception as e:
+                print(f"⚠️  Нормализация ответов пропущена: {e}", flush=True)
         posted, token = _post_result_with_retries(base_url, token, contact_id, result, password)
         if posted and result.get("call_session_id"):
             # В фоне — следующий контакт в очереди не должен ждать, пока

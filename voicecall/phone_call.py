@@ -544,6 +544,33 @@ def _flush_incoming_audio(call, keep_tail_ms: float = 300.0) -> None:
         pass
 
 
+def _line_has_audio(call, check_sec: float = 4.0, min_rms: float = 350.0,
+                     required_chunks: int = 5) -> bool:
+    """Есть ли на линии живой звук (речь/гудки далёкого конца), а не
+    полная тишина. Используется как fallback-проверка, когда API статусов
+    Novofon не отдал состояние «Разговор», но SIP-звонок при этом жив:
+    если из трубки реально что-то слышно — соединение состоялось.
+    required_chunks Требует несколько громких чанков (не подряд), чтобы
+    одиночный щелчок линии не считался звуком."""
+    loud = 0
+    deadline = time.time() + check_sec
+    while time.time() < deadline:
+        st = _call_state_name(call)
+        if "ENDED" in st or "FAIL" in st:
+            return False
+        try:
+            raw8 = call.read_audio(length=160, blocking=False)
+        except Exception:
+            return False
+        time.sleep(0.02)
+        pcm16 = _pyvoip_to_pcm16(raw8)
+        if pcm16 and audioop.rms(pcm16, 2) >= min_rms:
+            loud += 1
+            if loud >= required_chunks:
+                return True
+    return False
+
+
 def listen(call, vocab: Optional[list] = None,
            silence_after_speech_sec: float = 0.9,
            silence_before_speech_sec: float = 6.0,
@@ -797,7 +824,12 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     while True:
         st = _call_state_name(call)
         if "ENDED" in st or "FAIL" in st:
-            log("Звонок оборвался (кандидат положил трубку).")
+            # Пишем сырое SIP-состояние: "ENDED" и "FAIL" — разные истории
+            # (кандидат положил трубку vs сбой SIP-стека), а для разбора
+            # случаев типа "бот молчал и сразу пометил обрыв" (Максим,
+            # тест 2026-07-03) важно видеть, что именно увидел pyVoIP.
+            log(f"Звонок оборвался (SIP-состояние: {st}, шаг {sess.i + 1}/{len(sess.steps)}, "
+                f"реплик в транскрипте: {len(sess.transcript)}).")
             result["status"] = "hangup_by_candidate"
             result["answers"] = sess.answers
             result["notes"] = sess.notes
@@ -888,6 +920,36 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             consecutive_unrecognized = 0
         else:
             consecutive_unrecognized += 1
+            if consecutive_unrecognized == 2:
+                # Два шага подряд впустую — вероятно на линии играет
+                # автоответчик/объявление сети, но шаги сценария слушают
+                # с ОГРАНИЧЕННЫМ словарём (да/нет/возраст) и физически не
+                # могут распознать его текст. Один пробный круг СВОБОДНЫМ
+                # распознаванием (большая модель, без словаря): если там
+                # буквально слышна фраза автоответчика — уверенный
+                # status=voicemail уже на 2-м вопросе, а не расплывчатое
+                # low_recognition после 3-го.
+                log("🔎 Два шага подряд без ответа — слушаю свободным распознаванием, не автоответчик ли...")
+                probe = listen(call, vocab=None, silence_before_speech_sec=3.0,
+                               max_total_sec=10.0)
+                if probe:
+                    log(f"[свободное распознавание] «{probe}»")
+                    if is_voicemail_phrase(probe):
+                        log(f"📼 Автоответчик подтверждён свободным распознаванием — вешаю трубку.")
+                        result["status"] = "voicemail"
+                        result["error"] = probe
+                        result["answers"] = sess.answers
+                        result["notes"] = sess.notes
+                        result["transcript"] = sess.transcript
+                        _attach_call_quality_note(result["notes"], call_metrics, log)
+                        try: call.hangup()
+                        except Exception: pass
+                        return
+                    # Распозналась живая (не автоответчиковая) речь — на
+                    # линии человек, просто словарные шаги его не поняли.
+                    # Сбрасываем счётчик на 1: даём сценарию ещё шанс
+                    # вместо скорого обрыва по лимиту.
+                    consecutive_unrecognized = 1
             if consecutive_unrecognized >= UNRECOGNIZED_LIMIT:
                 # Три вопроса подряд без единого распознанного слова — сигнал
                 # "продолжать вслепую бессмысленно", но НЕ доказательство что
@@ -1176,7 +1238,19 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         log("Ответили на входящий от Novofon. Жду пока дозвонятся до кандидата...")
-        bridged = call_api.wait_for_contact_talking(api_secret, call_session_id, timeout=45)
+        bridged, leg_states = call_api.wait_for_contact_talking(api_secret, call_session_id, timeout=45)
+        if not bridged:
+            # Диагностика: реальный случай 2026-07-03 — кандидат взял трубку
+            # и говорил "алло алло" (слышно на записи), а состояние
+            # "Разговор" из list.calls мы так и не увидели. Прежде чем
+            # сдаться, проверяем есть ли на линии живой звук: SIP-звонок
+            # у нас уже отвечен, RTP идёт — если из него реально слышно
+            # РЕЧЬ, разговор состоялся, что бы ни говорил API статусов.
+            log(f"Состояние 'Разговор' не поймано за 45с (ноги звонка: {leg_states}, "
+                f"SIP: {_call_state_name(call)}). Проверяю живой звук на линии...")
+            if _line_has_audio(call):
+                log("🔊 На линии есть живой звук — начинаю диалог несмотря на отсутствие статуса 'Разговор'.")
+                bridged = True
         if not bridged:
             result["status"] = "no_answer"
             log("Кандидат не взял трубку (или звонок завершился раньше).")

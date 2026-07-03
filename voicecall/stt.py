@@ -36,15 +36,24 @@ except Exception:
     pass
 
 
-# Большая модель (~1.8 ГБ) вместо vosk-model-small-ru-0.22 (~45 МБ) —
-# заметно точнее на открытых ответах кандидата (small путала «торт» с
-# «парк» и т.п. на телефонном звуке). Ставим отдельной папкой, чтобы
-# откат на маленькую модель был просто сменой этих трёх констант назад.
+# ДВЕ модели с разными ролями:
+#
+# Большая (vosk-model-ru-0.42, ~1.8 ГБ) — точное СВОБОДНОЕ распознавание:
+# открытые ответы кандидата, перепроверка записей, детекция автоответчика.
+# ВАЖНО: грамматику (ограничение словаря) она НЕ поддерживает — при
+# передаче vocab выдаёт "Runtime graphs are not supported by this model"
+# и работает некорректно (эмпирически проверено 2026-07-03: ни честного
+# ограничения, ни нормального свободного распознавания — брак на выходе).
+#
+# Маленькая (vosk-model-small-ru-0.22, ~45 МБ) — шаги с ограниченным
+# словарём (да/нет, возраст, пол...): грамматику поддерживает честно,
+# на коротких ответах из известного списка слов точнее и в разы быстрее.
 VOSK_MODEL_NAME = "vosk-model-ru-0.42"
-VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_NAME}.zip"
-# Кладём модель в путь без кириллицы — Vosk на Windows плохо работает с
+VOSK_SMALL_MODEL_NAME = "vosk-model-small-ru-0.22"
+# Кладём модели в путь без кириллицы — Vosk на Windows плохо работает с
 # не-ASCII символами в пути (известная проблема C++ библиотеки).
 MODEL_DIR = Path(os.getenv("VOSK_MODEL_DIR") or rf"C:\ProgramData\sth\{VOSK_MODEL_NAME}")
+SMALL_MODEL_DIR = Path(os.getenv("VOSK_SMALL_MODEL_DIR") or rf"C:\ProgramData\sth\{VOSK_SMALL_MODEL_NAME}")
 
 
 def _has_model_files(d: Path) -> bool:
@@ -55,39 +64,47 @@ def _has_model_files(d: Path) -> bool:
     return all((d / sub).is_dir() for sub in ("am", "conf", "graph"))
 
 
-def ensure_model():
-    """Скачивает Vosk-модель если её нет на диске. ~45 МБ, один раз."""
-    if _has_model_files(MODEL_DIR):
+def _ensure_model_at(model_name: str, model_dir: Path, size_hint: str):
+    """Скачивает Vosk-модель если её нет на диске. Один раз."""
+    if _has_model_files(model_dir):
         return
-    print(f"Vosk-модель не найдена в {MODEL_DIR}")
-    print(f"Скачиваю с {VOSK_MODEL_URL} (~45 МБ, подожди минуту)...")
-    MODEL_DIR.parent.mkdir(parents=True, exist_ok=True)
-    zip_path = MODEL_DIR.parent / f"{VOSK_MODEL_NAME}.zip"
+    url = f"https://alphacephei.com/vosk/models/{model_name}.zip"
+    print(f"Vosk-модель не найдена в {model_dir}")
+    print(f"Скачиваю с {url} ({size_hint}, подожди)...")
+    model_dir.parent.mkdir(parents=True, exist_ok=True)
+    zip_path = model_dir.parent / f"{model_name}.zip"
     try:
-        urlretrieve(VOSK_MODEL_URL, zip_path)
+        urlretrieve(url, zip_path)
     except Exception as e:
         print(f"❌ Не удалось скачать: {e}", file=sys.stderr)
         sys.exit(1)
     print(f"  скачано, распаковываю...")
     # Чистим если что-то осталось от прошлой неудачной попытки
-    extracted = MODEL_DIR.parent / VOSK_MODEL_NAME
-    if extracted.exists():
-        import shutil
+    extracted = model_dir.parent / model_name
+    import shutil
+    if extracted.exists() and extracted != model_dir:
         shutil.rmtree(extracted)
-    if MODEL_DIR.exists():
-        import shutil
-        shutil.rmtree(MODEL_DIR)
+    if model_dir.exists():
+        shutil.rmtree(model_dir)
     with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(MODEL_DIR.parent)
-    # Архив распаковывается в папку с длинным именем — переименуем
-    if extracted.exists():
-        extracted.rename(MODEL_DIR)
+        zf.extractall(model_dir.parent)
+    # Архив распаковывается в папку с именем модели — переименуем если надо
+    if extracted.exists() and extracted != model_dir:
+        extracted.rename(model_dir)
     zip_path.unlink(missing_ok=True)
-    if not _has_model_files(MODEL_DIR):
-        print(f"❌ Модель распакована, но обязательных файлов нет в {MODEL_DIR}",
+    if not _has_model_files(model_dir):
+        print(f"❌ Модель распакована, но обязательных файлов нет в {model_dir}",
               file=sys.stderr)
         sys.exit(1)
-    print(f"  ✅ модель готова: {MODEL_DIR}")
+    print(f"  ✅ модель готова: {model_dir}")
+
+
+def ensure_model():
+    _ensure_model_at(VOSK_MODEL_NAME, MODEL_DIR, "~1.8 ГБ")
+
+
+def ensure_small_model():
+    _ensure_model_at(VOSK_SMALL_MODEL_NAME, SMALL_MODEL_DIR, "~45 МБ")
 
 
 def _check_deps():
@@ -99,8 +116,17 @@ def _check_deps():
         sys.exit(1)
 
 
-# Кэшируем загруженную модель — Model() весит и занимает 1-2 сек на загрузку
+# Кэшируем загруженные модели — Model() занимает секунды на загрузку
 _MODEL_CACHE = None
+_SMALL_MODEL_CACHE = None
+
+
+def _vosk_quiet():
+    try:
+        from vosk import SetLogLevel  # type: ignore
+        SetLogLevel(-1)
+    except Exception:
+        pass
 
 
 def _get_model():
@@ -109,18 +135,26 @@ def _get_model():
         _check_deps()
         ensure_model()
         from vosk import Model  # type: ignore
-        try:
-            from vosk import SetLogLevel  # type: ignore
-            SetLogLevel(-1)
-        except Exception:
-            pass
+        _vosk_quiet()
         _MODEL_CACHE = Model(str(MODEL_DIR))
     return _MODEL_CACHE
 
 
+def _get_small_model():
+    global _SMALL_MODEL_CACHE
+    if _SMALL_MODEL_CACHE is None:
+        _check_deps()
+        ensure_small_model()
+        from vosk import Model  # type: ignore
+        _vosk_quiet()
+        _SMALL_MODEL_CACHE = Model(str(SMALL_MODEL_DIR))
+    return _SMALL_MODEL_CACHE
+
+
 def warmup():
-    """Принудительно загрузить модель сейчас (для пред-прогрева в начале сессии)."""
+    """Принудительно загрузить обе модели сейчас (пред-прогрев в начале сессии)."""
     _get_model()
+    _get_small_model()
 
 
 class StreamingRecognizer:
@@ -137,11 +171,17 @@ class StreamingRecognizer:
 
     def __init__(self, input_sample_rate: int = 8000, vocab: Optional[list] = None):
         from vosk import KaldiRecognizer  # type: ignore
-        model = _get_model()
+        # С vocab — МАЛЕНЬКАЯ модель: только она честно поддерживает
+        # грамматику (ограничение словаря). Большая на vocab выдаёт
+        # "Runtime graphs are not supported" и распознаёт некорректно
+        # (см. комментарий у VOSK_MODEL_NAME). Без vocab — большая,
+        # у неё заметно точнее свободное распознавание.
         if vocab:
+            model = _get_small_model()
             grammar = json.dumps(vocab, ensure_ascii=False)
             self._rec = KaldiRecognizer(model, VOSK_SAMPLE_RATE, grammar)
         else:
+            model = _get_model()
             self._rec = KaldiRecognizer(model, VOSK_SAMPLE_RATE)
         self._rec.SetWords(False)
         self._in_sr = input_sample_rate

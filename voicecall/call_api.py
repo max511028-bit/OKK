@@ -86,9 +86,18 @@ def wait_for_contact_talking(access_token: str, call_session_id: int,
     """Опрашивает list.calls, пока одна из «ног» звонка не перейдёт в
     состояние TALKING_STATE — это значит что кандидат ответил и мост
     установлен. Если звонок вообще пропал из списка активных (кандидат
-    не ответил, звонок завершился) — тоже прекращаем ждать."""
+    не ответил, звонок завершился) — тоже прекращаем ждать.
+
+    Возвращает (bridged, last_states):
+      bridged — поймали ли состояние «Разговор»;
+      last_states — список состояний ног звонка на ПОСЛЕДНЕМ успешном
+        опросе (для диагностики: реальный случай 2026-07-03 — кандидат
+        говорил «алло алло» в трубку, а Talking так и не увидели за 45с;
+        без этих состояний невозможно было понять, что именно
+        происходило со звонком по мнению Novofon)."""
     deadline = time.time() + timeout
     seen_at_least_once = False
+    last_states: list = []
     while time.time() < deadline:
         try:
             calls = list_calls(access_token)
@@ -106,14 +115,15 @@ def wait_for_contact_talking(access_token: str, call_session_id: int,
                 break
         if found:
             seen_at_least_once = True
+            last_states = [leg.get("state") for leg in found.get("legs", [])]
             for leg in found.get("legs", []):
                 if leg.get("state") == TALKING_STATE:
-                    return True
+                    return True, last_states
         elif seen_at_least_once:
             # звонок был в списке, а потом пропал — значит уже завершился
-            return False
+            return False, last_states
         time.sleep(poll_interval)
-    return False
+    return False, last_states
 
 
 # Прямая ссылка на прослушку/скачивание записи — playback URL Novofon,

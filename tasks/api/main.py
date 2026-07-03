@@ -4391,6 +4391,33 @@ def vc_resume_dispatch(cid: int, request: Request):
 _VC_STALE_CALLING_MINUTES = 10
 
 
+# Последний момент, когда агент обзвона был на связи (любой его запрос:
+# poll/claim/result/live). В памяти процесса — после рестарта API покажет
+# «офлайн» максимум на один цикл опроса агента (~20с), это ок.
+_VC_AGENT_LAST_SEEN: dict = {"at": None}
+
+
+def _vc_touch_agent():
+    _VC_AGENT_LAST_SEEN["at"] = _vc_dt.datetime.now().isoformat(timespec="seconds")
+
+
+@app.get("/voicecall/agent-status")
+def vc_agent_status():
+    """Открытый индикатор для портала: жив ли агент обзвона на ПК.
+    Агент «онлайн», если любой его запрос был меньше 90с назад (сам он
+    опрашивает портал каждые ~20с, так что 90с — это уже 4 пропущенных
+    цикла подряд)."""
+    at = _VC_AGENT_LAST_SEEN["at"]
+    online = False
+    if at:
+        try:
+            seen = _vc_dt.datetime.fromisoformat(at)
+            online = (_vc_dt.datetime.now() - seen).total_seconds() < 90
+        except ValueError:
+            pass
+    return {"online": online, "last_seen": at}
+
+
 @app.get("/voicecall/dispatch/poll")
 def vc_dispatch_poll(request: Request):
     """Агент опрашивает это раз в 15-30 сек. Атомарно забирает САМУЮ
@@ -4408,6 +4435,7 @@ def vc_dispatch_poll(request: Request):
     Возвращаем такие контакты в очередь и заодно снова рассматриваем
     'running'-кампании с освободившимися pending-контактами."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     stale_before = (_vc_dt.datetime.now()
                     - _vc_dt.timedelta(minutes=_VC_STALE_CALLING_MINUTES)
                     ).isoformat(timespec="seconds")
@@ -4441,6 +4469,7 @@ def vc_dispatch_claim(campaign_id: int, request: Request):
     тоже contact_id=null, но dispatch_state НЕ трогаем (это не «конец»,
     агент просто вернётся к тихому опросу, пока не нажмут «Продолжить»)."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
         camp = conn.execute(
@@ -4509,6 +4538,7 @@ def vc_dispatch_live(req: VCDispatchLiveReq, request: Request):
     """Агент шлёт сюда снимок транскрипта по ходу звонка (не только в
     конце) — портал показывает это в карточке контакта, пока идёт звонок."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     _VC_LIVE_TRANSCRIPTS[req.contact_id] = req.transcript
     return {"ok": True}
 
@@ -4523,6 +4553,7 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
     last_call_status (для разделённой воронки: не взял / автоответчик /
     занято — раздельно)."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
         contact = conn.execute(
@@ -4575,6 +4606,7 @@ def vc_dispatch_recording(req: VCDispatchRecordingReq, request: Request):
     после звонка, обработка занимает время. Прикрепляем к САМОЙ ПОСЛЕДНЕЙ
     попытке этого контакта (та, для которой она была найдена)."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     with db() as conn:
         conn.execute(
             "UPDATE candidate_validations SET recording_url=? WHERE id = ("
@@ -4599,6 +4631,7 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
     текстовый блок для сверки рекрутёром, не подменяет структурированные
     answers по вопросам — сопоставление таймингов слишком ненадёжно."""
     _vcs_check_password(request)
+    _vc_touch_agent()
     with db() as conn:
         conn.execute(
             "UPDATE candidate_validations SET recheck_transcript=? WHERE id = ("

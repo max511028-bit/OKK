@@ -320,6 +320,7 @@
     <div class="card">
       <h2 style="display:flex;align-items:center;gap:10px">
         2. Обзвоны
+        <span id="agentStatus" style="font-size:11px; font-weight:500; color:var(--hint);" title="Агент обзвона на ПК — он реально совершает звонки. Если офлайн, обзвон не начнётся.">⚪ агент: проверяю...</span>
         <select id="campFilter" onchange="renderCampaignList()" style="margin-left:auto; font-size:12px;">
           <option value="all">Все</option>
           <option value="active">В работе</option>
@@ -784,6 +785,33 @@ async function startDispatch(cid){
     loadCampaigns();
   }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }
 }
+
+// ── Индикатор «жив ли агент обзвона на ПК» ──────────────────────────
+async function updateAgentStatus(){
+  var el = document.getElementById("agentStatus");
+  if(!el) return;
+  try{
+    var r = await fetch(API + "/voicecall/agent-status", {cache: "no-store"});
+    var d = await r.json();
+    if(d.online){
+      el.textContent = "🟢 агент онлайн";
+      el.style.color = "var(--ok, #16a34a)";
+    } else {
+      var since = "";
+      if(d.last_seen){
+        var t = new Date(d.last_seen);
+        if(!isNaN(t)) since = " (последний раз на связи " + t.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"}) + ")";
+      }
+      el.textContent = "🔴 агент офлайн" + since + " — звонки не пойдут";
+      el.style.color = "var(--err, #dc2626)";
+    }
+  }catch(e){
+    el.textContent = "⚪ агент: нет данных";
+    el.style.color = "var(--hint)";
+  }
+}
+updateAgentStatus();
+setInterval(updateAgentStatus, 30000);
 
 async function pauseDispatch(cid){
   try{
