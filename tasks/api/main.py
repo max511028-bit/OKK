@@ -276,6 +276,13 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_validations_contact ON candidate_validations(contact_id, started_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted_at)")
+        # voicecall_scripts.settings_json — голос/скорость/филлеры сценария
+        # (пункт "Б5"/Часть 2 доработок 2026-07). NULL у старых сценариев —
+        # звучат как раньше (см. дефолты в _vcs_row_to_dict/фронтенде).
+        try:
+            conn.execute("ALTER TABLE voicecall_scripts ADD COLUMN settings_json TEXT")
+        except sqlite3.OperationalError:
+            pass
         # Seed once if empty
         n = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
         if n == 0 and SEED_PATH.exists():
@@ -5581,6 +5588,12 @@ def _vcs_row_to_dict(row, with_steps=False):
         try: d["stop_factors"] = json.loads(row["stop_factors_json"] or "[]")
         except Exception: d["stop_factors"] = []
         d["closing"] = row["closing"] or ""
+        try:
+            settings_raw = row["settings_json"]
+        except (IndexError, KeyError):
+            settings_raw = None  # старая строка sqlite3.Row без этой колонки
+        try: d["settings"] = json.loads(settings_raw or "{}")
+        except Exception: d["settings"] = {}
     return d
 
 
@@ -5619,6 +5632,7 @@ class VCScriptPayload(BaseModel):
     stop_factors: list = []
     closing: str = ""
     status: Optional[str] = None  # draft | published
+    settings: dict = {}  # {voice, rate, fillers} — см. Часть 2 доработок 2026-07
 
 
 @app.post("/voicecall/scripts")
@@ -5637,12 +5651,12 @@ def vcs_create(payload: VCScriptPayload, request: Request):
             sid = f"{base_slug}-{n}"; n += 1
         conn.execute(
             "INSERT INTO voicecall_scripts "
-            "(id,name,status,steps_json,stop_factors_json,closing,version,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "(id,name,status,steps_json,stop_factors_json,closing,settings_json,version,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (sid, payload.name.strip(), payload.status or "draft",
              json.dumps(payload.steps, ensure_ascii=False),
              json.dumps(payload.stop_factors, ensure_ascii=False),
-             payload.closing, 1, now, now),
+             payload.closing, json.dumps(payload.settings, ensure_ascii=False), 1, now, now),
         )
         print(f"[scripts] created '{sid}' ({payload.name})", flush=True)
     return {"ok": True, "id": sid, "warnings": _vcs_validate_steps(payload.steps, payload.closing)}
@@ -5663,11 +5677,12 @@ def vcs_update(sid: str, payload: VCScriptPayload, request: Request):
         new_status = payload.status or ("draft" if row["status"] == "published" else row["status"])
         conn.execute(
             "UPDATE voicecall_scripts SET name=?, steps_json=?, stop_factors_json=?, "
-            "closing=?, status=?, version=version+1, updated_at=? WHERE id=?",
+            "closing=?, settings_json=?, status=?, version=version+1, updated_at=? WHERE id=?",
             (payload.name.strip(),
              json.dumps(payload.steps, ensure_ascii=False),
              json.dumps(payload.stop_factors, ensure_ascii=False),
-             payload.closing, new_status, now, sid),
+             payload.closing, json.dumps(payload.settings, ensure_ascii=False),
+             new_status, now, sid),
         )
         print(f"[scripts] updated '{sid}' v{row['version']+1} status={new_status}", flush=True)
     return {"ok": True, "id": sid, "status": new_status,

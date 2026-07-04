@@ -107,3 +107,54 @@ class TestScenarioValidationWarnings:
         assert r.status_code == 200, r.text
         assert "warnings" in r.json()
         assert len(r.json()["warnings"]) >= 1
+
+
+class TestScenarioVoiceSettings:
+    """Часть 2 доработок 2026-07 — настройки голоса сценария (voice/rate/
+    fillers) сохраняются и возвращаются вместе со сценарием. Дефолт для
+    старых сценариев (settings={}) — на фронте/в движке звонка (не тут)
+    подставляется существующий голос (Edge Светлана, +0%), чтобы старые
+    сценарии не поменяли звук молча."""
+
+    def test_settings_roundtrip_on_update(self, client, portal_token):
+        sid = _create(client, portal_token)
+        r = client.put(
+            f"/voicecall/scripts/{sid}",
+            headers={"X-Auth-Token": portal_token},
+            json={"name": "Тест", "steps": [], "stop_factors": [], "closing": "Пока!",
+                  "settings": {"voice": "silero:baya", "rate": "+15%", "fillers": True}},
+        )
+        assert r.status_code == 200, r.text
+
+        got = client.get(f"/voicecall/scripts/{sid}").json()
+        assert got["settings"] == {"voice": "silero:baya", "rate": "+15%", "fillers": True}
+
+    def test_settings_roundtrip_on_create(self, client, portal_token):
+        r = client.post(
+            "/voicecall/scripts",
+            headers={"X-Auth-Token": portal_token},
+            json={"name": "Со скоростью", "steps": [], "stop_factors": [], "closing": "",
+                  "settings": {"voice": "ru-RU-DmitryNeural", "rate": "-10%", "fillers": False}},
+        )
+        assert r.status_code == 200, r.text
+        sid = r.json()["id"]
+
+        got = client.get(f"/voicecall/scripts/{sid}").json()
+        assert got["settings"]["voice"] == "ru-RU-DmitryNeural"
+        assert got["settings"]["rate"] == "-10%"
+
+    def test_old_scenario_without_settings_returns_empty_dict(self, client, portal_token):
+        """Сценарий, сохранённый ДО появления настроек голоса (или просто
+        без явных settings в запросе) — settings пуст, а не отсутствует
+        и не роняет эндпоинт."""
+        sid = _create(client, portal_token)  # без settings в теле
+        got = client.get(f"/voicecall/scripts/{sid}").json()
+        assert got["settings"] == {}
+
+    def test_settings_not_in_list_endpoint(self, client, portal_token):
+        """Список скриптов (/voicecall/scripts) — облегчённый, без шагов и
+        без settings, они только в детальной карточке (with_steps=True)."""
+        _create(client, portal_token)
+        items = client.get("/voicecall/scripts").json()["items"]
+        assert len(items) >= 1
+        assert "settings" not in items[0]

@@ -22,6 +22,7 @@ import ctypes
 import json
 import os
 import queue
+import random
 import re
 import select
 import socket
@@ -62,7 +63,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, CALLBACK_BYE_TEXT
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, CALLBACK_BYE_TEXT, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -408,7 +409,8 @@ def speak(call, text: str, allow_interrupt: bool = True,
           interrupt_threshold_mult: float = BARGE_IN_THRESHOLD_MULT,
           interrupt_min_rms: float = BARGE_IN_MIN_RMS,
           interrupt_sustain_ms: int = BARGE_IN_SUSTAIN_MS,
-          metrics: Optional[dict] = None) -> Optional[bytes]:
+          metrics: Optional[dict] = None,
+          voice: str = DEFAULT_VOICE, rate: str = "+0%") -> Optional[bytes]:
     """Озвучивает фразу в трубку небольшими кусками (по 100мс), между
     которыми проверяет входящее аудио от кандидата на признаки речи —
     barge-in. Эхо колонок/микрофона тут не проблема (в отличие от
@@ -445,7 +447,7 @@ def speak(call, text: str, allow_interrupt: bool = True,
         # целиком. Просто молча пропускаем реплику вместо падения.
         return None
     _tts_t0 = time.time()
-    pcm16 = synthesize_telephony_pcm(text)
+    pcm16 = synthesize_telephony_pcm(text, voice=voice, rate=rate)
     if metrics is not None:
         # >~80мс почти наверняка означает промах кэша (живой синтез через
         # edge-tts занимает секунды) — это и есть та самая "пауза перед
@@ -711,6 +713,9 @@ def _prewarm_tts_for_name(scenario: dict, candidate_name: str) -> None:
     if not candidate_name:
         return  # без имени render_name возвращает тот же текст что и в prewarm_scenario — кэш уже есть
     try:
+        settings = scenario.get("settings") or {}
+        voice = settings.get("voice") or DEFAULT_VOICE
+        rate = settings.get("rate") or "+0%"
         texts = []
         for st in scenario.get("steps", []):
             for key in ("bot", "on_yes", "on_no", "on_no_follow", "stop_msg"):
@@ -721,7 +726,7 @@ def _prewarm_tts_for_name(scenario: dict, candidate_name: str) -> None:
         if closing and "{name}" in closing:
             texts.append(render_name(closing, candidate_name))
         for t in texts:
-            synthesize_telephony_pcm(t, DEFAULT_VOICE, use_cache=True)
+            synthesize_telephony_pcm(t, voice, use_cache=True, rate=rate)
     except Exception:
         pass  # чисто оптимизация — при сбое просто синтезируем вживую как раньше
 
@@ -750,6 +755,17 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         if on_transcript_update:
             try: on_transcript_update(list(sess.transcript))
             except Exception: pass
+
+    # Настройки голоса сценария (Часть 2 доработок 2026-07 — "человечность"
+    # бота): voice/rate читаются ОДИН раз на весь звонок и используются во
+    # ВСЕХ speak() ниже — если забыть прокинуть хоть в одном месте, та
+    # фраза будет звучать чужим голосом/скоростью посреди разговора.
+    # Дефолты СОВПАДАЮТ с тем, что было раньше (DEFAULT_VOICE, "+0%",
+    # без филлеров) — старые сценарии без settings звучат как звучали.
+    settings = scenario.get("settings") or {}
+    voice = settings.get("voice") or DEFAULT_VOICE
+    rate = settings.get("rate") or "+0%"
+    fillers_enabled = bool(settings.get("fillers"))
 
     sess = DialogSession(scenario, known_answers=known_answers, candidate_name=candidate_name)
     action = sess.start()
@@ -809,6 +825,17 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
 
         preroll = None
         if action.kind in ("speak_then_listen", "speak_then_end"):
+            # Филлер ("ага", "угу") ТОЛЬКО перед НОВЫМ вопросом — не перед
+            # первой фразой звонка (нечему подтверждать) и не перед
+            # повтором/переспросом (sess.reasked=True — ответ ведь не
+            # поняли, подтверждать нечего, будет звучать нелепо). См.
+            # dialog.FILLER_PHRASES и настройку settings.fillers сценария.
+            if (fillers_enabled and not first_phrase and not sess.reasked
+                    and action.kind == "speak_then_listen" and random.random() < 0.4):
+                filler = random.choice(FILLER_PHRASES)
+                log(f"[БОТ, филлер] {filler}")
+                speak(call, filler, allow_interrupt=False, voice=voice, rate=rate)
+
             text = render_name(action.text, candidate_name)
             log(f"[БОТ] {text}")
             latency_ms = round((time.time() - last_event_at) * 1000)
@@ -817,7 +844,8 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             # щелчки на подключении) — на самой первой фразе звонка
             # перебивание чаще ловит это как речь. Отключаем barge-in
             # только для первой фразы, дальше включаем как обычно.
-            preroll = speak(call, text, allow_interrupt=not first_phrase, metrics=m)
+            preroll = speak(call, text, allow_interrupt=not first_phrase, metrics=m,
+                             voice=voice, rate=rate)
             first_phrase = False
             tts_note = " (вживую!)" if m.get("tts_ms", 0) > 80 else " (кэш)"
             log(f"[тайминг] пауза перед фразой: {latency_ms}мс · синтез: {m.get('tts_ms', 0)}мс{tts_note}")
@@ -869,7 +897,7 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         # «Заново» (см. tasks/api/main.py _VC_STATUS_MAP).
         if answer and is_callback_request(answer):
             log(f"🔁 Кандидат просит перезвонить: «{answer}»")
-            speak(call, CALLBACK_BYE_TEXT, allow_interrupt=False)
+            speak(call, CALLBACK_BYE_TEXT, allow_interrupt=False, voice=voice, rate=rate)
             result["status"] = "callback_requested"
             result["answers"] = sess.answers
             result["notes"] = sess.notes
@@ -1293,10 +1321,14 @@ def main():
     print("Прогрев Vosk-модели...")
     stt_warmup()
     scenario = load_scenario(scenario_id)
+    _cli_settings = scenario.get("settings") or {}
+    _cli_voice = _cli_settings.get("voice") or DEFAULT_VOICE
+    _cli_rate = _cli_settings.get("rate") or "+0%"
     print("Прогрев TTS (генерирую все фразы сценария)...")
-    prewarm_scenario(scenario, voice=DEFAULT_VOICE, verbose=False)
+    prewarm_scenario(scenario, voice=_cli_voice, rate=_cli_rate, verbose=False,
+                      extra_texts=FILLER_PHRASES)
     for t in all_reask_texts():
-        synthesize_telephony_pcm(t, voice=DEFAULT_VOICE)
+        synthesize_telephony_pcm(t, voice=_cli_voice, rate=_cli_rate)
     print()
 
     if direct:

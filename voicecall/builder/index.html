@@ -124,17 +124,39 @@
       <span class="pill" id="edStatus"></span>
     </div>
 
-    <div class="fld" style="max-width:260px;">
-      <label>Голос для прослушки 🔊</label>
-      <select id="edVoice">
-        <option value="silero:kseniya" selected>Силеро · Ксения (ж)</option>
-        <option value="silero:baya">Силеро · Байя (ж)</option>
-        <option value="silero:xenia">Силеро · Ксения-2 (ж)</option>
-        <option value="silero:eugene">Силеро · Евгений (м)</option>
-        <option value="silero:aidar">Силеро · Айдар (м)</option>
-        <option value="ru-RU-SvetlanaNeural">Edge · Светлана (ж)</option>
-        <option value="ru-RU-DmitryNeural">Edge · Дмитрий (м)</option>
-      </select>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      <div class="fld" style="max-width:260px;">
+        <label>Голос бота (звучит в реальных звонках) 🔊</label>
+        <select id="edVoice" onchange="edSettingsChanged()">
+          <option value="ru-RU-SvetlanaNeural" selected>Edge · Светлана (ж, облако)</option>
+          <option value="ru-RU-DmitryNeural">Edge · Дмитрий (м, облако)</option>
+          <option value="silero:kseniya">Силеро · Ксения (ж, локальный)</option>
+          <option value="silero:baya">Силеро · Байя (ж, локальный)</option>
+          <option value="silero:xenia">Силеро · Ксения-2 (ж, локальный)</option>
+          <option value="silero:eugene">Силеро · Евгений (м, локальный)</option>
+          <option value="silero:aidar">Силеро · Айдар (м, локальный)</option>
+        </select>
+      </div>
+      <div class="fld" style="max-width:180px;">
+        <label>Скорость речи</label>
+        <select id="edRate" onchange="edSettingsChanged()">
+          <option value="-10%">Медленнее (−10%)</option>
+          <option value="+0%" selected>Обычная</option>
+          <option value="+5%">Чуть быстрее (+5%)</option>
+          <option value="+10%">Быстрее (+10%)</option>
+          <option value="+15%">Заметно быстрее (+15%)</option>
+          <option value="+20%">Быстро (+20%)</option>
+        </select>
+      </div>
+      <div class="fld" style="align-self:flex-end;padding-bottom:8px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="edFillers" onchange="edSettingsChanged()">
+          Подтверждения между вопросами («ага», «угу»)
+        </label>
+      </div>
+      <div class="fld" style="align-self:flex-end;padding-bottom:8px;">
+        <button class="small" onclick="edPlayVoiceSample(this)">🔊 Прослушать голос</button>
+      </div>
     </div>
 
     <div class="fld">
@@ -326,6 +348,16 @@ async function edOpen(sid){
     ED.steps = (d.steps || []).map(srvStepToUi);
     document.getElementById("edName").value = d.name || "";
     document.getElementById("edClosing").value = d.closing || "";
+    // Настройки голоса (пункт "человечности" из доработок 2026-07) — у
+    // старых сценариев settings пуст, тогда дефолты ДОЛЖНЫ совпадать с
+    // тем, что реальный движок звонка использует по умолчанию (Edge ·
+    // Светлана, обычная скорость, без филлеров, см. tts.DEFAULT_VOICE) —
+    // иначе прослушка в конструкторе не совпадёт с тем, что реально
+    // прозвучит кандидату, а существующие сценарии молча поменяют голос.
+    var settings = d.settings || {};
+    document.getElementById("edVoice").value = settings.voice || "ru-RU-SvetlanaNeural";
+    document.getElementById("edRate").value = settings.rate || "+0%";
+    document.getElementById("edFillers").checked = !!settings.fillers;
     document.getElementById("edStatus").className = "pill " + (d.status || "draft");
     document.getElementById("edStatus").textContent = d.status === "published" ? "✓ опубликован" : "✎ черновик";
     document.getElementById("edMsg").textContent = "";
@@ -354,8 +386,9 @@ function edPlay(text, btn){
   if(!text){ alert("Пустая фраза — нечего озвучивать"); return; }
   edStopAudio();
   var voice = document.getElementById("edVoice").value;
+  var rate = document.getElementById("edRate").value;
   var url = API + "/voicecall/tts?text=" + encodeURIComponent(text)
-          + "&voice=" + encodeURIComponent(voice) + "&rate=%2B10%25";
+          + "&voice=" + encodeURIComponent(voice) + "&rate=" + encodeURIComponent(rate);
   var oldLabel = btn ? btn.textContent : "";
   if(btn) btn.textContent = "⏳";
   var a = new Audio(url);
@@ -364,6 +397,15 @@ function edPlay(text, btn){
   a.onended = function(){ if(btn) btn.textContent = oldLabel || "🔊"; EDAudio = null; };
   a.onerror = function(){ if(btn) btn.textContent = "⚠️"; setTimeout(function(){ if(btn) btn.textContent = oldLabel || "🔊"; }, 2000); EDAudio = null; };
   a.play().catch(function(e){ if(btn) btn.textContent = "⚠️"; });
+}
+function edPlayVoiceSample(btn){
+  // Фраза для примерки голоса/скорости — не зависит от текста шагов,
+  // чтобы можно было сравнить голоса даже в пустом сценарии.
+  edPlay("Здравствуйте! Меня зовут Диана, удобно сейчас ответить на пару вопросов?", btn);
+}
+function edSettingsChanged(){
+  var msg = document.getElementById("edMsg");
+  if(msg && !msg.textContent) msg.textContent = "• есть несохранённые изменения (голос/скорость)";
 }
 function edPlayStep(i, key, btn){
   edPlay(ED.steps[i][key] || "", btn);
@@ -516,6 +558,11 @@ function edCollectPayload(){
     stop_factors: ED.steps.filter(function(u){
       return (u.type==="yesno" && (u.stop_on==="yes"||u.stop_on==="no")) || u.type==="age" || u.type==="shifts";
     }).map(function(u){ return u.crit || ""; }).filter(Boolean),
+    settings: {
+      voice: document.getElementById("edVoice").value,
+      rate: document.getElementById("edRate").value,
+      fillers: document.getElementById("edFillers").checked,
+    },
   };
 }
 

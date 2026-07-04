@@ -131,3 +131,27 @@ class TestLlmClassifyDeadCache:
     def test_unknown_expect_returns_none_without_network(self):
         dialog._LLM_DEAD_UNTIL = 0.0
         assert dialog.llm_classify({"expect": "free"}, "что угодно") is None
+
+
+class TestFillerPhrases:
+    """Часть 2 доработок 2026-07 — короткие подтверждения между вопросами
+    (опция сценария settings.fillers), см. _run_dialog_loop в
+    phone_call.py: играются только перед НОВЫМ вопросом (sess.reasked
+    False), не перед повтором/переспросом."""
+
+    def test_filler_phrases_is_nonempty_list_of_strings(self):
+        assert isinstance(dialog.FILLER_PHRASES, list)
+        assert len(dialog.FILLER_PHRASES) >= 3
+        assert all(isinstance(p, str) and p.strip() for p in dialog.FILLER_PHRASES)
+
+    def test_reasked_flag_distinguishes_new_question_from_repeat(self):
+        """Ровно то условие, которое phone_call.py проверяет перед тем как
+        разрешить филлер: свежий вопрос -> reasked=False, повтор после
+        непонятного ответа -> reasked=True."""
+        scenario = dialog.load_scenario("tander-sterlitamak-pack")
+        sess = dialog.DialogSession(scenario)
+        sess.start()
+        sess.submit_answer("да удобно")  # нормальный ответ -> новый вопрос
+        assert sess.reasked is False
+        sess.submit_answer("бессвязный шум")  # unclear -> переспрос
+        assert sess.reasked is True

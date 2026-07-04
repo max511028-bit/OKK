@@ -31,9 +31,21 @@ ALT_VOICES = {
     "female":   "ru-RU-SvetlanaNeural",
     "male":     "ru-RU-DmitryNeural",
 }
-# На 2026 Microsoft Edge TTS даёт только эти 2 русских голоса.
-# Если нужно больше — silero TTS (open source, требует PyTorch) или
-# Yandex SpeechKit (платно, ~₽16 за 1000 символов).
+# На 2026 Microsoft Edge TTS даёт только эти 2 русских голоса (облачные,
+# требуют интернет). Локальный Silero (see silero_server.py, свой процесс
+# на 127.0.0.1:5001) добавляет ещё 5 голосов офлайн — префикс "silero:" в
+# имени голоса отличает движок (см. synthesize_telephony_pcm). Полный
+# список для UI конструктора сценариев:
+VOICE_CHOICES = [
+    {"id": "ru-RU-SvetlanaNeural", "label": "Светлана (облако, женский)"},
+    {"id": "ru-RU-DmitryNeural",   "label": "Дмитрий (облако, мужской)"},
+    {"id": "silero:kseniya",       "label": "Ксения (локальный, женский)"},
+    {"id": "silero:baya",          "label": "Байя (локальный, женский)"},
+    {"id": "silero:xenia",         "label": "Ксения-2 (локальный, женский)"},
+    {"id": "silero:aidar",         "label": "Айдар (локальный, мужской)"},
+    {"id": "silero:eugene",        "label": "Евгений (локальный, мужской)"},
+]
+SILERO_URL = os.getenv("SILERO_URL", "http://127.0.0.1:5001")
 
 CACHE_DIR = Path(__file__).parent / "tts_cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -70,16 +82,95 @@ def synthesize_mp3(text: str, voice: str = DEFAULT_VOICE,
     return asyncio.run(_synth_mp3(text, voice, rate, pitch))
 
 
-def _cache_key(text: str, voice: str) -> str:
-    h = hashlib.sha1((voice + "||" + text).encode("utf-8")).hexdigest()[:16]
+def _cache_key(text: str, voice: str, rate: str = "+0%") -> str:
+    # rate ОБЯЗАТЕЛЬНО в ключе — иначе разные скорости одного голоса
+    # схлопнутся в один и тот же файл кэша, и настройка скорости
+    # сценария будет молча игнорироваться после первого прогона.
+    h = hashlib.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
     return h
 
 
+def _get_ffmpeg_exe() -> str:
+    try:
+        import imageio_ffmpeg  # type: ignore
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        return "ffmpeg"
+
+
+def _rate_to_atempo(rate: str) -> float:
+    """"+10%" -> 1.10, "-5%" -> 0.95, "+0%"/пусто -> 1.0. Формат тот же,
+    что и у edge-tts rate, чтобы настройка скорости в конструкторе
+    сценариев работала одинаково независимо от выбранного движка."""
+    if not rate:
+        return 1.0
+    try:
+        pct = float(rate.strip().rstrip("%"))
+    except ValueError:
+        return 1.0
+    return max(0.5, min(2.0, 1.0 + pct / 100.0))  # ffmpeg atempo лимит 0.5-2.0
+
+
+def _pcm_from_mp3(mp3: bytes, rate: str = "+0%") -> bytes:
+    """MP3 (любой sample rate) -> PCM 8000Hz mono 16bit. rate применяется
+    только если он ЕЩЁ не учтён в самом синтезе (silero не умеет
+    скорость на входе — единственный путь туда) через ffmpeg atempo."""
+    ffmpeg_exe = _get_ffmpeg_exe()
+    args = [ffmpeg_exe, "-y", "-loglevel", "error", "-i", "pipe:0"]
+    atempo = _rate_to_atempo(rate)
+    if abs(atempo - 1.0) > 0.001:
+        args += ["-af", f"atempo={atempo}"]
+    args += ["-ar", "8000", "-ac", "1", "-acodec", "pcm_s16le", "-f", "s16le", "pipe:1"]
+
+    import subprocess
+    proc = subprocess.run(args, input=mp3, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg fail: {proc.stderr.decode('utf-8', 'replace')[:200]}")
+    return proc.stdout
+
+
+def _synth_silero_pcm(text: str, voice_name: str, rate: str = "+0%") -> bytes:
+    """voice_name без префикса "silero:" (например "kseniya"). Просит
+    сервер сразу 8000Hz — silero честно умеет этот sample rate, поэтому
+    ffmpeg тут нужен только для скорости (atempo), не для ресэмплинга."""
+    import urllib.request as _ur
+    import urllib.parse as _up
+    url = SILERO_URL + "/tts?" + _up.urlencode({
+        "text": text, "voice": voice_name, "sample_rate": 8000,
+    })
+    with _ur.urlopen(url, timeout=30) as resp:
+        wav_bytes = resp.read()
+    with io.BytesIO(wav_bytes) as buf, wave.open(buf, "rb") as wf:
+        if wf.getframerate() != 8000 or wf.getsampwidth() != 2 or wf.getnchannels() != 1:
+            raise RuntimeError(f"silero вернул неожиданный формат: "
+                                f"{wf.getframerate()}Hz {wf.getsampwidth()*8}bit "
+                                f"{wf.getnchannels()}ch")
+        pcm = wf.readframes(wf.getnframes())
+    atempo = _rate_to_atempo(rate)
+    if abs(atempo - 1.0) > 0.001:
+        ffmpeg_exe = _get_ffmpeg_exe()
+        import subprocess
+        proc = subprocess.run(
+            [ffmpeg_exe, "-y", "-loglevel", "error",
+             "-f", "s16le", "-ar", "8000", "-ac", "1", "-i", "pipe:0",
+             "-af", f"atempo={atempo}",
+             "-ar", "8000", "-ac", "1", "-acodec", "pcm_s16le", "-f", "s16le", "pipe:1"],
+            input=pcm, capture_output=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"ffmpeg atempo fail: {proc.stderr.decode('utf-8', 'replace')[:200]}")
+        pcm = proc.stdout
+    return pcm
+
+
 def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
-                              use_cache: bool = True) -> bytes:
+                              use_cache: bool = True, rate: str = "+0%") -> bytes:
     """Возвращает PCM 8000Hz mono 16bit (формат для SIP/телефонии).
-    Использует ffmpeg из пакета imageio-ffmpeg. Кэширует результат на
-    диске — повторные вызовы для тех же фраз мгновенные."""
+    voice с префиксом "silero:" (например "silero:kseniya") идёт через
+    локальный Silero-сервер (voicecall/silero_server.py, свой процесс на
+    127.0.0.1:5001) — иначе через облачный edge-tts, как раньше.
+    Кэширует результат на диске (ключ учитывает voice+rate) — повторные
+    вызовы для тех же фраз/настроек мгновенные."""
     if not text or not text.strip():
         # Пустой текст (баг сценария — конструктор не должен такого
         # допускать, но случалось) — edge-tts на пустую строку падает с
@@ -87,28 +178,26 @@ def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
         # вместе с уже собранными ответами кандидата. Просто тишина.
         return b""
     if use_cache:
-        cache_path = CACHE_DIR / f"pcm_{_cache_key(text, voice)}.raw"
+        cache_path = CACHE_DIR / f"pcm_{_cache_key(text, voice, rate)}.raw"
         if cache_path.exists():
             return cache_path.read_bytes()
 
-    mp3 = synthesize_mp3(text, voice)
-    try:
-        import imageio_ffmpeg  # type: ignore
-        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-    except ImportError:
-        ffmpeg_exe = "ffmpeg"
+    if voice.startswith("silero:"):
+        voice_name = voice.split(":", 1)[1]
+        try:
+            pcm = _synth_silero_pcm(text, voice_name, rate)
+        except Exception as e:
+            # Лучшее старание: локальный сервер может быть не запущен —
+            # звонок не должен падать из-за выбора голоса, откатываемся
+            # на дефолтный облачный.
+            print(f"⚠️  Silero недоступен ({type(e).__name__}: {e}), откат на {DEFAULT_VOICE}",
+                  file=sys.stderr)
+            mp3 = synthesize_mp3(text, DEFAULT_VOICE, rate=rate)
+            pcm = _pcm_from_mp3(mp3, rate="+0%")  # rate уже применён в synthesize_mp3
+    else:
+        mp3 = synthesize_mp3(text, voice, rate=rate)
+        pcm = _pcm_from_mp3(mp3, rate="+0%")  # rate уже применён в synthesize_mp3
 
-    import subprocess
-    proc = subprocess.run(
-        [ffmpeg_exe, "-y", "-loglevel", "error",
-         "-i", "pipe:0",
-         "-ar", "8000", "-ac", "1", "-acodec", "pcm_s16le",
-         "-f", "s16le", "pipe:1"],
-        input=mp3, capture_output=True
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg fail: {proc.stderr.decode('utf-8', 'replace')[:200]}")
-    pcm = proc.stdout
     if use_cache:
         try:
             cache_path.write_bytes(pcm)
@@ -118,10 +207,21 @@ def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
 
 
 def prewarm_scenario(scenario_dict: dict, voice: str = DEFAULT_VOICE,
-                      verbose: bool = True) -> int:
+                      verbose: bool = True, rate: str = "+0%",
+                      extra_texts: Optional[list] = None) -> int:
     """Заранее генерирует и кэширует TTS для всех фраз сценария.
-    Возвращает кол-во новых сгенерированных файлов."""
-    texts = []
+    Возвращает кол-во новых сгенерированных файлов.
+
+    voice/rate ОБЯЗАТЕЛЬНО должны совпадать с тем, что реально звучит в
+    звонке (см. настройки сценария) — иначе прогрев кладёт в кэш файлы
+    под одним ключом, а speak() во время звонка просит другой (другой
+    голос/скорость = другой ключ кэша, см. _cache_key), кэш промахивается
+    и фраза синтезируется вживую посреди разговора.
+
+    extra_texts: доп. фразы вне самого сценария — например филлеры
+    ("ага", "угу", см. dialog.FILLER_PHRASES), которые тоже реально
+    звучат в звонке, но не являются частью steps/closing."""
+    texts = list(extra_texts or [])
     for st in scenario_dict.get("steps", []):
         # on_yes пропускали — а это реальная озвучиваемая фраза (см.
         # dialog.py, last_bot=step.get("on_yes") на "да" в yesno-вопросе
@@ -138,12 +238,12 @@ def prewarm_scenario(scenario_dict: dict, voice: str = DEFAULT_VOICE,
         texts.append(closing)
     new_count = 0
     for i, t in enumerate(texts, 1):
-        cache_path = CACHE_DIR / f"pcm_{_cache_key(t, voice)}.raw"
+        cache_path = CACHE_DIR / f"pcm_{_cache_key(t, voice, rate)}.raw"
         if cache_path.exists():
             if verbose: print(f"  [{i}/{len(texts)}] кэш есть: {t[:50]}...")
             continue
         if verbose: print(f"  [{i}/{len(texts)}] генерирую: {t[:50]}...")
-        synthesize_telephony_pcm(t, voice, use_cache=True)
+        synthesize_telephony_pcm(t, voice, use_cache=True, rate=rate)
         new_count += 1
     return new_count
 

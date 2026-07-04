@@ -26,7 +26,7 @@ except Exception:
     pass
 
 from _sip_config import load_env, require
-from dialog import all_reask_texts
+from dialog import all_reask_texts, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import warmup as stt_warmup
 from phone_call import run_call_via_bridge
@@ -332,10 +332,19 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
     про 401/403 в claim()/result()), вызывающий код (main()) должен
     продолжать опрос с ВОЗВРАЩЁННЫМ токеном."""
     scenario = _load_scenario_from_portal(base_url, scenario_id)
-    print(f"Прогрев TTS для сценария «{scenario['name']}»...", flush=True)
-    prewarm_scenario(scenario, voice=DEFAULT_VOICE, verbose=False)
+    # Настройки голоса сценария (Часть 2 доработок 2026-07) — прогрев
+    # ОБЯЗАН использовать ТОТ ЖЕ voice/rate, что реально прозвучит в
+    # звонке (см. _run_dialog_loop в phone_call.py), иначе ключ TTS-кэша
+    # не совпадёт и каждая фраза будет синтезироваться вживую посреди
+    # разговора вместо мгновенной отдачи из кэша.
+    _settings = scenario.get("settings") or {}
+    _voice = _settings.get("voice") or DEFAULT_VOICE
+    _rate = _settings.get("rate") or "+0%"
+    print(f"Прогрев TTS для сценария «{scenario['name']}» (голос: {_voice}, скорость: {_rate})...", flush=True)
+    prewarm_scenario(scenario, voice=_voice, rate=_rate, verbose=False,
+                      extra_texts=FILLER_PHRASES if _settings.get("fillers") else None)
     for t in all_reask_texts():
-        synthesize_telephony_pcm(t, voice=DEFAULT_VOICE)
+        synthesize_telephony_pcm(t, voice=_voice, rate=_rate)
 
     while True:
         try:
