@@ -181,8 +181,56 @@ def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None
             print(f"✨ Нормализован ответ «{crit}»: {store[crit]}", flush=True)
 
 
+def _recheck_verdict(base_url: str, verdict: str, stop_reason: str, combined_transcript: str):
+    """Сверяет причину автоотказа (verdict='stopped') с более точной
+    пакетной перепроверкой записи — пункт 7 доработок 2026-07: реальный
+    случай раньше (кандидат сказал "не было судимостей", live-STT
+    услышал "глебова", LLM с одного слова решила что это "да" — кандидата
+    ошибочно отклонили). Штатный reask-before-LLM фикс снижает такие
+    случаи в реальном времени, но не отменяет их полностью — это вторая,
+    более медленная и точная линия обороны ПОСЛЕ звонка: если пакетная
+    перепроверка (без ограничений словаря, по чистой записи) не
+    подтверждает причину отказа, помечаем попытку на ручную проверку
+    рекрутёром вместо слепого доверия live-результату.
+
+    Возвращает (needs_review: bool, review_note: str|None). При любой
+    ошибке/недоступности LLM — (False, None): лучшее старание, не
+    подменяет собой отказоустойчивость всего пайплайна."""
+    if verdict != "stopped" or not stop_reason or not combined_transcript.strip():
+        return False, None
+    prompt = (
+        "Автоматический телефонный опрос кандидата на вакансию. Бот прервал "
+        f"разговор и отказал кандидату по причине: «{stop_reason}». Решение "
+        "принято по распознаванию речи В РЕАЛЬНОМ ВРЕМЕНИ, которое иногда "
+        "путает слова на плохой связи.\n\n"
+        "Вот более точная перепроверка ОБЕИХ дорожек записи разговора "
+        "(бот и кандидат вперемешку, без ограничения словаря):\n"
+        f"{combined_transcript}\n\n"
+        "Подтверждает ли эта перепроверка причину отказа, или похоже что "
+        "live-распознавание ошиблось (кандидат говорил что-то другое, а "
+        "услышали не то)? Ответь строго одним словом: подтверждено — если "
+        "текст явно подтверждает причину отказа; проверить — если "
+        "не подтверждает, противоречит или разговор в этом месте неразборчив."
+    )
+    try:
+        data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False, "think": False,
+            "options": {"temperature": 0.1, "num_predict": 12},
+        }, timeout=15)
+        answer = ((data.get("message") or {}).get("content") or "").strip().lower()
+    except Exception as e:
+        print(f"⚠️  Сверка вердикта с записью пропущена: {e}", flush=True)
+        return False, None
+    if "провер" in answer:
+        return True, f"Автосверка: перепроверка записи не однозначно подтверждает причину «{stop_reason}» — проверьте вручную."
+    return False, None
+
+
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
-                         api_secret: str, call_session_id: int) -> None:
+                         api_secret: str, call_session_id: int,
+                         verdict: str = "", stop_reason: str = "") -> None:
     """Пакетная перепроверка распознавания по WAV-дорожкам разговора (без
     потоковых огрехов реального времени — эмпирически заметно точнее).
     Novofon хранит ОТДЕЛЬНУЮ дорожку на каждую «ногу» звонка, но
@@ -226,13 +274,16 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         f"[Дорожка {i+1}] {t.strip() or '(тишина/не распознано)'}"
         for i, t in enumerate(transcripts)
     )
+    needs_review, review_note = _recheck_verdict(base_url, verdict, stop_reason, combined)
     _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
-         json_body={"contact_id": contact_id, "recheck_transcript": combined}, timeout=15)
-    print(f"🔍 Перепроверенный транскрипт contact_id={contact_id} прикреплён.", flush=True)
+         json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                    "needs_review": needs_review, "review_note": review_note}, timeout=15)
+    print(f"🔍 Перепроверенный транскрипт contact_id={contact_id} прикреплён."
+          + (" ⚠️ ПОМЕЧЕН НА ПРОВЕРКУ." if needs_review else ""), flush=True)
 
 
 def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
-                                 call_session_id) -> None:
+                                 call_session_id, verdict: str = "", stop_reason: str = "") -> None:
     """Фоновый поток (не блокирует основной цикл обзвона): Novofon
     обрабатывает запись разговора не мгновенно после звонка, поэтому
     пробуем несколько раз с паузой. Лучшее старание — если записи нет
@@ -261,7 +312,8 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
             except Exception as e:
                 print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
             try:
-                _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id)
+                _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id,
+                                     verdict=verdict, stop_reason=stop_reason)
             except Exception as e:
                 print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
             return
@@ -355,6 +407,8 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
             threading.Thread(
                 target=_fetch_and_attach_recording,
                 args=(base_url, token, contact_id, result["call_session_id"]),
+                kwargs={"verdict": result.get("verdict") or "",
+                        "stop_reason": result.get("stop_reason") or ""},
                 daemon=True,
             ).start()
 

@@ -695,39 +695,6 @@ def listen(call, vocab: Optional[list] = None,
     return " ".join(p for p in parts if p).strip()
 
 
-def detect_voicemail(call, max_listen_sec: float = 8.0) -> Optional[str]:
-    """Слушает линию СРАЗУ после ответа, ещё до первой фразы бота — часто
-    именно в этот момент уже играет приветствие автоответчика/голосовой
-    почты оператора («Абонент недоступен...», «Включен автоответчик...»).
-    Без ограничения словаря (обычная диктовка), чтобы распознать любую
-    формулировку.
-
-    Приветствия автоответчика обычно длинные и непрерывные, с короткими
-    паузами между предложениями — если резать по первой паузе (как в
-    обычном listen() для ответов кандидата), можно остановиться раньше
-    ключевых слов («...оставьте сообщение») и не поймать автоответчик.
-    Поэтому если речь УЖЕ началась — ждём тишины после неё заметно дольше
-    обычного (silence_after_speech_sec).
-
-    silence_before_speech_sec, наоборот, короткий (не max_listen_sec) —
-    живой человек часто отвечает молча, ожидая что заговорит звонящий
-    (обычный телефонный этикет); если ждать тут все 8 секунд как раньше,
-    получается долгая неловкая тишина перед первой фразой бота на КАЖДОМ
-    звонке живому человеку. Автоответчик почти всегда начинает говорить
-    сразу — короткого окна достаточно, чтобы его поймать, а живому
-    кандидату не придётся ждать дольше пары секунд.
-
-    Возвращает распознанный текст если это похоже на автоответчик, иначе
-    None."""
-    heard = listen(call, vocab=None,
-                    silence_after_speech_sec=2.5,
-                    silence_before_speech_sec=2.0,
-                    max_total_sec=max_listen_sec)
-    if heard and is_voicemail_phrase(heard):
-        return heard
-    return None
-
-
 def _prewarm_tts_for_name(scenario: dict, candidate_name: str) -> None:
     """prewarm_scenario() в dispatch_agent.py кэширует фразы С ЛИТЕРАЛЬНЫМ
     "{name}" в тексте — а реально в звонке произносится текст ПОСЛЕ
@@ -986,9 +953,9 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         result["status"] = "answered_completed"
     # Если за весь звонок кандидат ни разу ничего не сказал (везде
     # тишина) — сценарий мог доиграть до конца автоответчику или на
-    # очень плохой линии. Явное определение (detect_voicemail) могло не
-    # сработать, если приветствие началось не сразу, а с задержкой —
-    # это резервный признак для последующего разбора.
+    # очень плохой линии, если фраза-детекция и пробный круг свободным
+    # распознаванием (см. выше) не сработали — это резервный признак для
+    # последующего разбора.
     if not heard_anything:
         result["possible_voicemail"] = True
     _attach_call_quality_note(result["notes"], call_metrics, log)
@@ -1113,16 +1080,15 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         bridge_established_at = time.time()
-        log("Проверяю, не автоответчик ли это...")
-        vm_text = detect_voicemail(call)
-        if vm_text:
-            log(f"📼 Похоже на автоответчик: «{vm_text}» — вешаю трубку.")
-            result["status"] = "voicemail"
-            result["error"] = vm_text
-            try: call.hangup()
-            except Exception: pass
-            return result
-
+        # Раньше тут был отдельный detect_voicemail() ДО первой фразы бота
+        # (слушал линию до 8с) — на реальных звонках это добавляло 2-3с
+        # мёртвой тишины после того как кандидат уже сказал "алло" (плохое
+        # первое впечатление, живой человек не выдерживает такую паузу
+        # перед живым разговором). Детекция автоответчика теперь идёт ПО
+        # ХОДУ диалога (is_voicemail_phrase на каждой реплике + пробный
+        # круг свободным распознаванием после 2 нераспознанных подряд —
+        # см. _run_dialog_loop), так что отдельная проверка тут не нужна:
+        # здороваемся сразу.
         log("✅ Ответили! Начинаю диалог.")
         _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
                           on_transcript_update=on_transcript_update,
@@ -1230,15 +1196,23 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         log(f"call_session_id={call_session_id}, жду входящий звонок на нашу линию...")
 
         try:
-            call = incoming.get(timeout=70)
+            # Novofon реально перезванивает нам за секунды — 30с уже щедрый
+            # запас. Раньше стояло 70с, из-за чего худший случай недозвона
+            # (вместе с ожиданием ответа кандидата ниже) растягивался почти
+            # на 2 минуты на один контакт — на базе с массовыми недозвонами
+            # это часы впустую.
+            call = incoming.get(timeout=30)
         except queue.Empty:
             result["status"] = "error"
-            result["error"] = "Novofon не перезвонил на нашу линию за 70 сек"
+            result["error"] = "Novofon не перезвонил на нашу линию за 30 сек"
             log(f"❌ {result['error']}")
             return result
 
         log("Ответили на входящий от Novofon. Жду пока дозвонятся до кандидата...")
-        bridged, leg_states = call_api.wait_for_contact_talking(api_secret, call_session_id, timeout=45)
+        # 35с ≈ 6-7 гудков — кто не взял за это время, скорее всего не
+        # возьмёт вообще. Суммарный худший случай недозвона на контакт
+        # теперь ≈ 45-50с вместо прежних ~2 минут.
+        bridged, leg_states = call_api.wait_for_contact_talking(api_secret, call_session_id, timeout=35)
         if not bridged:
             # Диагностика: реальный случай 2026-07-03 — кандидат взял трубку
             # и говорил "алло алло" (слышно на записи), а состояние
@@ -1259,16 +1233,10 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         bridge_established_at = time.time()
-        log("Проверяю, не автоответчик ли это...")
-        vm_text = detect_voicemail(call)
-        if vm_text:
-            log(f"📼 Похоже на автоответчик: «{vm_text}» — вешаю трубку.")
-            result["status"] = "voicemail"
-            result["error"] = vm_text
-            try: call.hangup()
-            except Exception: pass
-            return result
-
+        # См. комментарий в run_call() — отдельная detect_voicemail() ДО
+        # первой фразы бота убрана: добавляла 2-3с тишины после того как
+        # кандидат уже ответил. Автоответчик теперь ловится по ходу
+        # диалога (_run_dialog_loop).
         log("✅ Кандидат на линии! Начинаю диалог.")
         _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
                           on_transcript_update=on_transcript_update,

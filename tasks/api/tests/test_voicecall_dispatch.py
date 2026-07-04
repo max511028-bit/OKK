@@ -465,6 +465,66 @@ class TestCallHistoryAndRecording:
                          json={"contact_id": 1, "recheck_transcript": "x"})
         assert r.status_code == 403
 
+    def test_needs_review_flag_stored_and_visible_in_detail(self, client, portal_token):
+        """Пункт 7 доработок 2026-07: агент может пометить попытку на
+        ручную проверку, если пакетная перепроверка записи не
+        подтверждает live-вердикт стопа."""
+        cid = self._campaign_with_one_contact(client, phone="79993330004")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="stopped")
+
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] нет не было судимостей",
+            "needs_review": True,
+            "review_note": "Автосверка: причина «Судимости: да» не подтверждается записью.",
+        })
+        assert r.status_code == 200, r.text
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        last = detail["history"][-1]
+        assert last["needs_review"] is True
+        assert "не подтверждается" in last["review_note"]
+
+    def test_needs_review_defaults_to_false(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330005")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed")
+
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] да мужской",
+        })
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["needs_review"] is False
+        assert detail["history"][-1]["review_note"] is None
+
+    def test_needs_review_visible_in_contacts_list(self, client, portal_token):
+        """Бейдж должен быть виден в основной таблице контактов, не
+        только в модалке карточки — иначе рекрутёр его пропустит."""
+        cid = self._campaign_with_one_contact(client, phone="79993330006")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="stopped")
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] нет не было",
+            "needs_review": True,
+            "review_note": "Проверить вручную.",
+        })
+
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        found = next(c for c in items if c["id"] == contact_id)
+        assert found["needs_review"] in (True, 1)
+
 
 class TestPauseResume:
     def _campaign_with_two_pending(self, client, phone1, phone2):

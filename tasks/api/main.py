@@ -266,6 +266,8 @@ def init_db() -> None:
             ("recording_url", "TEXT"),
             ("call_session_id", "INTEGER"),
             ("recheck_transcript", "TEXT"),
+            ("needs_review", "INTEGER DEFAULT 0"),
+            ("review_note", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE candidate_validations ADD COLUMN {_cv_col} {_cv_type}")
@@ -4214,22 +4216,26 @@ def vc_list_contacts(
     offset = max(0, int(offset))
     wh, params = [], []
     if campaign_id:
-        wh.append("campaign_id = ?")
+        wh.append("ct.campaign_id = ?")
         params.append(int(campaign_id))
     if status:
-        wh.append("status = ?")
+        wh.append("ct.status = ?")
         params.append(status)
     where = ("WHERE " + " AND ".join(wh)) if wh else ""
     with db() as conn:
         rows = conn.execute(
-            f"SELECT id, campaign_id, name, phone, source, status, verdict, stop_reason, "
-            f"       screen_out_reason, last_call_status, "
-            f"       attempts, last_attempt_at, validation_id, created_at "
-            f"FROM voicecall_contacts {where} ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?",
+            f"SELECT ct.id, ct.campaign_id, ct.name, ct.phone, ct.source, ct.status, ct.verdict, "
+            f"       ct.stop_reason, ct.screen_out_reason, ct.last_call_status, "
+            f"       ct.attempts, ct.last_attempt_at, ct.validation_id, ct.created_at, "
+            f"       cv.needs_review AS needs_review "
+            f"FROM voicecall_contacts ct "
+            f"LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
+            f"{where} "
+            f"ORDER BY ct.created_at ASC, ct.id ASC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ).fetchall()
         total = conn.execute(
-            f"SELECT COUNT(*) FROM voicecall_contacts {where}", params
+            f"SELECT COUNT(*) FROM voicecall_contacts ct {where}", params
         ).fetchone()[0]
     return {
         "items": [dict(r) for r in rows],
@@ -4279,7 +4285,7 @@ def vc_contact_detail(cid: int):
         history_rows = conn.execute(
             "SELECT id, started_at, ended_at, verdict, stop_reason, call_status, "
             "       dropped_at_step, recording_url, answers_json, transcript_json, summary, "
-            "       recheck_transcript "
+            "       recheck_transcript, needs_review, review_note "
             "FROM candidate_validations WHERE contact_id=? ORDER BY started_at ASC, id ASC",
             (cid,)).fetchall()
     d = dict(row)
@@ -4297,6 +4303,8 @@ def vc_contact_detail(cid: int):
             "transcript": json.loads(h["transcript_json"] or "[]"),
             "summary": h["summary"],
             "recheck_transcript": h["recheck_transcript"],
+            "needs_review": bool(h["needs_review"]),
+            "review_note": h["review_note"],
         }
         for h in history_rows
     ]
@@ -4620,6 +4628,8 @@ def vc_dispatch_recording(req: VCDispatchRecordingReq, request: Request):
 class VCDispatchRecheckReq(BaseModel):
     contact_id: int
     recheck_transcript: str
+    needs_review: bool = False
+    review_note: Optional[str] = None
 
 
 @app.post("/voicecall/dispatch/recheck-transcript")
@@ -4629,15 +4639,22 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
     пакетно (не потоково, как во время живого звонка) через Vosk. Обычно
     точнее того, что успели распознать в реальном времени. Отдельный
     текстовый блок для сверки рекрутёром, не подменяет структурированные
-    answers по вопросам — сопоставление таймингов слишком ненадёжно."""
+    answers по вопросам — сопоставление таймингов слишком ненадёжно.
+
+    needs_review/review_note: агент сверяет причину стопа с этим более
+    точным текстом (см. dispatch_agent._recheck_verdict) — если запись не
+    подтверждает live-вердикт (реальный случай: "глебова" вместо "не было
+    судимостей" привело к ложному отказу), помечает попытку для ручной
+    проверки рекрутёром вместо слепого доверия live-распознаванию."""
     _vcs_check_password(request)
     _vc_touch_agent()
     with db() as conn:
         conn.execute(
-            "UPDATE candidate_validations SET recheck_transcript=? WHERE id = ("
+            "UPDATE candidate_validations SET recheck_transcript=?, needs_review=?, review_note=? "
+            "WHERE id = ("
             "  SELECT id FROM candidate_validations WHERE contact_id=? "
             "  ORDER BY id DESC LIMIT 1)",
-            (req.recheck_transcript, req.contact_id),
+            (req.recheck_transcript, int(req.needs_review), req.review_note, req.contact_id),
         )
     return {"ok": True}
 
@@ -5420,6 +5437,53 @@ import uuid as _vcs_uuid
 import re as _vcs_re
 
 
+def _vcs_validate_steps(steps: list, closing: str) -> list:
+    """Проверки-подсказки при сохранении сценария — не блокируют
+    сохранение (черновик может быть незавершён), но подсвечивают
+    реальные баги, найденные на живых обзвонах:
+    - {name} слипается со следующим словом без пробела/запятой
+      (реальный случай 2026-07: "МаксимЗдравствуйте!" звучало в трубке
+      слитно на нескольких сценариях подряд);
+    - пустой текст вопроса — раньше ронял звонок при живом синтезе;
+    - стоп-ответ (end_on_yes/end_on_no) без текста объяснения —
+      кандидат просто услышит тишину/резкое прощание;
+    - одинаковый crit на разных шагах — второй ответ молча
+      перезапишет первый в итоговых answers;
+    - пустой текст прощания."""
+    warnings = []
+    seen_crit = {}
+    for i, st in enumerate(steps or []):
+        n = i + 1
+        crit = st.get("crit") or st.get("id") or f"шаг {n}"
+        bot_text = (st.get("bot") or "").strip()
+
+        if not bot_text:
+            warnings.append(f"Шаг {n} ({crit}): пустой текст вопроса — при живом звонке это может уронить реплику.")
+        elif _vcs_re.search(r"\{name\}[^\s,.!?—-]", bot_text):
+            warnings.append(f"Шаг {n} ({crit}): «{{name}}» слипается со следующим словом без пробела/запятой — "
+                             f"в трубке прозвучит слитно (например «МаксимЗдравствуйте!»).")
+
+        if crit in seen_crit:
+            warnings.append(f"Шаг {n} ({crit}): такой же crit уже используется на шаге {seen_crit[crit]} — "
+                             f"один из ответов молча перезапишет другой в результатах.")
+        else:
+            seen_crit[crit] = n
+
+        if st.get("end_on_yes") and not (st.get("on_yes") or "").strip() and not (st.get("stop_msg") or "").strip():
+            warnings.append(f"Шаг {n} ({crit}): стоп при «да», но нет текста объяснения (on_yes/stop_msg) — "
+                             f"кандидат не услышит, почему разговор завершился.")
+        if st.get("end_on_no") and not (st.get("on_no") or "").strip() and not (st.get("stop_msg") or "").strip():
+            warnings.append(f"Шаг {n} ({crit}): стоп при «нет», но нет текста объяснения (on_no/stop_msg) — "
+                             f"кандидат не услышит, почему разговор завершился.")
+        if st.get("expect") in ("age", "shifts") and not (st.get("stop_msg") or "").strip():
+            warnings.append(f"Шаг {n} ({crit}): нет текста stop_msg на случай отказа по этому шагу.")
+
+    if not (closing or "").strip():
+        warnings.append("Нет текста прощания (closing) — звонок, дошедший до конца, завершится без финальной фразы бота.")
+
+    return warnings
+
+
 def _vcs_check_password(request: Request):
     """Конструктор за паролем 511028. Проверяем X-Auth-Token (portal-токен)
     ИЛИ ?password= в query (для простоты UI). Дебаг-friendly: ясная 403."""
@@ -5519,7 +5583,7 @@ def vcs_create(payload: VCScriptPayload, request: Request):
              payload.closing, 1, now, now),
         )
         print(f"[scripts] created '{sid}' ({payload.name})", flush=True)
-    return {"ok": True, "id": sid}
+    return {"ok": True, "id": sid, "warnings": _vcs_validate_steps(payload.steps, payload.closing)}
 
 
 @app.put("/voicecall/scripts/{sid}")
@@ -5544,7 +5608,8 @@ def vcs_update(sid: str, payload: VCScriptPayload, request: Request):
              payload.closing, new_status, now, sid),
         )
         print(f"[scripts] updated '{sid}' v{row['version']+1} status={new_status}", flush=True)
-    return {"ok": True, "id": sid, "status": new_status}
+    return {"ok": True, "id": sid, "status": new_status,
+            "warnings": _vcs_validate_steps(payload.steps, payload.closing)}
 
 
 @app.post("/voicecall/scripts/{sid}/publish")

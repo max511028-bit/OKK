@@ -155,6 +155,7 @@
       <button onclick="edPublish()" style="background:var(--ok-soft);border-color:#1f4a2d;color:#7ee29a;">📢 Опубликовать</button>
       <span id="edMsg" style="font-size:13px;color:var(--muted);align-self:center;"></span>
     </div>
+    <div id="edWarnings" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#3a2a10;border:1px solid #5a4415;font-size:12.5px;color:#f0c975;"></div>
   </div>
 
 </div>
@@ -328,6 +329,7 @@ async function edOpen(sid){
     document.getElementById("edStatus").className = "pill " + (d.status || "draft");
     document.getElementById("edStatus").textContent = d.status === "published" ? "✓ опубликован" : "✎ черновик";
     document.getElementById("edMsg").textContent = "";
+    edShowWarnings(null);
     document.getElementById("libCard").style.display = "none";
     document.getElementById("editorCard").style.display = "block";
     edRender();
@@ -517,6 +519,15 @@ function edCollectPayload(){
   };
 }
 
+function edShowWarnings(warnings){
+  var box = document.getElementById("edWarnings");
+  if(!warnings || !warnings.length){ box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "block";
+  box.innerHTML = "⚠️ Стоит проверить перед обзвоном:<ul style='margin:6px 0 0;padding-left:20px;'>"
+    + warnings.map(function(w){ return "<li>" + w.replace(/&/g,"&amp;").replace(/</g,"&lt;") + "</li>"; }).join("")
+    + "</ul>";
+}
+
 async function edSave(silent){
   var msg = document.getElementById("edMsg");
   var payload = edCollectPayload();
@@ -530,6 +541,7 @@ async function edSave(silent){
     var d = await r.json();
     document.getElementById("edStatus").className = "pill " + (d.status||"draft");
     document.getElementById("edStatus").textContent = d.status === "published" ? "✓ опубликован" : "✎ черновик";
+    edShowWarnings(d.warnings);
     if(!silent) msg.textContent = "✅ Сохранено (" + new Date().toLocaleTimeString("ru-RU") + ")";
     return true;
   }catch(e){ msg.textContent = "❌ " + e.message; return false; }
