@@ -4715,6 +4715,62 @@ def vc_campaign_funnel(cid: int):
     }
 
 
+@app.get("/voicecall/campaigns/{cid}/suspect-voicemails")
+def vc_campaign_suspect_voicemails(cid: int, request: Request):
+    """Пункт 3 доработок 2026-07: конвейер пополнения базы фраз
+    автоответчиков. is_voicemail_phrase() на вопросах с ограниченным
+    словарём (да/нет/возраст) физически не может распознать текст
+    заглушки — Vosk в grammar-режиме выводит только слова из словаря
+    (см. комментарии в phone_call.py). Такие звонки либо обрываются
+    эвристикой "3 подряд без ответа" (call_status=low_recognition), либо
+    иногда доигрывают до конца с answered_completed, но все ответы
+    "не распознано".
+
+    Отдаёт recheck_transcript — пакетную перепроверку по чистой записи
+    (без ограничения словаря), где формулировка заглушки обычно видна
+    дословно. Рекрутёр копирует непойманный текст и передаёт на
+    добавление в _VOICEMAIL_PATTERN (dialog.py) с тестом.
+
+    За паролем — тут телефоны и транскрипты реальных кандидатов."""
+    _vcs_check_password(request)
+    with db() as conn:
+        camp = conn.execute("SELECT id FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+        if not camp:
+            raise HTTPException(404, "Campaign not found")
+        rows = conn.execute(
+            "SELECT cv.id AS validation_id, cv.contact_id, cv.call_status, "
+            "       cv.recheck_transcript, cv.recording_url, cv.answers_json, "
+            "       ct.name, ct.phone "
+            "FROM candidate_validations cv "
+            "JOIN voicecall_contacts ct ON ct.id = cv.contact_id "
+            "WHERE ct.campaign_id = ? "
+            "  AND cv.call_status IN ('low_recognition', 'voicemail', 'answered_completed') "
+            "ORDER BY cv.id DESC",
+            (cid,)).fetchall()
+
+    out = []
+    for r in rows:
+        try:
+            answers = json.loads(r["answers_json"] or "{}")
+        except Exception:
+            answers = {}
+        all_unrecognized = bool(answers) and all(
+            str(v).startswith("не распознано") for v in answers.values()
+        )
+        if r["call_status"] not in ("low_recognition", "voicemail") and not all_unrecognized:
+            continue
+        out.append({
+            "contact_id": r["contact_id"],
+            "name": r["name"],
+            "phone": r["phone"],
+            "call_status": r["call_status"],
+            "recheck_transcript": r["recheck_transcript"],
+            "recording_url": r["recording_url"],
+            "all_answers_unrecognized": all_unrecognized,
+        })
+    return {"items": out, "total": len(out)}
+
+
 @app.get("/voicecall/campaigns/{cid}/export")
 def vc_campaign_export(cid: int):
     """Отчёт .xlsx: Имя/Телефон/Статус/точная причина/Вердикт/причина стопа

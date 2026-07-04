@@ -776,6 +776,68 @@ async function _vcPortalPost(path){
   return data;
 }
 
+// GET-вариант _vcPortalPost (тот же общий пароль портала, тот же кэш за
+// сессию страницы) — нужен для password-gated чтения (suspect-voicemails
+// отдаёт телефоны и транскрипты реальных кандидатов, не может быть открыт).
+async function _vcPortalGet(path){
+  if(!_vcPortalPassword){
+    var pwd = prompt("Пароль портала:");
+    if(!pwd) return null;
+    _vcPortalPassword = pwd;
+  }
+  var r = await fetch(API + path + (path.indexOf("?") === -1 ? "?" : "&")
+    + "password=" + encodeURIComponent(_vcPortalPassword));
+  var data = await r.json().catch(function(){ return {}; });
+  if(!r.ok){
+    if(r.status === 403){ _vcPortalPassword = ""; }
+    alert("❌ " + (data.detail || r.statusText));
+    return null;
+  }
+  return data;
+}
+
+// Пункт 3 доработок 2026-07 — конвейер пополнения фраз-автоответчиков.
+// Показывает попытки, где бот скорее всего наткнулся на автоответчик/
+// заглушку сети, которую не поймала словарная детекция на закрытых
+// вопросах (да/нет/возраст — там у Vosk ограниченный словарь, заглушку
+// физически нечем распознать). recheck_transcript — пакетная
+// перепроверка по чистой записи, там формулировка обычно видна
+// дословно. Переиспользует модалку карточки контакта.
+async function showSuspectVoicemails(cid){
+  var modal = document.getElementById("contactModal");
+  var body = document.getElementById("contactModalBody");
+  body.innerHTML = "<div class='loading'>Загрузка...</div>";
+  modal.classList.add("show");
+  var data = await _vcPortalGet("/voicecall/campaigns/"+cid+"/suspect-voicemails");
+  if(!data){ modal.classList.remove("show"); return; }
+  var items = data.items || [];
+  var html = "<h2 style='margin:0 0 4px'>🧩 Возможные заглушки (" + items.length + ")</h2>"
+    + "<div style='color:var(--muted); font-size:12px; margin-bottom:14px;'>"
+    + "Попытки, где бот скорее всего попал на автоответчик/объявление сети, но словарная "
+    + "детекция это не поймала. Скопируй непойманную формулировку из перепроверки и передай "
+    + "на добавление в базу фраз.</div>";
+  if(!items.length){
+    html += "<div class='empty'>Подозрительных попыток не найдено — либо детекция всё поймала штатно, "
+      + "либо в этой кампании их не было.</div>";
+  } else {
+    html += items.map(function(it){
+      return "<div class='history-attempt' style='margin-bottom:10px;'>"
+        + "<div class='history-attempt-head'><b>" + escHtml(it.name || "—") + "</b> · " + fmtPhone(it.phone)
+        + " · " + escHtml(_LCS_LABEL[it.call_status] || it.call_status)
+        + (it.all_answers_unrecognized ? " · все ответы не распознаны" : "") + "</div>"
+        + (it.recheck_transcript
+            ? "<pre style='white-space:pre-wrap; font-size:12px; color:var(--text); background:var(--surface2); "
+              + "border-radius:6px; padding:8px 10px; margin-top:6px;'>" + escHtml(it.recheck_transcript) + "</pre>"
+            : "<div style='color:var(--hint); font-size:11px; margin-top:6px;'>Перепроверка записи ещё не готова или не удалась.</div>")
+        + (it.recording_url
+            ? "<audio controls preload='none' style='width:100%; height:32px; margin-top:6px;' src='" + escHtml(it.recording_url) + "'></audio>"
+            : "")
+        + "</div>";
+    }).join("");
+  }
+  body.innerHTML = html;
+}
+
 async function startDispatch(cid){
   if(!confirm("Начать обзвон? Локальный агент на ПК с SIP-линией должен быть запущен.")) return;
   try{
@@ -966,6 +1028,7 @@ async function loadContacts(cid, silent){
         + "  <span>"
         + "    <a class='small' href='"+API+"/voicecall/campaigns/"+cid+"/export' style='margin-right:8px' "
         + "       onclick='event.stopPropagation()'><button class='small'>📥 Скачать отчёт</button></a>"
+        + "    <button class='small' style='margin-right:8px' onclick='event.stopPropagation(); showSuspectVoicemails("+cid+")'>🧩 Заглушки?</button>"
         + "    <button class='danger small' onclick='deleteCampaign("+cid+")'>🗑 Удалить</button>"
         + "  </span>"
         + "</div>";

@@ -560,6 +560,86 @@ class TestCallHistoryAndRecording:
         assert funnel["callback_requested"] == 1
 
 
+class TestSuspectVoicemails:
+    """Пункт 3 доработок 2026-07: конвейер пополнения фраз-автоответчиков —
+    GET /voicecall/campaigns/{cid}/suspect-voicemails собирает попытки,
+    где словарная детекция скорее всего пропустила заглушку."""
+
+    def _campaign_with_one_contact(self, client, phone="79990000000"):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["Тест", phone]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Заглушки тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        return r.json()["campaign_id"]
+
+    def _claim_and_result(self, client, auth, campaign_id, status, **extra):
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": campaign_id},
+                             headers=auth).json()
+        contact_id = claim["contact_id"]
+        body = {"contact_id": contact_id, "status": status}
+        body.update(extra)
+        r = client.post("/voicecall/dispatch/result", headers=auth, json=body)
+        assert r.status_code == 200, r.text
+        return contact_id
+
+    def test_low_recognition_call_shows_up_with_recheck_transcript(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79994440001")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(client, auth, cid, "low_recognition",
+                                             call_session_id=1001)
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] аппарат абонента временно недоступен попробуйте позже",
+        })
+
+        r = client.get(f"/voicecall/campaigns/{cid}/suspect-voicemails", headers=auth)
+        assert r.status_code == 200, r.text
+        items = r.json()["items"]
+        assert len(items) == 1
+        assert items[0]["contact_id"] == contact_id
+        assert "аппарат абонента" in items[0]["recheck_transcript"]
+
+    def test_answered_completed_all_unrecognized_shows_up(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79994440002")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Шаг 1": "не распознано", "Пол": "не распознано: шум"})
+
+        items = client.get(f"/voicecall/campaigns/{cid}/suspect-voicemails", headers=auth).json()["items"]
+        assert len(items) == 1
+        assert items[0]["all_answers_unrecognized"] is True
+
+    def test_answered_completed_with_real_answers_not_shown(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79994440003")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Шаг 1": "да", "Пол": "не распознано"})
+
+        items = client.get(f"/voicecall/campaigns/{cid}/suspect-voicemails", headers=auth).json()["items"]
+        assert items == []
+
+    def test_requires_password(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79994440004")
+        r = client.get(f"/voicecall/campaigns/{cid}/suspect-voicemails")
+        assert r.status_code == 403
+
+    def test_unknown_campaign_404(self, client, portal_token):
+        auth = {"X-Auth-Token": portal_token}
+        r = client.get("/voicecall/campaigns/999999/suspect-voicemails", headers=auth)
+        assert r.status_code == 404
+
+
 class TestPauseResume:
     def _campaign_with_two_pending(self, client, phone1, phone2):
         content = _xlsx_bytes(["Имя", "Телефон"], [["A", phone1], ["B", phone2]])
