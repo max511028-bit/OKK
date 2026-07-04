@@ -57,6 +57,62 @@ class TestVoicemailPhraseDetection:
         assert dialog.is_voicemail_phrase(None) is False
 
 
+class TestCallbackRequestDetection:
+    """Живой кандидат, просящий перезвонить позже, не должен теряться в
+    воронке как "автоответчик" — is_callback_request() проверяется
+    ПЕРЕД is_voicemail_phrase() в _run_dialog_loop (2026-07)."""
+
+    def test_catches_personal_callback_requests(self):
+        phrases = [
+            "нет можешь перезвонить через десять минут",
+            "я занят наберите вечером",
+            "перезвоните мне попозже",
+            "сейчас не могу говорить перезвони",
+            "давайте я вам перезвоню через час",
+            "занята сейчас перезвоните через минут пять",
+            "за рулем сейчас перезвоните завтра",
+        ]
+        for p in phrases:
+            assert dialog.is_callback_request(p), f"должен поймать: {p}"
+
+    def test_does_not_catch_operator_voicemail_phrases(self):
+        """Приоритет: операторские заглушки НЕ должны считаться просьбой
+        живого человека, даже если формально похожи (та же фраза
+        "перезвоните позже")."""
+        phrases = [
+            "абонент не берет трубку попробуйте перезвонить позднее",
+            "аппарат выключен перезвоните позже",
+            "телефон выключен пожалуйста перезвоните позже",
+            "все каналы связи заняты попробуйте позвонить позже",
+        ]
+        for p in phrases:
+            assert not dialog.is_callback_request(p), f"ложное срабатывание на автоответчик: {p}"
+
+    def test_does_not_catch_unrelated_answers(self):
+        answers = ["да удобно", "нет не было", "двадцать девять", "алло да слушаю"]
+        for p in answers:
+            assert not dialog.is_callback_request(p), f"ложное срабатывание: {p}"
+
+    def test_empty_and_none_are_safe(self):
+        assert dialog.is_callback_request("") is False
+        assert dialog.is_callback_request(None) is False
+
+    def test_voicemail_and_callback_phrases_do_not_overlap(self):
+        """При равных входных данных ровно ОДНА из двух функций должна
+        сработать — иначе неоднозначно, какая ветка в _run_dialog_loop
+        выиграет (важно, что там callback проверяется первым)."""
+        callback_phrases = [
+            "нет можешь перезвонить через десять минут",
+            "я занят наберите вечером",
+            "занята сейчас перезвоните через минут пять",
+        ]
+        for p in callback_phrases:
+            assert dialog.is_callback_request(p) and not dialog.is_voicemail_phrase(p), p
+
+    def test_callback_bye_text_is_prewarmed(self):
+        assert dialog.CALLBACK_BYE_TEXT in dialog.all_reask_texts()
+
+
 class TestLlmClassifyDeadCache:
     """Пункт 1: LLM-классификатор не должен держать кандидата в тишине
     10+ секунд, если сервис недоступен — таймаут короче и есть кэш

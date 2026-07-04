@@ -848,7 +848,7 @@ async function toggleCampaign(cid){
 var _FUNNEL_STAGES = [
   {title: "Загружено", keys: {loaded: "Загружено", screened_out: "Отсеяно предпроверкой", precheck_done: "Готово без звонка"}},
   {title: "Попытки дозвона", keys: {pending: "В очереди", calling: "Звоним сейчас", attempted: "Уже пытались дозвониться"}},
-  {title: "Исходы попытки", keys: {no_answer: "Не взял трубку", busy: "Занято", voicemail: "Автоответчик", low_recognition: "Не распознали (не факт что автоответчик)", error: "Ошибка звонка"}, hideZero: ["busy", "error", "low_recognition"]},
+  {title: "Исходы попытки", keys: {no_answer: "Не взял трубку", busy: "Занято", voicemail: "Автоответчик", low_recognition: "Не распознали (не факт что автоответчик)", callback_requested: "Просили перезвонить", error: "Ошибка звонка"}, hideZero: ["busy", "error", "low_recognition", "callback_requested"]},
   {title: "Дошли до конца сценария", keys: {reached_end: "Дошли до конца", dropped_mid_call: "Оборвались посреди"}},
   {title: "Вердикт (среди дошедших до конца)", keys: {passed: "Годен", stopped: "Стоп", declined: "Отказ"}, hideZero: ["declined"]},
 ];
@@ -874,7 +874,8 @@ async function loadFunnel(cid){
 
 var _LCS_LABEL = {voicemail:"автоответчик", no_answer:"не взял трубку", busy:"занято",
                    error:"ошибка звонка", answered_completed:"поговорили", hangup_by_candidate:"бросил трубку",
-                   low_recognition:"не удалось распознать (не факт что автоответчик)"};
+                   low_recognition:"не удалось распознать (не факт что автоответчик)",
+                   callback_requested:"просил перезвонить"};
 
 function ctStatusPill(ct, talking){
   // Пункт 7 доработок 2026-07: агент пере-сверяет причину автоотказа с

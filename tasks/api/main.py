@@ -4525,6 +4525,10 @@ _VC_STATUS_MAP = {
     "voicemail": "failed",
     "low_recognition": "failed",
     "error": "failed",
+    # Живой кандидат попросил перезвонить позже. НЕТ авто-перезвона по
+    # таймеру — контакт ведёт себя ровно как no_answer/busy: попадает в
+    # failed, повторный набор только вручную кнопкой «Заново» на портале.
+    "callback_requested": "failed",
 }
 
 # Живой транскрипт звонков в процессе — только в памяти процесса, не в БД.
@@ -4686,6 +4690,7 @@ def vc_campaign_funnel(cid: int):
             " SUM(CASE WHEN last_call_status='low_recognition' THEN 1 ELSE 0 END) AS low_recognition, "
             " SUM(CASE WHEN last_call_status='no_answer' THEN 1 ELSE 0 END) AS no_answer, "
             " SUM(CASE WHEN last_call_status='busy' THEN 1 ELSE 0 END) AS busy, "
+            " SUM(CASE WHEN last_call_status='callback_requested' THEN 1 ELSE 0 END) AS callback_requested, "
             " SUM(CASE WHEN last_call_status='error' THEN 1 ELSE 0 END) AS call_error "
             "FROM voicecall_contacts WHERE campaign_id=?", (cid,)).fetchone()
     return {
@@ -4700,6 +4705,7 @@ def vc_campaign_funnel(cid: int):
         "low_recognition": int(row["low_recognition"] or 0),
         "no_answer": int(row["no_answer"] or 0),
         "busy": int(row["busy"] or 0),
+        "callback_requested": int(row["callback_requested"] or 0),
         "error": int(row["call_error"] or 0),
         "reached_end": int(row["reached_end"] or 0),
         "dropped_mid_call": int(row["dropped_mid_call"] or 0),

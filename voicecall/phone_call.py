@@ -62,7 +62,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, CALLBACK_BYE_TEXT
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -859,6 +859,25 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                 + (f", усилено x{m_listen['agc_gain']}" if m_listen["agc_gain"] > 1.05 else ""))
         if call_metrics:
             call_metrics[-1].update(m_listen)
+
+        # Живой кандидат, просящий перезвонить позже ("занят, наберите
+        # через час") — проверяем ПЕРЕД is_voicemail_phrase(), потому что
+        # операторские заглушки говорят похожие слова ("перезвоните
+        # позже") и раньше такой кандидат ошибочно улетал в status=
+        # voicemail и терялся из воронки. Никакого авто-перезвона —
+        # только честный статус, повторный набор строго вручную кнопкой
+        # «Заново» (см. tasks/api/main.py _VC_STATUS_MAP).
+        if answer and is_callback_request(answer):
+            log(f"🔁 Кандидат просит перезвонить: «{answer}»")
+            speak(call, CALLBACK_BYE_TEXT, allow_interrupt=False)
+            result["status"] = "callback_requested"
+            result["answers"] = sess.answers
+            result["notes"] = sess.notes
+            result["transcript"] = sess.transcript
+            _attach_call_quality_note(result["notes"], call_metrics, log)
+            try: call.hangup()
+            except Exception: pass
+            return
 
         # detect_voicemail() проверяет автоответчик/сообщение оператора
         # ТОЛЬКО один раз, до первой фразы бота. Если такое сообщение

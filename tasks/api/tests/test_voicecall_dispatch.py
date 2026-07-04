@@ -525,6 +525,40 @@ class TestCallHistoryAndRecording:
         found = next(c for c in items if c["id"] == contact_id)
         assert found["needs_review"] in (True, 1)
 
+    def test_callback_requested_becomes_failed_status_no_auto_requeue(self, client, portal_token):
+        """Живой кандидат попросил перезвонить (2026-07): статус ведёт
+        себя ровно как no_answer/busy — уходит в failed, last_call_status
+        сохраняет точную причину. НИКАКОГО авто-перезвона: контакт не
+        возвращается в pending сам по себе, повторный набор только
+        вручную кнопкой «Заново» (это гарантируется тем, что мы не
+        трогаем сам статус contact дальше failed)."""
+        cid = self._campaign_with_one_contact(client, phone="79993330007")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(client, auth, cid, "callback_requested")
+
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        found = next(c for c in items if c["id"] == contact_id)
+        assert found["status"] == "failed"
+        assert found["last_call_status"] == "callback_requested"
+
+        # Контакт НЕ появляется повторно в claim() сам по себе — очередь
+        # pending пуста, кампания просто завершена, никто не перезвонил.
+        claim_again = client.post("/voicecall/dispatch/claim",
+                                   params={"campaign_id": cid}, headers=auth).json()
+        assert claim_again["contact_id"] is None
+
+    def test_callback_requested_counted_in_funnel(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330008")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        self._claim_and_result(client, auth, cid, "callback_requested")
+
+        funnel = client.get(f"/voicecall/campaigns/{cid}/funnel").json()
+        assert funnel["callback_requested"] == 1
+
 
 class TestPauseResume:
     def _campaign_with_two_pending(self, client, phone1, phone2):
