@@ -86,3 +86,51 @@ class TestPrewarmExtraTexts:
         assert n == 2
         assert {c[0] for c in calls} == {"Ага.", "Угу."}
         assert all(c[1] == "silero:kseniya" and c[2] == "+5%" for c in calls)
+
+
+class TestTrimEdgesPcm:
+    """Обрезка тишины по краям (пункт 1 доработок 2026-07). Проверяем на
+    синтетическом PCM (тишина+тон+тишина, без сети): края уходят, тон в
+    середине остаётся, защита от съедания всей фразы работает."""
+
+    @staticmethod
+    def _pcm_silence(sec):
+        return b"\x00\x00" * int(sec * 8000)
+
+    @staticmethod
+    def _pcm_tone(sec, amp=8000):
+        import math, struct
+        n = int(sec * 8000)
+        return b"".join(struct.pack("<h", int(amp * math.sin(2 * math.pi * 440 * i / 8000)))
+                        for i in range(n))
+
+    def test_trims_leading_and_trailing_silence(self):
+        pcm = self._pcm_silence(1.0) + self._pcm_tone(1.0) + self._pcm_silence(1.0)
+        out = tts._trim_edges_pcm(pcm)
+        dur_in = len(pcm) / 2 / 8000
+        dur_out = len(out) / 2 / 8000
+        assert dur_in > 2.9
+        # края (2с тишины) должны уйти, ~1с тона остаться (± допуск ffmpeg)
+        assert 0.7 < dur_out < 1.6, f"ожидали ~1с, получили {dur_out:.2f}с"
+
+    def test_empty_input_returns_empty(self):
+        assert tts._trim_edges_pcm(b"") == b""
+
+    def test_pure_silence_returns_original(self):
+        """Защита: если вся фраза ушла бы под порог (чистая тишина/очень
+        тихий голос) — возвращаем исходник, а не пустоту."""
+        pcm = self._pcm_silence(1.0)
+        out = tts._trim_edges_pcm(pcm)
+        assert out == pcm
+
+    def test_cache_key_has_trim_version(self):
+        """Ключ кэша должен содержать версию обрезки — иначе старые
+        необрезанные файлы кэша продолжали бы отдаваться."""
+        # два вызова с одинаковыми аргументами стабильны
+        assert tts._cache_key("текст", "v") == tts._cache_key("текст", "v")
+        # а сам факт наличия trim-версии проверяем косвенно: смена
+        # реализации ключа обязана менять хэш (защита от «забыли
+        # инвалидировать»)
+        import hashlib
+        expected = hashlib.sha1("v||+0%||trim1||текст".encode("utf-8")).hexdigest()[:16]
+        assert tts._cache_key("текст", "v") == expected

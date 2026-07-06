@@ -156,7 +156,35 @@ def tts():
         return f"error: {type(e).__name__}: {e}", 500
 
 
+def _raise_process_priority() -> None:
+    """Пункт 3 доработок 2026-07: ABOVE_NORMAL (не HIGH, как у самого
+    агента обзвона в dispatch_agent.py) — этот процесс критичен только
+    во время прогрева TTS-кэша перед звонком, не во время самого
+    разговора, так что не должен конкурировать с агентом за CPU наравне.
+
+    ВАЖНО: см. подробный комментарий в dispatch_agent.py._raise_process_priority
+    — без явных restype/argtypes GetCurrentProcess()/SetPriorityClass()
+    молча проваливаются на 64-битной Windows (хэндл обрезается до 32 бит)."""
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_int
+        ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
+        handle = kernel32.GetCurrentProcess()
+        ok = kernel32.SetPriorityClass(handle, ABOVE_NORMAL_PRIORITY_CLASS)
+        if ok:
+            print("[silero] Приоритет процесса: ABOVE_NORMAL", flush=True)
+        else:
+            err = ctypes.get_last_error()
+            print(f"[silero] ⚠️  Не смог поднять приоритет (код ошибки {err}: {ctypes.FormatError(err)})", flush=True)
+    except Exception as e:
+        print(f"[silero] ⚠️  Не смог поднять приоритет: {type(e).__name__}: {e}", flush=True)
+
+
 def main():
+    _raise_process_priority()
     port = int(os.getenv("SILERO_PORT", "5001"))
     # Прогрев в фоне — пока сервер слушает, грузим модель
     threading.Thread(target=_load_model, daemon=True).start()

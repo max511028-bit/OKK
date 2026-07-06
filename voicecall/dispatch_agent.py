@@ -422,7 +422,43 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
             ).start()
 
 
+def _raise_process_priority() -> None:
+    """Пункт 3 доработок 2026-07: агент держит реал-тайм аудио звонка
+    (SIP/RTP, Vosk-распознавание, AGC) — если параллельно на этом же ПК
+    что-то грузит CPU (браузер, антивирус и т.п.), это реально может
+    срывать звонок (реальный случай: контакт ответил "алло алло", а
+    wait_for_contact_talking не поймал разговор — подозрение на нехватку
+    CPU в моменте, см. коммит про троттлинг фоновой перепроверки записей).
+    HIGH_PRIORITY_CLASS = 0x00000080 (Windows). Лучшее старание — на
+    не-Windows или без прав просто идём дальше без приоритета.
+
+    ВАЖНО: GetCurrentProcess() возвращает 64-битный псевдо-хэндл (-1 /
+    0xFFFFFFFFFFFFFFFF). Без явного restype ctypes по умолчанию трактует
+    возврат как 32-битный int и ОБРЕЗАЕТ хэндл — SetPriorityClass после
+    этого получает мусор и падает с ERROR_INVALID_HANDLE, при этом
+    ctypes.GetLastError() (без use_last_error=True в WinDLL) тоже не
+    покажет реальный код ошибки. Проверено вживую на этом ПК: без
+    restype/argtypes вызов молча проваливался КАЖДЫЙ раз."""
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.SetPriorityClass.restype = ctypes.c_int
+        HIGH_PRIORITY_CLASS = 0x00000080
+        handle = kernel32.GetCurrentProcess()
+        ok = kernel32.SetPriorityClass(handle, HIGH_PRIORITY_CLASS)
+        if ok:
+            print("Приоритет процесса: HIGH", flush=True)
+        else:
+            err = ctypes.get_last_error()
+            print(f"⚠️  Не смог поднять приоритет процесса (код ошибки {err}: {ctypes.FormatError(err)})", flush=True)
+    except Exception as e:
+        print(f"⚠️  Не смог поднять приоритет процесса: {type(e).__name__}: {e}", flush=True)
+
+
 def main():
+    _raise_process_priority()
     env = load_env()
     base_url = require(env, "PORTAL_URL")
     password = require(env, "PORTAL_PASSWORD")

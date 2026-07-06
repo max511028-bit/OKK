@@ -257,10 +257,55 @@ def _patch_pcma_encode_bug() -> None:
     RTP.RTPClient.encode_packet = patched_encode_packet
 
 
+def _patch_rtp_memory_guard() -> None:
+    """Защита от MemoryError в RTPPacketManager.write (реальный краш
+    2026-07-06: агент упал посреди звонка, поток "RTP Receiver" умер с
+    MemoryError на buffer.write, кампания зависла).
+
+    Причина — баг pyVoIP: входящий RTP-timestamp используется как позиция
+    в буфере (`self.buffer.seek(offset - self.offset); self.buffer.write`).
+    Библиотека защищается ТОЛЬКО от скачка timestamp НАЗАД (rebuild при
+    abs >= 100000), но НЕ от скачка ВПЕРЁД: аномально большой timestamp
+    (джиттер / потеря пакетов / смена timestamp-базы удалённой стороной /
+    32-битное переполнение) даёт seek на позицию в сотни МБ–ГБ, и
+    следующий write расширяет BytesIO нулями до неё → мгновенный
+    MemoryError, роняющий RTP-поток и весь звонок целиком.
+
+    Оборачиваем write: (1) симметрично отсекаем аномальный скачок ВПЕРЁД
+    — пакет "из далёкого будущего" (дальше, чем разумная длительность
+    скрининг-звонка) просто игнорируем, не давая seek раздуть буфер;
+    (2) на всякий случай ловим MemoryError как последний рубеж, чтобы
+    один сбойный пакет не убивал поток и звонок."""
+    from pyVoIP import RTP  # type: ignore
+
+    orig_write = RTP.RTPPacketManager.write
+    # 8000 единиц timestamp = 1с аудио (PCMA/PCMU 8kHz). Скрининг-звонки
+    # длятся 1-3 минуты; 10 минут — заведомо аномальный forward-jump, при
+    # этом реальные звонки его никогда не достигнут. Настоящие timestamp-
+    # скачки дают offset в сотни миллионов (гигабайты seek) — отсекаем.
+    FORWARD_JUMP_LIMIT = 8000 * 600  # ~10 минут аудио
+
+    def guarded_write(self, offset, data):
+        try:
+            if offset - self.offset >= FORWARD_JUMP_LIMIT:
+                # аномальный скачок timestamp вперёд — молча роняем пакет,
+                # входящее аудио потерять безопаснее, чем убить звонок
+                return
+        except Exception:
+            pass
+        try:
+            return orig_write(self, offset, data)
+        except MemoryError:
+            return
+
+    RTP.RTPPacketManager.write = guarded_write
+
+
 _patch_pyvoip_proxy_auth()
 _patch_pyvoip_ack_tag()
 _patch_rtp_logging()
 _patch_pcma_encode_bug()
+_patch_rtp_memory_guard()
 
 class _JunkFilteringSocket:
     """Прокси вокруг UDP-сокета SIPClient. pyVoIP 1.6.8 держит один сокет
@@ -472,13 +517,33 @@ def speak(call, text: str, allow_interrupt: bool = True,
     baseline_samples = []
     elapsed_ms = 0
 
-    pos = 0
-    while pos < len(raw8):
-        chunk = raw8[pos:pos + chunk_len]
-        call.write_audio(chunk)
-        pos += chunk_len
+    # Предзаливка буфера (пункт 5 доработок 2026-07): раньше писали ровно
+    # один чанк — спали на его длительность — писали следующий, впритык.
+    # Малейшее дрожание time.sleep() на Windows (~15.6мс гранулярность)
+    # могло дать буферу воспроизведения (pmout у pyVoIP) на миг пересохнуть
+    # между записями — щелчок. Теперь держим буфер ПОСТОЯННО на 1 чанк
+    # вперёд: пишем первые ДВА чанка сразу, а дальше на каждой итерации —
+    # спим длительность текущего чанка (он уже в буфере и играет) и сразу
+    # доливаем чанк через один — так в очереди всегда есть запас, и
+    # дрожание таймера конкретной итерации не успевает съесть весь запас.
+    # Перебивание кандидатом по-прежнему ловится каждые chunk_ms (250мс),
+    # только "хвост" уже отправленного в буфер звука после обнаружения
+    # перебивания теперь может быть чуть длиннее (до ~500мс вместо ~250мс)
+    # — плата за отсутствие пересыхания, реакция на перебивание всё равно
+    # укладывается в общий порог interrupt_sustain_ms (500мс).
+    chunks = [raw8[i:i + chunk_len] for i in range(0, len(raw8), chunk_len)]
+    if chunks:
+        call.write_audio(chunks[0])
+    if len(chunks) > 1:
+        call.write_audio(chunks[1])
+    next_to_write = 2
+
+    for chunk in chunks:
         time.sleep(len(chunk) / 8000.0)
         elapsed_ms += chunk_ms
+        if next_to_write < len(chunks):
+            call.write_audio(chunks[next_to_write])
+            next_to_write += 1
 
         if not allow_interrupt:
             continue
@@ -1037,6 +1102,42 @@ def _attach_call_quality_note(notes: dict, call_metrics: list, log) -> None:
     notes["Тех. качество звонка"] = summary
 
 
+def _begin_precise_timer() -> bool:
+    """Пункт 5 доработок 2026-07: winmm.timeBeginPeriod(1) просит Windows
+    держать точность системного таймера ~1мс вместо стандартных ~15.6мс
+    на время звонка. Это устраняет задокументированную причину щелчков в
+    speak() (см. её докстринг про allow_interrupt=False): грубость
+    time.sleep() между кусками звука периодически давала буферу
+    воспроизведения пересыхать.
+
+    ОБЯЗАТЕЛЬНО парно с _end_precise_timer() в finally — иначе
+    повышенная точность таймера (и лишний расход энергии/CPU от неё)
+    останется висеть на весь процесс агента, а не только на время
+    звонка. Возвращает True только при реальном успехе — вызывающий код
+    должен звать _end_precise_timer() ТОЛЬКО если это True (парность)."""
+    try:
+        import ctypes
+        winmm = ctypes.WinDLL("winmm", use_last_error=True)
+        winmm.timeBeginPeriod.argtypes = [ctypes.c_uint32]
+        winmm.timeBeginPeriod.restype = ctypes.c_uint32
+        return winmm.timeBeginPeriod(1) == 0  # TIMERR_NOERROR
+    except Exception:
+        return False
+
+
+def _end_precise_timer() -> None:
+    """Парный вызов к _begin_precise_timer() — звать ТОЛЬКО если тот
+    вернул True."""
+    try:
+        import ctypes
+        winmm = ctypes.WinDLL("winmm", use_last_error=True)
+        winmm.timeEndPeriod.argtypes = [ctypes.c_uint32]
+        winmm.timeEndPeriod.restype = ctypes.c_uint32
+        winmm.timeEndPeriod(1)
+    except Exception:
+        pass
+
+
 def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
              known_answers: Optional[dict] = None,
              candidate_name: str = "",
@@ -1090,6 +1191,7 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
                        myIP=local_ip, callCallback=lambda call: None)
     call_start = time.time()
     call = None
+    precise_timer = _begin_precise_timer()
     try:
         log("Регистрируюсь в SIP...")
         phone.start()
@@ -1155,6 +1257,8 @@ def run_call(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         result["duration_s"] = round(time.time() - call_start, 1)
         try: phone.stop()
         except Exception: pass
+        if precise_timer:
+            _end_precise_timer()
 
     return result
 
@@ -1225,6 +1329,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
                        myIP=local_ip, callCallback=on_incoming_call)
     call_start = time.time()
     call = None
+    precise_timer = _begin_precise_timer()
     try:
         log("Регистрируюсь в SIP...")
         phone.start()
@@ -1303,6 +1408,8 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         result["duration_s"] = round(time.time() - call_start, 1)
         try: phone.stop()
         except Exception: pass
+        if precise_timer:
+            _end_precise_timer()
 
     return result
 

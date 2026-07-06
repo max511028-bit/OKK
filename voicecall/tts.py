@@ -86,7 +86,10 @@ def _cache_key(text: str, voice: str, rate: str = "+0%") -> str:
     # rate ОБЯЗАТЕЛЬНО в ключе — иначе разные скорости одного голоса
     # схлопнутся в один и тот же файл кэша, и настройка скорости
     # сценария будет молча игнорироваться после первого прогона.
-    h = hashlib.sha1((voice + "||" + rate + "||" + text).encode("utf-8")).hexdigest()[:16]
+    # "||trim1" — версия обрезки тишины по краям (пункт 1 доработок
+    # 2026-07): без неё старые НЕобрезанные файлы кэша (сгенерированные
+    # до этой правки) продолжали бы отдаваться как есть.
+    h = hashlib.sha1((voice + "||" + rate + "||trim1||" + text).encode("utf-8")).hexdigest()[:16]
     return h
 
 
@@ -109,6 +112,54 @@ def _rate_to_atempo(rate: str) -> float:
     except ValueError:
         return 1.0
     return max(0.5, min(2.0, 1.0 + pct / 100.0))  # ffmpeg atempo лимит 0.5-2.0
+
+
+def _trim_edges_pcm(pcm: bytes) -> bytes:
+    """Обрезает тишину ТОЛЬКО по краям (в начале и в конце), не трогая
+    паузы между предложениями внутри фразы. Пункт 1 доработок 2026-07:
+    у синтезированных фраз (особенно edge-tts) в конце висит ~0.8-1.4с
+    цифровой тишины — бот проигрывает её в трубку ДО того как начинает
+    слушать ответ, кандидат ~секунду говорит "в пустоту", диалог кажется
+    тормозным.
+
+    ВАЖНО: фильтр из превью-эндпоинта портала (main.py, stop_periods=-1)
+    режет ВСЕ паузы по всей фразе — его сюда копировать НЕЛЬЗЯ (бот стал
+    бы тараторить без пауз между предложениями). Рецепт "только края"
+    (проверен замером на реальных фразах): обрезать начало, развернуть
+    поток, обрезать "новое начало" (= бывший конец), развернуть обратно.
+
+    Вход/выход: сырой PCM s16le 8000Hz mono. Лучшее старание — при любой
+    ошибке ffmpeg, пустом/подозрительно коротком результате возвращаем
+    ИСХОДНЫЙ pcm без изменений (звонок важнее косметики; защита от
+    съедания всей фразы на очень тихих голосах)."""
+    if not pcm:
+        return pcm
+    ffmpeg_exe = _get_ffmpeg_exe()
+    trim_filter = (
+        "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB,"
+        "areverse,"
+        "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-45dB,"
+        "areverse"
+    )
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [ffmpeg_exe, "-y", "-loglevel", "error",
+             "-f", "s16le", "-ar", "8000", "-ac", "1", "-i", "pipe:0",
+             "-af", trim_filter,
+             "-f", "s16le", "-ar", "8000", "-ac", "1", "pipe:1"],
+            input=pcm, capture_output=True,
+        )
+    except Exception:
+        return pcm
+    if proc.returncode != 0:
+        return pcm
+    out = proc.stdout
+    # Защита: если после обрезки осталось меньше 0.2с — что-то пошло не
+    # так (слишком тихий голос целиком ушёл под порог), отдаём исходник.
+    if len(out) < int(0.2 * 8000 * 2):
+        return pcm
+    return out
 
 
 def _pcm_from_mp3(mp3: bytes, rate: str = "+0%") -> bytes:
@@ -197,6 +248,11 @@ def synthesize_telephony_pcm(text: str, voice: str = DEFAULT_VOICE,
     else:
         mp3 = synthesize_mp3(text, voice, rate=rate)
         pcm = _pcm_from_mp3(mp3, rate="+0%")  # rate уже применён в synthesize_mp3
+
+    # Обрезка тишины по краям — применяется к ОБОИМ движкам, ПЕРЕД
+    # кэшированием (в кэш кладём уже обрезанное — при звонке ffmpeg не
+    # вызывается, скорость не страдает). См. _trim_edges_pcm.
+    pcm = _trim_edges_pcm(pcm)
 
     if use_cache:
         try:
