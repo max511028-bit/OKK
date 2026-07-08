@@ -4641,6 +4641,7 @@ class VCDispatchRecheckReq(BaseModel):
     recheck_transcript: str
     needs_review: bool = False
     review_note: Optional[str] = None
+    corrected_answers: dict = {}  # {crit: значение} — уточнения по записи
 
 
 @app.post("/voicecall/dispatch/recheck-transcript")
@@ -4652,22 +4653,43 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
     текстовый блок для сверки рекрутёром, не подменяет структурированные
     answers по вопросам — сопоставление таймингов слишком ненадёжно.
 
-    needs_review/review_note: агент сверяет причину стопа с этим более
-    точным текстом (см. dispatch_agent._recheck_verdict) — если запись не
-    подтверждает live-вердикт (реальный случай: "глебова" вместо "не было
-    судимостей" привело к ложному отказу), помечает попытку для ручной
-    проверки рекрутёром вместо слепого доверия live-распознаванию."""
+    needs_review/review_note: агент сверяет критичные ответы (причина
+    стопа, возраст, стоп-факторы) с этим более точным текстом (см.
+    dispatch_agent._recheck_verdict / _recheck_critical_answers) — если
+    запись не подтверждает live-результат (реальный случай: "глебова"
+    вместо "не было судимостей" → ложный отказ; или возраст 29 распознан
+    в реалтайме как 20 на тихой линии), помечает попытку для ручной
+    проверки вместо слепого доверия live-распознаванию.
+
+    corrected_answers: {crit: значение} — уточнения по записи. Мержим в
+    answers_json последней попытки, но БЕЗ молчаливой перезаписи: старое
+    live-значение сохраняем в тексте (например "29 (по записи; реалтайм:
+    20)"), чтобы рекрутёр видел расхождение и мог его перепроверить."""
     _vcs_check_password(request)
     _vc_touch_agent()
     with db() as conn:
+        row = conn.execute(
+            "SELECT id, answers_json FROM candidate_validations "
+            "WHERE contact_id=? ORDER BY id DESC LIMIT 1", (req.contact_id,)).fetchone()
+        if not row:
+            return {"ok": False, "reason": "no validation row"}
+        answers = {}
+        if req.corrected_answers:
+            try:
+                answers = json.loads(row["answers_json"] or "{}")
+            except Exception:
+                answers = {}
+            for crit, corrected in req.corrected_answers.items():
+                answers[crit] = corrected
         conn.execute(
-            "UPDATE candidate_validations SET recheck_transcript=?, needs_review=?, review_note=? "
-            "WHERE id = ("
-            "  SELECT id FROM candidate_validations WHERE contact_id=? "
-            "  ORDER BY id DESC LIMIT 1)",
-            (req.recheck_transcript, int(req.needs_review), req.review_note, req.contact_id),
+            "UPDATE candidate_validations SET recheck_transcript=?, needs_review=?, review_note=?"
+            + (", answers_json=?" if req.corrected_answers else "")
+            + " WHERE id=?",
+            (req.recheck_transcript, int(req.needs_review), req.review_note,
+             *([json.dumps(answers, ensure_ascii=False)] if req.corrected_answers else []),
+             row["id"]),
         )
-    return {"ok": True}
+    return {"ok": True, "corrected": list(req.corrected_answers.keys())}
 
 
 @app.get("/voicecall/campaigns/{cid}/funnel")

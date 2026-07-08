@@ -13,6 +13,7 @@ Windows, автозапуск при входе, по образцу scripts/sth
     python voicecall/dispatch_agent.py
 """
 import json
+import re
 import sys
 import threading
 import time
@@ -181,6 +182,99 @@ def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None
             print(f"✨ Нормализован ответ «{crit}»: {store[crit]}", flush=True)
 
 
+def _llm_ask(base_url: str, prompt: str, num_predict: int = 12) -> str:
+    """Один короткий запрос к LLM портала. Возвращает строку ответа
+    (lower/strip) или "" при любой ошибке (лучшее старание)."""
+    try:
+        data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
+            "model": "qwen3:1.7b",
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False, "think": False,
+            "options": {"temperature": 0.1, "num_predict": num_predict},
+        }, timeout=15)
+        return ((data.get("message") or {}).get("content") or "").strip().lower()
+    except Exception as e:
+        print(f"⚠️  LLM-запрос пропущен: {e}", flush=True)
+        return ""
+
+
+def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
+                               combined_transcript: str):
+    """Пункт «пере-валидация критичных ответов по записи» (2026-07-08):
+    маленькая Vosk-модель в реальном времени на ТИХОЙ линии теряет
+    короткие слова — реальный случай: кандидат сказал «двадцать девять»,
+    в реалтайме записалось «двадцать» (20); «не было» три раза — записалось
+    «не распознано». А БОЛЬШАЯ модель по чистой записи те же слова берёт
+    верно. Здесь для КРИТИЧНЫХ полей (возраст + стоп-факторы) сверяем
+    live-ответ с записью через LLM:
+      - возраст: проверяем ВСЕГДА (числа модель путает чаще всего);
+      - стоп-факторы (да/нет): проверяем ТОЛЬКО если live «не распознано»
+        (иначе доверяем реалтайму — ложные ОТКАЗЫ и так покрывает
+        _recheck_verdict; тут добираем потерянные ответы).
+    Возвращает (corrected_answers: dict, needs_review: bool, notes: list).
+    Значения НЕ перезаписываются молча: в corrected сохраняется и live-
+    вариант, чтобы рекрутёр видел расхождение."""
+    if not combined_transcript.strip():
+        return {}, False, []
+    corrected, notes, needs_review = {}, [], False
+
+    def _live_unrecognized(v):
+        return (not isinstance(v, (int, float))) and str(v).startswith("не распознано")
+
+    for st in scenario.get("steps", []):
+        crit = st.get("crit") or st.get("id")
+        expect = st.get("expect")
+        live = live_answers.get(crit)
+
+        if expect == "age":
+            ans = _llm_ask(
+                base_url,
+                "Расшифровка телефонного разговора (обе дорожки — бот и кандидат "
+                f"вперемешку):\n{combined_transcript}\n\n"
+                "Бот спрашивал возраст кандидата. Сколько ПОЛНЫХ ЛЕТ назвал "
+                "кандидат? Ответь ТОЛЬКО числом (например: 29). Если возраст "
+                "не называется или неясен — ответь: нет.", num_predict=8)
+            m = re.search(r"\d{1,3}", ans)
+            if not m:
+                if _live_unrecognized(live):
+                    needs_review = True
+                    notes.append(f"Возраст в реальном времени не распознан, по записи тоже неясен — проверьте.")
+                continue
+            rec_age = int(m.group())
+            if not (10 <= rec_age <= 99):
+                continue
+            if _live_unrecognized(live):
+                corrected[crit] = f"{rec_age} (восстановлено по записи)"
+                needs_review = True
+                notes.append(f"Возраст: реалтайм не распознал, по записи — {rec_age}.")
+            elif str(live).strip() != str(rec_age):
+                corrected[crit] = f"{rec_age} (по записи; в реальном времени распознано: {live})"
+                needs_review = True
+                notes.append(f"Возраст: реалтайм «{live}», по записи «{rec_age}» — проверьте.")
+
+        elif (expect in ("crime", "citizen_rf", "gender_male", "shifts")
+              or (expect == "yesno" and (st.get("end_on_yes") or st.get("end_on_no")))):
+            # Критичный да/нет: добираем ТОЛЬКО потерянные (нераспознанные) ответы
+            if not _live_unrecognized(live):
+                continue
+            ans = _llm_ask(
+                base_url,
+                "Расшифровка телефонного разговора (обе дорожки — бот и кандидат):\n"
+                f"{combined_transcript}\n\n"
+                f"Бот спросил: «{st.get('bot', '')}». Что ответил кандидат по сути — "
+                "да или нет? Ответь ТОЛЬКО одним словом: да / нет / неясно.", num_predict=6)
+            if "да" in ans and "нет" not in ans:
+                corrected[crit] = "да (восстановлено по записи)"
+                needs_review = True
+                notes.append(f"«{crit}»: реалтайм не распознал, по записи — да.")
+            elif "нет" in ans:
+                corrected[crit] = "нет (восстановлено по записи)"
+                needs_review = True
+                notes.append(f"«{crit}»: реалтайм не распознал, по записи — нет.")
+
+    return corrected, needs_review, notes
+
+
 def _recheck_verdict(base_url: str, verdict: str, stop_reason: str, combined_transcript: str):
     """Сверяет причину автоотказа (verdict='stopped') с более точной
     пакетной перепроверкой записи — пункт 7 доработок 2026-07: реальный
@@ -230,7 +324,8 @@ def _recheck_verdict(base_url: str, verdict: str, stop_reason: str, combined_tra
 
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
                          api_secret: str, call_session_id: int,
-                         verdict: str = "", stop_reason: str = "") -> None:
+                         verdict: str = "", stop_reason: str = "",
+                         scenario: dict = None, live_answers: dict = None) -> None:
     """Пакетная перепроверка распознавания по WAV-дорожкам разговора (без
     потоковых огрехов реального времени — эмпирически заметно точнее).
     Novofon хранит ОТДЕЛЬНУЮ дорожку на каждую «ногу» звонка, но
@@ -274,16 +369,36 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         f"[Дорожка {i+1}] {t.strip() or '(тишина/не распознано)'}"
         for i, t in enumerate(transcripts)
     )
+    # 1) сверка причины ОТКАЗА с записью (ложные отказы)
     needs_review, review_note = _recheck_verdict(base_url, verdict, stop_reason, combined)
+    notes = [review_note] if review_note else []
+
+    # 2) сверка КРИТИЧНЫХ ответов (возраст + потерянные стоп-факторы) с
+    #    записью — восстанавливаем то, что маленькая модель потеряла в
+    #    реальном времени на тихой линии (см. _recheck_critical_answers)
+    corrected = {}
+    if scenario is not None and live_answers is not None:
+        try:
+            corrected, crit_review, crit_notes = _recheck_critical_answers(
+                base_url, scenario, live_answers, combined)
+            needs_review = needs_review or crit_review
+            notes.extend(crit_notes)
+        except Exception as e:
+            print(f"⚠️  Сверка критичных ответов с записью пропущена: {e}", flush=True)
+
     _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
          json_body={"contact_id": contact_id, "recheck_transcript": combined,
-                    "needs_review": needs_review, "review_note": review_note}, timeout=15)
+                    "needs_review": needs_review,
+                    "review_note": " ".join(notes) if notes else None,
+                    "corrected_answers": corrected}, timeout=15)
     print(f"🔍 Перепроверенный транскрипт contact_id={contact_id} прикреплён."
+          + (f" ✏️ уточнено по записи: {list(corrected.keys())}" if corrected else "")
           + (" ⚠️ ПОМЕЧЕН НА ПРОВЕРКУ." if needs_review else ""), flush=True)
 
 
 def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
-                                 call_session_id, verdict: str = "", stop_reason: str = "") -> None:
+                                 call_session_id, verdict: str = "", stop_reason: str = "",
+                                 scenario: dict = None, live_answers: dict = None) -> None:
     """Фоновый поток (не блокирует основной цикл обзвона): Novofon
     обрабатывает запись разговора не мгновенно после звонка, поэтому
     пробуем несколько раз с паузой. Лучшее старание — если записи нет
@@ -313,7 +428,8 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                 print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
             try:
                 _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id,
-                                     verdict=verdict, stop_reason=stop_reason)
+                                     verdict=verdict, stop_reason=stop_reason,
+                                     scenario=scenario, live_answers=live_answers)
             except Exception as e:
                 print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
             return
@@ -417,7 +533,9 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
                 target=_fetch_and_attach_recording,
                 args=(base_url, token, contact_id, result["call_session_id"]),
                 kwargs={"verdict": result.get("verdict") or "",
-                        "stop_reason": result.get("stop_reason") or ""},
+                        "stop_reason": result.get("stop_reason") or "",
+                        "scenario": scenario,
+                        "live_answers": dict(result.get("answers") or {})},
                 daemon=True,
             ).start()
 
