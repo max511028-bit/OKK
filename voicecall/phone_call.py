@@ -212,8 +212,25 @@ def _patch_rtp_logging() -> None:
 
     orig_parse_packet = RTP.RTPClient.parse_packet
     counters = {}
+    codec_logged = set()
+
+    # Карта payload type → человекочитаемое имя (RFC 3551 статические типы).
+    _PT_NAMES = {0: "PCMU (G.711 µ-law)", 8: "PCMA (G.711 A-law)",
+                 18: "G.729", 9: "G.722", 4: "G.723", 3: "GSM", 101: "telephone-event"}
 
     def patched_parse_packet(self, packet):
+        # Диагностика ВХОДЯЩЕГО кодека (2026-07-09): раньше логировали только
+        # исходящий (_patch_pcma_encode_bug). Реальный сбой у Максима —
+        # громко на линии, но realtime распознал тишину: одна из версий —
+        # входящая нога пришла в кодеке, который мы декодируем неверно.
+        # Payload type — младшие 7 бит второго байта RTP-заголовка.
+        if len(packet) >= 2:
+            key = id(self)
+            if key not in codec_logged:
+                codec_logged.add(key)
+                pt = packet[1] & 0x7F
+                name = _PT_NAMES.get(pt, "НЕИЗВЕСТНЫЙ")
+                print(f"[audio] входящий кодек (payload type {pt}): {name}", flush=True)
         if VERBOSE_NETWORK_LOG:
             key = id(self)
             n = counters.get(key, 0) + 1
@@ -437,6 +454,44 @@ def _pyvoip_to_pcm16(raw8: bytes) -> bytes:
 def _call_state_name(call) -> str:
     state = getattr(call, "state", None)
     return getattr(state, "name", str(state)).upper()
+
+
+# ── Диагностика «громко, но не распознано» (2026-07-09) ──────────────────
+# Реальный случай: датчик громкости слышит громкий звук (~5847), а Vosk на
+# всех окнах вернул тишину; при этом серверная запись Novofon чистая. Три
+# возможных причины требуют РАЗНЫХ фиксов: (а) неверный кодек на входящей
+# ноге → в дампе будет громкий мусор, большая модель тоже ничего не
+# разберёт; (б) эхо нашего же TTS обратно в линию → большая модель
+# распознает текст БОТА; (в) чистый звук, но realtime маленькая модель с
+# грамматикой захлебнулась → большая модель разберёт нормальную речь
+# кандидата. Дамп сырого (до-AGC) входящего PCM в WAV однозначно
+# различает эти случаи — прогоняем его потом большой моделью.
+_DIAG_DUMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "diag")
+_diag_dump_count = 0
+_DIAG_DUMP_MAX = 6  # не заваливаем диск: несколько дампов на процесс достаточно
+
+
+def _dump_pcm16_wav(pcm16: bytes, tag: str = "") -> Optional[str]:
+    """Пишет 8kHz mono 16-bit PCM в WAV в voicecall/diag/ для ручного
+    разбора. Лучшее старание — при любой ошибке молча None, диагностика не
+    должна влиять на звонок."""
+    global _diag_dump_count
+    if not pcm16 or _diag_dump_count >= _DIAG_DUMP_MAX:
+        return None
+    try:
+        import wave
+        os.makedirs(_DIAG_DUMP_DIR, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        path = os.path.join(_DIAG_DUMP_DIR, f"unrec_{ts}_{tag}.wav")
+        with wave.open(path, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(pcm16)
+        _diag_dump_count += 1
+        return path
+    except Exception:
+        return None
 
 
 BARGE_IN_THRESHOLD_MULT = 5.0   # во сколько раз громче фонового шума линии
@@ -673,6 +728,7 @@ def listen(call, vocab: Optional[list] = None,
     agc_gain = 1.0
     agc_recent_rms: list = []
     agc_chunk_i = 0
+    captured_pcm = bytearray()  # диагностика: сырое входящее аудио окна
 
     if preroll_pcm16:
         r = rec.feed(preroll_pcm16)
@@ -702,6 +758,8 @@ def listen(call, vocab: Optional[list] = None,
             break
         time.sleep(chunk_len / 8000.0)
         pcm16 = _pyvoip_to_pcm16(raw8)
+        if pcm16:
+            captured_pcm.extend(pcm16)  # сырое (до-AGC) — для диагностики
 
         chunk_rms = audioop.rms(pcm16, 2) if pcm16 else 0
         if chunk_rms > AGC_MIN_RMS_FOR_CALC:
@@ -758,6 +816,7 @@ def listen(call, vocab: Optional[list] = None,
         # _run_dialog_loop: на настоящей тишине переспрашивать вслух не
         # нужно, лучше молча подождать ещё раз.
         metrics["speech_started"] = speech_started
+        metrics["raw_pcm16"] = bytes(captured_pcm)  # для дампа при «громко, но пусто»
 
     return " ".join(p for p in parts if p).strip()
 
@@ -950,6 +1009,16 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                        "нормально" if m_listen["candidate_rms"] < 2500 else "громко")
             log(f"[аудио] кандидат: громкость ~{m_listen['candidate_rms']} ({quality})"
                 + (f", усилено x{m_listen['agc_gain']}" if m_listen["agc_gain"] > 1.05 else ""))
+        # Диагностика (2026-07-09): громко на линии, но распознано пусто —
+        # именно тот сбой, что убил звонок Максиму. Дампим сырое входящее
+        # аудио этого окна в WAV, чтобы потом прогнать большой моделью и
+        # понять причину (мусор-кодек / эхо бота / чистая речь). См.
+        # _dump_pcm16_wav. На нормальных звонках (что-то распозналось или
+        # реально тихо) не срабатывает — диска не жрёт.
+        if not answer and m_listen.get("candidate_rms", 0) >= 1200 and m_listen.get("raw_pcm16"):
+            p = _dump_pcm16_wav(m_listen["raw_pcm16"], tag=f"rms{m_listen['candidate_rms']}")
+            if p:
+                log(f"🧪 Громко (~{m_listen['candidate_rms']}), но не распознано — дамп аудио: {p}")
         if call_metrics:
             call_metrics[-1].update(m_listen)
 
