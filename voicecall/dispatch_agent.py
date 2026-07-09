@@ -369,6 +369,30 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         f"[Дорожка {i+1}] {t.strip() or '(тишина/не распознано)'}"
         for i, t in enumerate(transcripts)
     )
+
+    # 0) переклассификация в АВТООТВЕТЧИК по записи. Реальный случай
+    #    (2026-07-08): оператор «абонент занят, перезвоните позднее» на
+    #    тихой линии в реальном времени услышался как «нет» на «удобно
+    #    говорить?» → кандидат попал в воронку как живой ОТКАЗ. Большая
+    #    модель по чистой записи ловит фразу-заглушку уверенно. Условие
+    #    verdict not in (passed, stopped) страхует от потери настоящего
+    #    результата: если бот получил осмысленные ответы на критичные
+    #    вопросы — это точно был живой человек, не автоответчик. Дорожку
+    #    бота проверять безопасно: его книжные фразы под is_voicemail_phrase
+    #    не попадают (проверено на «перезвоню в другое время»).
+    from dialog import is_voicemail_phrase
+    if verdict not in ("passed", "stopped") and any(
+            is_voicemail_phrase(t) for t in transcripts):
+        _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+             json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                        "reclassify_voicemail": True,
+                        "review_note": "Переклассифицировано по записи: автоответчик "
+                                       "(в реальном времени распознано как ответ кандидата)."},
+             timeout=15)
+        print(f"🔁 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК по записи "
+              f"(live-вердикт был: {verdict or 'нет'}).", flush=True)
+        return
+
     # 1) сверка причины ОТКАЗА с записью (ложные отказы)
     needs_review, review_note = _recheck_verdict(base_url, verdict, stop_reason, combined)
     notes = [review_note] if review_note else []

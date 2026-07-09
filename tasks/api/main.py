@@ -4642,6 +4642,7 @@ class VCDispatchRecheckReq(BaseModel):
     needs_review: bool = False
     review_note: Optional[str] = None
     corrected_answers: dict = {}  # {crit: значение} — уточнения по записи
+    reclassify_voicemail: bool = False  # запись показала автоответчик, а live — нет
 
 
 @app.post("/voicecall/dispatch/recheck-transcript")
@@ -4673,6 +4674,27 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
             "WHERE contact_id=? ORDER BY id DESC LIMIT 1", (req.contact_id,)).fetchone()
         if not row:
             return {"ok": False, "reason": "no validation row"}
+        if req.reclassify_voicemail:
+            # Запись однозначно показала автоответчик, а live-распознавание
+            # приняло заглушку оператора за ответ кандидата (реальный случай:
+            # «абонент занят, перезвоните позднее» → услышано «нет» → ложный
+            # ОТКАЗ в воронке). Убираем из воронки как живой контакт: снимаем
+            # verdict/stop_reason, статус попытки → voicemail (в укрупнённой
+            # воронке это 'failed', не 'done'). answers не трогаем — они уже
+            # мусорные, но пусть остаётся историей попытки. review_note
+            # объясняет рекрутёру, почему контакт «перепрыгнул» в автоответчики.
+            # candidate_validations.verdict — NOT NULL, оставляем как есть
+            # (историческая запись попытки). Воронку считаем по
+            # voicecall_contacts, где verdict обнуляем ниже.
+            conn.execute(
+                "UPDATE candidate_validations SET recheck_transcript=?, needs_review=0, "
+                "review_note=?, call_status='voicemail' WHERE id=?",
+                (req.recheck_transcript, req.review_note, row["id"]))
+            conn.execute(
+                "UPDATE voicecall_contacts SET status='failed', verdict=NULL, "
+                "stop_reason=NULL, last_call_status='voicemail' WHERE id=?",
+                (req.contact_id,))
+            return {"ok": True, "reclassified": "voicemail"}
         answers = {}
         if req.corrected_answers:
             try:

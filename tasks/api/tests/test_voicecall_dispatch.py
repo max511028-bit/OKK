@@ -514,6 +514,45 @@ class TestCallHistoryAndRecording:
         detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
         assert detail["history"][-1]["answers"]["Возраст 18-45"] == 33
 
+    def test_reclassify_voicemail_removes_false_decline_from_funnel(self, client, portal_token):
+        """Переклассификация в автоответчик по записи (2026-07-08): оператор
+        «абонент занят, перезвоните позднее» на тихой линии в реалтайме
+        услышался как «нет» на «удобно говорить?» → ложный ОТКАЗ в воронке.
+        По записи большая модель ловит заглушку → контакт должен уйти из
+        «дошёл до конца → отказ» в исходы попытки «автоответчик»."""
+        cid = self._campaign_with_one_contact(client, phone="79993330077")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="declined",
+            answers={"Шаг 1": "нет"})
+
+        # до переклассификации — живой отказ, дошёл до конца
+        f = client.get(f"/voicecall/campaigns/{cid}/funnel").json()
+        assert f["declined"] == 1
+        assert f["reached_end"] == 1
+        assert f["voicemail"] == 0
+
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] абонент занят перезвоните позднее",
+            "reclassify_voicemail": True,
+            "review_note": "Переклассифицировано по записи: автоответчик.",
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["reclassified"] == "voicemail"
+
+        # после — из отказов ушёл, в автоответчиках появился
+        f = client.get(f"/voicecall/campaigns/{cid}/funnel").json()
+        assert f["declined"] == 0
+        assert f["reached_end"] == 0
+        assert f["voicemail"] == 1
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["last_call_status"] == "voicemail"
+        assert detail["verdict"] is None
+
     def test_needs_review_flag_stored_and_visible_in_detail(self, client, portal_token):
         """Пункт 7 доработок 2026-07: агент может пометить попытку на
         ручную проверку, если пакетная перепроверка записи не
