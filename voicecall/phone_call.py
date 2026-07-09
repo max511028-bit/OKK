@@ -1009,16 +1009,23 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                        "нормально" if m_listen["candidate_rms"] < 2500 else "громко")
             log(f"[аудио] кандидат: громкость ~{m_listen['candidate_rms']} ({quality})"
                 + (f", усилено x{m_listen['agc_gain']}" if m_listen["agc_gain"] > 1.05 else ""))
-        # Диагностика (2026-07-09): громко на линии, но распознано пусто —
-        # именно тот сбой, что убил звонок Максиму. Дампим сырое входящее
-        # аудио этого окна в WAV, чтобы потом прогнать большой моделью и
-        # понять причину (мусор-кодек / эхо бота / чистая речь). См.
-        # _dump_pcm16_wav. На нормальных звонках (что-то распозналось или
-        # реально тихо) не срабатывает — диска не жрёт.
-        if not answer and m_listen.get("candidate_rms", 0) >= 1200 and m_listen.get("raw_pcm16"):
-            p = _dump_pcm16_wav(m_listen["raw_pcm16"], tag=f"rms{m_listen['candidate_rms']}")
-            if p:
-                log(f"🧪 Громко (~{m_listen['candidate_rms']}), но не распознано — дамп аудио: {p}")
+        # Диагностика (2026-07-09): ответ не распознан — дампим сырое
+        # входящее аудио окна в WAV + логируем сырой RMS и объём. Симптом
+        # у Максима «плавает»: раз громко-мусор (~5847), раз тишина (н/д),
+        # хотя серверная запись Novofon чистая и входящий кодек PCMA. Дамп
+        # прогоню большой моделью: тишина в WAV → RTP не доходит до окна
+        # (рассинхрон/старвейшн буфера pyVoIP); мусор → декод; чистая речь
+        # → маленькая модель. Считаем СЫРОЙ rms всего окна (не медиану выше
+        # порога, как candidate_rms) — он честно покажет тишина или сигнал.
+        if not answer and m_listen.get("raw_pcm16"):
+            raw = m_listen["raw_pcm16"]
+            try:
+                raw_rms = audioop.rms(raw, 2)
+            except Exception:
+                raw_rms = -1
+            p = _dump_pcm16_wav(raw, tag=f"rms{raw_rms}")
+            log(f"🧪 Не распознано. Сырой RMS окна={raw_rms}, аудио={len(raw)} байт "
+                f"(~{len(raw)//16000}с)" + (f" — дамп: {p}" if p else " — дамп не записан"))
         if call_metrics:
             call_metrics[-1].update(m_listen)
 
