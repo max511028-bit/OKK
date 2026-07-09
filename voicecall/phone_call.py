@@ -220,23 +220,23 @@ def _patch_rtp_logging() -> None:
 
     def patched_parse_packet(self, packet):
         # Диагностика ВХОДЯЩЕГО кодека (2026-07-09): раньше логировали только
-        # исходящий (_patch_pcma_encode_bug). Реальный сбой у Максима —
-        # громко на линии, но realtime распознал тишину: одна из версий —
-        # входящая нога пришла в кодеке, который мы декодируем неверно.
-        # Payload type — младшие 7 бит второго байта RTP-заголовка.
-        if len(packet) >= 2:
-            key = id(self)
-            if key not in codec_logged:
-                codec_logged.add(key)
-                pt = packet[1] & 0x7F
-                name = _PT_NAMES.get(pt, "НЕИЗВЕСТНЫЙ")
-                print(f"[audio] входящий кодек (payload type {pt}): {name}", flush=True)
-        if VERBOSE_NETWORK_LOG:
-            key = id(self)
-            n = counters.get(key, 0) + 1
-            counters[key] = n
-            if n <= 3 or n % 100 == 0:
-                print(f"<<< RTP packet #{n} received, {len(packet)} bytes", flush=True)
+        # исходящий (_patch_pcma_encode_bug). Payload type — младшие 7 бит
+        # второго байта RTP-заголовка.
+        key = id(self)
+        if len(packet) >= 2 and key not in codec_logged:
+            codec_logged.add(key)
+            pt = packet[1] & 0x7F
+            name = _PT_NAMES.get(pt, "НЕИЗВЕСТНЫЙ")
+            print(f"[audio] входящий кодек (payload type {pt}): {name}", flush=True)
+        # Счётчик ВХОДЯЩИХ пакетов (2026-07-09): решает NAT-vs-буфер. Если
+        # read_audio отдаёт тишину, а сюда прилетели сотни пакетов — аудио
+        # доходит, проблема в буфере/чтении (правится в коде). Если пакетов
+        # единицы и поток заглох — входящее реально не доходит (NAT). Пишем
+        # безусловно, редко (каждые 250 ≈ раз в 5с), чтобы не залить лог.
+        n = counters.get(key, 0) + 1
+        counters[key] = n
+        if n == 1 or n % 250 == 0:
+            print(f"[audio] входящих RTP-пакетов получено: {n}", flush=True)
         return orig_parse_packet(self, packet)
 
     RTP.RTPClient.parse_packet = patched_parse_packet
@@ -301,12 +301,23 @@ def _patch_rtp_memory_guard() -> None:
     # этом реальные звонки его никогда не достигнут. Настоящие timestamp-
     # скачки дают offset в сотни миллионов (гигабайты seek) — отсекаем.
     FORWARD_JUMP_LIMIT = 8000 * 600  # ~10 минут аудио
+    drop_counters = {}
 
     def guarded_write(self, offset, data):
         try:
             if offset - self.offset >= FORWARD_JUMP_LIMIT:
                 # аномальный скачок timestamp вперёд — молча роняем пакет,
-                # входящее аудио потерять безопаснее, чем убить звонок
+                # входящее аудио потерять безопаснее, чем убить звонок.
+                # Диагностика (2026-07-09): логируем факт дропа — если этот
+                # guard режет НОРМАЛЬНОЕ входящее аудио (подозрение по сбою
+                # у Максима: пакеты доходят, а read отдаёт тишину), увидим
+                # всплеск дропов и поймём, что виноват именно он.
+                key = id(self)
+                d = drop_counters.get(key, 0) + 1
+                drop_counters[key] = d
+                if d == 1 or d % 250 == 0:
+                    print(f"[audio] ⚠️ memory-guard отбросил входящий пакет "
+                          f"(offset={offset}, base={self.offset}, дропов={d})", flush=True)
                 return
         except Exception:
             pass
