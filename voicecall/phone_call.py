@@ -301,23 +301,34 @@ def _patch_rtp_memory_guard() -> None:
     # этом реальные звонки его никогда не достигнут. Настоящие timestamp-
     # скачки дают offset в сотни миллионов (гигабайты seek) — отсекаем.
     FORWARD_JUMP_LIMIT = 8000 * 600  # ~10 минут аудио
-    drop_counters = {}
+    rebase_counters = {}
 
     def guarded_write(self, offset, data):
         try:
             if offset - self.offset >= FORWARD_JUMP_LIMIT:
-                # аномальный скачок timestamp вперёд — молча роняем пакет,
-                # входящее аудио потерять безопаснее, чем убить звонок.
-                # Диагностика (2026-07-09): логируем факт дропа — если этот
-                # guard режет НОРМАЛЬНОЕ входящее аудио (подозрение по сбою
-                # у Максима: пакеты доходят, а read отдаёт тишину), увидим
-                # всплеск дропов и поймём, что виноват именно он.
+                # Большой forward-скачок timestamp. РАНЬШЕ молча дропали
+                # пакет — но это УБИВАЛО ВСЁ входящее аудио, если у потока
+                # Novofon легитимный разрыв базы timestamp. Реальный сбой
+                # (10.07): первый пакет с базой ~570млн, дальше весь поток
+                # на ~4.29млрд → каждый пакет выше лимита → дропалось всё →
+                # read отдавал тишину → громкость н/д → «не распознано».
+                # Это и была регрессия, ломавшая распознавание с ~06.07
+                # (08.07 работало, когда timestamp'ы совпадали с базой).
+                # Правильно — ПЕРЕ-БАЗИРОВАТЬСЯ на новый поток (reset +
+                # rebuild), ровно как сам pyVoIP делает для скачка НАЗАД
+                # (RTP.py write, ветка offset < self.offset). Это и
+                # MemoryError предотвращает (buffer = BytesIO(data), без
+                # seek на гигантскую позицию), и аудио сохраняет. После
+                # одного пере-базирования поток идёт дальше штатно (дельта
+                # между пакетами ~160, что сильно меньше лимита).
                 key = id(self)
-                d = drop_counters.get(key, 0) + 1
-                drop_counters[key] = d
-                if d == 1 or d % 250 == 0:
-                    print(f"[audio] ⚠️ memory-guard отбросил входящий пакет "
-                          f"(offset={offset}, base={self.offset}, дропов={d})", flush=True)
+                c = rebase_counters.get(key, 0) + 1
+                rebase_counters[key] = c
+                if c <= 3:
+                    print(f"[audio] RTP timestamp пере-базирован на новый поток "
+                          f"(offset={offset}, старая base={self.offset})", flush=True)
+                self.offset = offset
+                self.rebuild(True, offset, data)
                 return
         except Exception:
             pass
@@ -329,100 +340,11 @@ def _patch_rtp_memory_guard() -> None:
     RTP.RTPPacketManager.write = guarded_write
 
 
-# Публичный адрес:порт RTP-сокета за NAT, по локальному RTP-порту.
-# Заполняется _patch_rtp_stun (STUN на реальном сокете), читается
-# _patch_sdp_public_addr при генерации SDP. См. подробности в тех
-# функциях — это фикс одностороннего аудио за cone-NAT (2026-07-09).
-_RTP_PUBLIC_MAP: dict = {}
-
-
-def _patch_rtp_stun() -> None:
-    """Фикс ОДНОСТОРОННЕГО АУДИО за NAT (2026-07-09). Агент на домашнем ПК
-    за роутером отдавал в SDP приватный 192.168.1.15 — Novofon слал туда
-    голос кандидата, и до нас он не доходил (в записи Novofon голос есть, а
-    realtime — тишина). STUN на определении показал cone-NAT: отображение
-    порта не зависит от адресата, значит порт, который STUN вернёт для
-    нашего RTP-сокета, совпадёт с тем, куда Novofon будет слать RTP.
-
-    pyVoIP использует ОДИН сокет на приём и передачу (RTP.py: self.sout =
-    self.sin), так что STUN именно с него даёт правильное отображение.
-    Перехватываем RTPClient.start: делаем STUN на свежесозданном сокете ДО
-    перевода в неблокирующий режим и старта потоков (иначе recv-поток
-    съест STUN-ответ как RTP-мусор), запоминаем публичный адрес:порт по
-    локальному порту. Порядок гарантирован pyVoIP: VoIPCall.answer() →
-    gen_ms() (тут start() и STUN) → gen_answer() (тут подстановка в SDP)."""
-    from pyVoIP import RTP  # type: ignore
-    import socket as _socket
-    from threading import Timer as _Timer
-    from _sip_config import stun_discover
-
-    def patched_start(self):
-        self.sin = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-        self.sout = self.sin
-        self.sin.bind((self.inIP, self.inPort))
-        try:
-            mapping = stun_discover(self.sin, timeout=1.5)
-            if mapping:
-                _RTP_PUBLIC_MAP[self.inPort] = mapping
-                print(f"[audio] STUN: RTP :{self.inPort} снаружи виден как "
-                      f"{mapping[0]}:{mapping[1]}", flush=True)
-            else:
-                print("[audio] ⚠️ STUN не ответил — SDP останется с локальным "
-                      "адресом, входящее аудио за NAT может не дойти", flush=True)
-        except Exception as e:
-            print(f"[audio] ⚠️ STUN ошибка: {e}", flush=True)
-        self.sin.setblocking(False)
-        r = _Timer(0, self.recv); r.name = "RTP Receiver"; r.start()
-        t = _Timer(0, self.trans); t.name = "RTP Transmitter"; t.start()
-
-    RTP.RTPClient.start = patched_start
-
-
-def _patch_sdp_public_addr() -> None:
-    """Вторая половина NAT-фикса: переписываем сгенерированный SDP так,
-    чтобы Novofon слал RTP на наш ПУБЛИЧНЫЙ адрес:порт (из _RTP_PUBLIC_MAP,
-    добытый STUN'ом), а не на приватный из c=/o=. Подменяем IN IP4 и порт в
-    m=audio, пересчитываем Content-Length. Если STUN не сработал (порта нет
-    в карте) — не трогаем, откат к прежнему поведению."""
-    import re as _re
-    orig_answer = SIPClient.gen_answer
-    orig_invite = SIPClient.gen_invite
-
-    def _rewrite(msg: str) -> str:
-        if not msg or "\r\n\r\n" not in msg:
-            return msg
-        head, body = msg.split("\r\n\r\n", 1)
-        m = _re.search(r"m=audio (\d+) ", body)
-        if not m:
-            return msg
-        localport = int(m.group(1))
-        mapping = _RTP_PUBLIC_MAP.get(localport)
-        if not mapping:
-            return msg
-        pub_ip, pub_port = mapping
-        body = _re.sub(r"(IN IP4 )\d+\.\d+\.\d+\.\d+", r"\g<1>" + pub_ip, body)
-        body = body.replace(f"m=audio {localport} ", f"m=audio {pub_port} ")
-        head = _re.sub(r"Content-Length: \d+",
-                       f"Content-Length: {len(body.encode())}", head)
-        return head + "\r\n\r\n" + body
-
-    def patched_answer(self, *a, **k):
-        return _rewrite(orig_answer(self, *a, **k))
-
-    def patched_invite(self, *a, **k):
-        return _rewrite(orig_invite(self, *a, **k))
-
-    SIPClient.gen_answer = patched_answer
-    SIPClient.gen_invite = patched_invite
-
-
 _patch_pyvoip_proxy_auth()
 _patch_pyvoip_ack_tag()
 _patch_rtp_logging()
 _patch_pcma_encode_bug()
 _patch_rtp_memory_guard()
-_patch_rtp_stun()
-_patch_sdp_public_addr()
 
 class _JunkFilteringSocket:
     """Прокси вокруг UDP-сокета SIPClient. pyVoIP 1.6.8 держит один сокет
