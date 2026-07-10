@@ -717,7 +717,8 @@ def _line_has_audio(call, check_sec: float = 4.0, min_rms: float = 350.0,
 
 def listen(call, vocab: Optional[list] = None,
            silence_after_speech_sec: float = 0.9,
-           silence_before_speech_sec: float = 6.0,
+           silence_before_speech_sec: float = 4.5,  # было 6.0 — живее, дыры короче;
+           #   тихого кандидата всё равно ждём два круга (~9с суммарно, п.7 2026-07-10)
            max_total_sec: float = 20.0,
            on_partial=None,
            preroll_pcm16: Optional[bytes] = None,

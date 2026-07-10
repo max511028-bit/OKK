@@ -553,6 +553,56 @@ class TestCallHistoryAndRecording:
         assert detail["last_call_status"] == "voicemail"
         assert detail["verdict"] is None
 
+    def test_passed_with_many_unrecognized_flagged(self, client, portal_token):
+        """П2 (2026-07-10): дошёл до конца (passed), но ≥2 полей «не
+        распознано» → ⚠ проверить (страховка от нейросекретаря в «годен»)."""
+        cid = self._campaign_with_one_contact(client, phone="79993330081")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Возраст": "не распознано", "Город": "не распознано", "Актуальность": "да"})
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        last = detail["history"][-1]
+        assert last["needs_review"] is True
+        assert "не распознан" in (last["review_note"] or "")
+
+    def test_passed_clean_not_flagged(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330082")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Возраст": 29, "Город": "москва", "Актуальность": "да"})
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["needs_review"] is False
+
+    def test_loud_but_unrecognized_flagged(self, client, portal_token):
+        """П5 (2026-07-10): low_recognition, но кандидат ГРОМКИЙ (шум/робот),
+        не тихий «человек молчал» → ⚠ проверить (случай Курманжана ~6136)."""
+        cid = self._campaign_with_one_contact(client, phone="79993330083")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "low_recognition",
+            notes={"Тех. качество звонка": "первая фраза: 266мс · громкость кандидата: ~6136"})
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["needs_review"] is True
+
+    def test_quiet_unrecognized_not_flagged(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330084")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "low_recognition",
+            notes={"Тех. качество звонка": "первая фраза: 266мс · громкость кандидата: ~182"})
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["needs_review"] is False
+
     def test_needs_review_flag_stored_and_visible_in_detail(self, client, portal_token):
         """Пункт 7 доработок 2026-07: агент может пометить попытку на
         ручную проверку, если пакетная перепроверка записи не

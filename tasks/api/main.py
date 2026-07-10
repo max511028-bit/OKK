@@ -4538,6 +4538,35 @@ _VC_STATUS_MAP = {
     "callback_requested": "failed",
 }
 
+
+def _vc_suspicious_result(verdict, status, answers, notes):
+    """Помечает подозрительные результаты на ручную проверку (2026-07-10):
+      - П2: дошёл до конца (verdict='passed'), но ≥2 ответов «не распознано»
+        — реальный случай: Яндекс-нейросекретарь доиграл сценарий и попал в
+        «годен» с мусорными полями. Страховка на случай робота, которого не
+        поймали фразы-заглушки.
+      - П5: статус low_recognition, но кандидат был ГРОМКИМ — шум/робот без
+        чистой речи, а не тихий «человек молчал» (реальный случай: Курманжан
+        ~6136, ноль распознавания).
+    Возвращает (needs_review: bool, note: str|None)."""
+    unrec = sum(1 for v in (answers or {}).values()
+                if isinstance(v, str) and v.strip().lower().startswith("не распознано"))
+    if verdict == "passed" and unrec >= 2:
+        return True, (f"Дошёл до конца, но {unrec} ответа(ов) не распознаны — "
+                      "возможно робот-секретарь или плохая связь, проверьте.")
+    if status == "low_recognition":
+        import re
+        rms = 0
+        for v in (notes or {}).values():
+            m = re.search(r"громкост[ьи] кандидата:\s*~?(\d+)", str(v))
+            if m:
+                rms = max(rms, int(m.group(1)))
+        if rms >= 1500:
+            return True, (f"Громко на линии (~{rms}), но речь не распозналась — "
+                          "проверьте (шум/робот, не тихий кандидат).")
+    return False, None
+
+
 # Живой транскрипт звонков в процессе — только в памяти процесса, не в БД.
 # contact_id -> [{who, text}, ...]. Агент шлёт снимок транскрипта целиком
 # после каждой реплики (см. /voicecall/dispatch/live), портал опрашивает
@@ -4587,19 +4616,23 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         new_status = _VC_STATUS_MAP.get(req.status, "failed")
         full_answers = dict(req.answers)
         full_answers.update(req.notes)
+        susp_review, susp_note = _vc_suspicious_result(
+            req.verdict, req.status, req.answers, req.notes)
         cur = conn.execute(
             "INSERT INTO candidate_validations "
             "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
             "answers_json, transcript_json, summary, browser, ip, "
-            "contact_id, call_status, dropped_at_step, call_session_id) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "contact_id, call_status, dropped_at_step, call_session_id, "
+            "needs_review, review_note) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (camp["scenario_id"] if camp else "unknown",
              camp["scenario_name"] if camp else None,
              now, now, req.verdict or "declined", req.stop_reason,
              json.dumps(full_answers, ensure_ascii=False),
              json.dumps(req.transcript, ensure_ascii=False),
              None, "dispatch-agent", "",
-             req.contact_id, req.status, req.dropped_at_step, req.call_session_id),
+             req.contact_id, req.status, req.dropped_at_step, req.call_session_id,
+             int(susp_review), susp_note),
         )
         validation_id = cur.lastrowid
 
@@ -4670,7 +4703,7 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
     _vc_touch_agent()
     with db() as conn:
         row = conn.execute(
-            "SELECT id, answers_json FROM candidate_validations "
+            "SELECT id, answers_json, needs_review, review_note FROM candidate_validations "
             "WHERE contact_id=? ORDER BY id DESC LIMIT 1", (req.contact_id,)).fetchone()
         if not row:
             return {"ok": False, "reason": "no validation row"}
@@ -4703,11 +4736,20 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
                 answers = {}
             for crit, corrected in req.corrected_answers.items():
                 answers[crit] = corrected
+        # НЕ затираем флаг/заметку, выставленные на этапе результата
+        # (_vc_suspicious_result: робот-секретарь / громко-но-пусто) — ИЛИ с
+        # тем, что нашла перепроверка записи; заметки склеиваем без дублей.
+        merged_review = int(bool(req.needs_review) or bool(row["needs_review"]))
+        _seen = []
+        for _n in (row["review_note"], req.review_note):
+            if _n and _n not in _seen:
+                _seen.append(_n)
+        merged_note = " · ".join(_seen) if _seen else None
         conn.execute(
             "UPDATE candidate_validations SET recheck_transcript=?, needs_review=?, review_note=?"
             + (", answers_json=?" if req.corrected_answers else "")
             + " WHERE id=?",
-            (req.recheck_transcript, int(req.needs_review), req.review_note,
+            (req.recheck_transcript, merged_review, merged_note,
              *([json.dumps(answers, ensure_ascii=False)] if req.corrected_answers else []),
              row["id"]),
         )

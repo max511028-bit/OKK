@@ -82,3 +82,32 @@ class TestFullVerification:
         corr, _, _ = self._run({"Актуальность": "да"})
         assert "Опыт" not in corr
         assert "Возраст" not in corr  # тоже не достигнут
+
+
+class TestAgeGrounded:
+    """П4 (2026-07-10): восстановленный возраст берём, только если он реально
+    звучит в записи — иначе LLM галлюцинирует (Еладжу поставили 29, хотя в
+    записи «вообще четыре года»)."""
+
+    def test_number_words_match(self):
+        assert da._age_grounded(29, "мне двадцать девять лет")
+        assert da._age_grounded(30, "ну тридцать")
+        assert da._age_grounded(24, "двадцать четыре года")
+
+    def test_digit_match(self):
+        assert da._age_grounded(45, "мне 45")
+
+    def test_teens(self):
+        assert da._age_grounded(19, "девятнадцать")
+
+    def test_not_grounded_rejected(self):
+        # реальный случай Еладжа: «29» в записи не звучит
+        assert not da._age_grounded(29, "да ибо да вообще четыре года в петербурге")
+
+    def test_age_not_overwritten_when_ungrounded(self):
+        """LLM возвращает 29, но в записи его нет → live (24) НЕ подменяем."""
+        da._llm_ask = lambda base, prompt, num_predict=12: "29"
+        scenario = {"steps": [{"crit": "Возраст", "expect": "age", "bot": "Сколько лет?"}]}
+        corr, _, _ = da._recheck_critical_answers(
+            "x", scenario, {"Возраст": 24}, "да вообще четыре года в петербурге")
+        assert "Возраст" not in corr  # не подменили галлюцинацией

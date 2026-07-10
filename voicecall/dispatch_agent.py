@@ -218,6 +218,31 @@ def _answer_grounded(ans: str, transcript: str) -> bool:
     return any(w[:5] in t for w in words)
 
 
+_RU_UNITS = ["", "один", "два", "три", "четыре", "пять", "шесть", "семь", "восемь", "девять"]
+_RU_TEENS = {10: "десять", 11: "одиннадцать", 12: "двенадцать", 13: "тринадцать",
+             14: "четырнадцать", 15: "пятнадцать", 16: "шестнадцать", 17: "семнадцать",
+             18: "восемнадцать", 19: "девятнадцать"}
+_RU_TENS = {20: "двадцать", 30: "тридцать", 40: "сорок", 50: "пятьдесят",
+            60: "шестьдесят", 70: "семьдесят", 80: "восемьдесят", 90: "девяносто"}
+
+
+def _age_grounded(age: int, transcript: str) -> bool:
+    """Звучит ли возраст в записи (защита от галлюцинации LLM — реальный
+    случай 2026-07-10: Еладжу поставили 29, хотя в записи внятного числа
+    нет). Проверяем цифрами ИЛИ русскими числительными: 10-19 — одно слово;
+    20-99 — десяток обязателен, единица (если есть) тоже должна звучать."""
+    t = _norm_answer(transcript)
+    if str(age) in t:
+        return True
+    if 10 <= age <= 19:
+        return _RU_TEENS[age] in t
+    tens, unit = (age // 10) * 10, age % 10
+    tens_w = _RU_TENS.get(tens)
+    if not tens_w or tens_w not in t:
+        return False
+    return unit == 0 or _RU_UNITS[unit] in t
+
+
 def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
                                combined_transcript: str):
     """Пере-валидация ответов по записи. Маленькая Vosk-модель в реальном
@@ -270,6 +295,14 @@ def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
                 continue
             rec_age = int(m.group())
             if not (10 <= rec_age <= 99):
+                continue
+            # Защита от галлюцинации: принимаем восстановленный возраст,
+            # только если он реально звучит в записи. Иначе не подменяем —
+            # если live не распознан, помечаем на ручную проверку.
+            if not _age_grounded(rec_age, combined_transcript):
+                if _live_unrecognized(live):
+                    needs_review = True
+                    notes.append("Возраст: реалтайм не распознал, по записи надёжно не определить — проверьте.")
                 continue
             if _live_unrecognized(live):
                 corrected[crit] = f"{rec_age} (восстановлено по записи)"
@@ -431,27 +464,28 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         for i, t in enumerate(transcripts)
     )
 
-    # 0) переклассификация в АВТООТВЕТЧИК по записи. Реальный случай
-    #    (2026-07-08): оператор «абонент занят, перезвоните позднее» на
-    #    тихой линии в реальном времени услышался как «нет» на «удобно
-    #    говорить?» → кандидат попал в воронку как живой ОТКАЗ. Большая
-    #    модель по чистой записи ловит фразу-заглушку уверенно. Условие
-    #    verdict not in (passed, stopped) страхует от потери настоящего
-    #    результата: если бот получил осмысленные ответы на критичные
-    #    вопросы — это точно был живой человек, не автоответчик. Дорожку
-    #    бота проверять безопасно: его книжные фразы под is_voicemail_phrase
-    #    не попадают (проверено на «перезвоню в другое время»).
+    # 0) переклассификация в АВТООТВЕТЧИК/робота по записи. Случаи:
+    #    (2026-07-08) оператор «абонент занят, перезвоните позднее» услышан
+    #    как «нет» → ложный ОТКАЗ; (2026-07-10) Яндекс-нейросекретарь ведёт
+    #    диалог и ДОХОДИТ до конца → ложный «ГОДЕН» (verdict=passed!).
+    #    Поэтому дискриминатор теперь — сама ФРАЗА-заглушка (специфичная для
+    #    робота/оператора), а НЕ вердикт: раньше страховались условием
+    #    verdict not in (passed, stopped), но именно оно и пропускало
+    #    AI-ассистентов, доигравших сценарий. Фразы is_voicemail_phrase
+    #    высокоспецифичны (проверено: 0 ложных срабатываний на реальных
+    #    ответах кандидатов; дорожка бота тоже не триггерит), так что
+    #    переклассифицируем при любом вердикте.
     from dialog import is_voicemail_phrase
-    if verdict not in ("passed", "stopped") and any(
-            is_voicemail_phrase(t) for t in transcripts):
+    if any(is_voicemail_phrase(t) for t in transcripts):
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
                         "reclassify_voicemail": True,
-                        "review_note": "Переклассифицировано по записи: автоответчик "
-                                       "(в реальном времени распознано как ответ кандидата)."},
+                        "review_note": "Переклассифицировано по записи: автоответчик/"
+                                       "робот-секретарь (в реальном времени распознано "
+                                       "как ответ кандидата)."},
              timeout=15)
-        print(f"🔁 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК по записи "
-              f"(live-вердикт был: {verdict or 'нет'}).", flush=True)
+        print(f"🔁 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота по "
+              f"записи (live-вердикт был: {verdict or 'нет'}).", flush=True)
         return
 
     # 1) сверка причины ОТКАЗА с записью (ложные отказы)
