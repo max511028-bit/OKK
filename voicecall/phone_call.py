@@ -715,6 +715,41 @@ def _line_has_audio(call, check_sec: float = 4.0, min_rms: float = 350.0,
     return False
 
 
+def _line_has_speech(call, check_sec: float = 2.5) -> bool:
+    """Есть ли на линии РЕЧЬ (а не тишина/гудок/тон). В отличие от
+    _line_has_audio (любой громкий звук) — скармливаем аудио
+    распознавателю и ждём хоть какой-то партиал. Зачем (2026-07-10):
+      - гудок/тон ринг-бэка Яндекса ГРОМКИЙ, но слов не даёт → сюда НЕ
+        попадает (раньше _line_has_audio по громкости считал его «ответом»
+        → бот говорил в тон, звонок уходил в «не распознали»);
+      - короткое «алё» кандидата — это речь → ловим (раньше теряли: Novofon
+        не отдавал статус «Разговор», а поздняя разовая проверка звука уже
+        не заставала это «алё» → ложный «не взял трубку», кейс Анны).
+    Тихое «алё» подусиливаем, чтобы распознаватель его расслышал."""
+    from stt import StreamingRecognizer
+    rec = StreamingRecognizer(input_sample_rate=8000, vocab=None)
+    deadline = time.time() + check_sec
+    while time.time() < deadline:
+        st = _call_state_name(call)
+        if "ENDED" in st or "FAIL" in st:
+            return False
+        try:
+            raw8 = call.read_audio(length=160, blocking=False)
+        except Exception:
+            return False
+        time.sleep(0.02)
+        pcm16 = _pyvoip_to_pcm16(raw8)
+        if not pcm16:
+            continue
+        rms = audioop.rms(pcm16, 2)
+        if 40 < rms < 2000:  # подусиление тихой речи (не трогаем громкий тон)
+            pcm16 = audioop.mul(pcm16, 2, min(8.0, 2500.0 / max(rms, 1)))
+        r = rec.feed(pcm16)
+        if r.get("partial") or r.get("final"):
+            return True
+    return bool(rec.finalize())
+
+
 def listen(call, vocab: Optional[list] = None,
            silence_after_speech_sec: float = 0.9,
            silence_before_speech_sec: float = 4.5,  # было 6.0 — живее, дыры короче;
@@ -1460,25 +1495,34 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             return result
 
         log("Ответили на входящий от Novofon. Жду пока дозвонятся до кандидата...")
-        # 35с ≈ 6-7 гудков — кто не взял за это время, скорее всего не
-        # возьмёт вообще. Суммарный худший случай недозвона на контакт
-        # теперь ≈ 45-50с вместо прежних ~2 минут.
-        bridged, leg_states = call_api.wait_for_contact_talking(api_secret, call_session_id, timeout=35)
-        if not bridged:
-            # Диагностика: реальный случай 2026-07-03 — кандидат взял трубку
-            # и говорил "алло алло" (слышно на записи), а состояние
-            # "Разговор" из list.calls мы так и не увидели. Прежде чем
-            # сдаться, проверяем есть ли на линии живой звук: SIP-звонок
-            # у нас уже отвечен, RTP идёт — если из него реально слышно
-            # РЕЧЬ, разговор состоялся, что бы ни говорил API статусов.
-            log(f"Состояние 'Разговор' не поймано за 45с (ноги звонка: {leg_states}, "
-                f"SIP: {_call_state_name(call)}). Проверяю живой звук на линии...")
-            if _line_has_audio(call):
-                log("🔊 На линии есть живой звук — начинаю диалог несмотря на отсутствие статуса 'Разговор'.")
-                bridged = True
+        # Определяем факт ответа кандидата ДВУМЯ путями параллельно в течение
+        # ~35с (≈6-7 гудков): (1) статус «Разговор» из list.calls Novofon;
+        # (2) РЕЧЬ на линии по RTP. Раньше ждали только статус, а звук
+        # проверяли ОДИН раз в конце и по громкости — из-за чего (2026-07-10):
+        #   • терялась Анна: Novofon статус не отдал, её короткое «алё»
+        #     прозвучало во время ожидания, а поздняя разовая проверка его уже
+        #     не застала → ложный «не взял трубку» (в логе такое 46 раз);
+        #   • гудок/тон ринг-бэка Яндекса (громкий!) проходил как «живой звук»
+        #     → бот говорил в тон → «не распознали». Теперь слушаем РЕЧЬ
+        #     (_line_has_speech), а не громкость: тон слов не даёт и НЕ считается
+        #     ответом (уходит в «не взял трубку/гудок», а не в «не распознали»).
+        bridged, bridge_reason, leg_states = False, "", []
+        _bridge_deadline = time.time() + 35
+        while time.time() < _bridge_deadline and not bridged:
+            if "ENDED" in _call_state_name(call) or "FAIL" in _call_state_name(call):
+                break
+            b, leg_states = call_api.wait_for_contact_talking(
+                api_secret, call_session_id, timeout=2.0, poll_interval=1.0)
+            if b:
+                bridged, bridge_reason = True, "статус Novofon «Разговор»"
+                break
+            if _line_has_speech(call, check_sec=2.5):
+                bridged, bridge_reason = True, "речь на линии"
+                break
         if not bridged:
             result["status"] = "no_answer"
-            log("Кандидат не взял трубку (или звонок завершился раньше).")
+            log(f"Кандидат не взял трубку (на линии только гудок/тишина, речи нет). "
+                f"Ноги звонка: {leg_states}, SIP: {_call_state_name(call)}.")
             try: call.hangup()
             except Exception: pass
             return result
@@ -1488,7 +1532,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         # первой фразы бота убрана: добавляла 2-3с тишины после того как
         # кандидат уже ответил. Автоответчик теперь ловится по ходу
         # диалога (_run_dialog_loop).
-        log("✅ Кандидат на линии! Начинаю диалог.")
+        log(f"✅ Кандидат на линии ({bridge_reason})! Начинаю диалог.")
         _run_dialog_loop(call, scenario, candidate_name, log, result, known_answers=known_answers,
                           on_transcript_update=on_transcript_update,
                           bridge_established_at=bridge_established_at)
