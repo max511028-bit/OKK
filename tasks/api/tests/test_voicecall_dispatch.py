@@ -616,6 +616,39 @@ class TestCallHistoryAndRecording:
         detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
         assert detail["status"] == "pending"  # снова в очереди
 
+    def test_no_answer_requeued_when_option_enabled(self, client, portal_token):
+        """Опция «перезвон при недозвоне» (2026-07-10): галочка ВКЛ →
+        недозвон возвращается в очередь на повторный набор."""
+        cid = self._campaign_with_one_contact(client, phone="79993330101")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch?retry_no_answer=true", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                            headers=auth).json()
+        r = client.post("/voicecall/dispatch/result", headers=auth,
+                        json={"contact_id": claim["contact_id"], "status": "no_answer",
+                              "duration_s": 44.2})
+        assert r.json()["requeued"] is True
+        detail = client.get(f"/voicecall/contacts/{claim['contact_id']}/detail").json()
+        assert detail["status"] == "pending"
+        assert detail["history"][-1]["duration_s"] == 44.2  # длительность недозвона сохранена
+
+    def test_no_answer_not_requeued_by_default(self, client, portal_token):
+        """По умолчанию галочка снята — недозвон НЕ перезванивается."""
+        cid = self._campaign_with_one_contact(client, phone="79993330102")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)  # без флага
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                            headers=auth).json()
+        r = client.post("/voicecall/dispatch/result", headers=auth,
+                        json={"contact_id": claim["contact_id"], "status": "no_answer",
+                              "duration_s": 45.0})
+        assert r.json()["requeued"] is False
+        detail = client.get(f"/voicecall/contacts/{claim['contact_id']}/detail").json()
+        assert detail["status"] == "failed"
+        assert detail["history"][-1]["duration_s"] == 45.0  # длительность всё равно сохранена
+
     def test_passed_clean_not_flagged(self, client, portal_token):
         cid = self._campaign_with_one_contact(client, phone="79993330082")
         auth = {"X-Auth-Token": portal_token}

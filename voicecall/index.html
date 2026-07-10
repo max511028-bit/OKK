@@ -669,6 +669,13 @@ function fmtTs(iso){
   return d.getDate()+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear()
     + " " + String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
 }
+function fmtDur(sec){
+  // 42.0 → "42с"; 95 → "1м 35с"
+  if(sec == null) return "";
+  sec = Math.round(sec);
+  if(sec < 60) return sec + "с";
+  return Math.floor(sec/60) + "м " + (sec%60) + "с";
+}
 function fmtPhone(p){
   // 79991234567 → +7 (999) 123-45-67
   if(!p || p.length !== 11) return "+"+p;
@@ -702,7 +709,9 @@ function campDispatchBtnHtml(c){
       + "<button class='small' onclick='event.stopPropagation(); pauseDispatch("+c.id+")'>⏸ Пауза</button>";
   }
   if(c.pending > 0){
-    return "<button class='small primary' onclick='event.stopPropagation(); startDispatch("+c.id+")'>▶ Начать обзвон</button>";
+    return "<button class='small primary' onclick='event.stopPropagation(); startDispatch("+c.id+")'>▶ Начать обзвон</button>"
+      + "<label style='display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-size:12px;color:var(--muted);cursor:pointer' onclick='event.stopPropagation()' title='Если кандидат не взял трубку — позвонить ему ещё раз'>"
+      + "<input type='checkbox' id='retryNA_"+c.id+"'> 🔁 перезвон при недозвоне</label>";
   }
   return "<span class='pill' style='color:var(--muted)'>✓ завершён</span>";
 }
@@ -840,10 +849,15 @@ async function showSuspectVoicemails(cid){
 
 async function startDispatch(cid){
   if(!confirm("Начать обзвон? Локальный агент на ПК с SIP-линией должен быть запущен.")) return;
+  var cb = document.getElementById("retryNA_"+cid);
+  var retry = cb && cb.checked;
   try{
-    var data = await _vcPortalPost("/voicecall/campaigns/"+cid+"/start-dispatch");
+    var data = await _vcPortalPost("/voicecall/campaigns/"+cid+"/start-dispatch"
+      + (retry ? "?retry_no_answer=true" : ""));
     if(!data) return;
-    alert("✅ Обзвон запрошен (" + data.pending + " контактов в очереди). Агент подхватит в течение ~20-30 сек.");
+    alert("✅ Обзвон запрошен (" + data.pending + " контактов в очереди)"
+      + (retry ? ", 🔁 перезвон при недозвоне ВКЛючён" : "")
+      + ". Агент подхватит в течение ~20-30 сек.");
     loadCampaigns();
   }catch(e){ alert("❌ Сетевая ошибка: " + e.message); }
 }
@@ -1177,6 +1191,7 @@ async function openContactModal(id){
               +   "<b>Попытка " + (i+1) + "</b> · " + fmtTs(h.started_at) + " · "
               +   escHtml(_LCS_LABEL[h.call_status] || h.call_status || "—")
               +   (h.verdict ? " · вердикт: " + escHtml(h.verdict) : "")
+              +   (h.duration_s != null ? " · " + fmtDur(h.duration_s) : "")
               + "</div>";
             if(h.verdict == null && h.call_status === "hangup_by_candidate"){
               part += "<div style='color:var(--warn); font-size:12px; margin:4px 0;'>⚠ Оборвался"

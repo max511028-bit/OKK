@@ -255,6 +255,14 @@ def init_db() -> None:
                 "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_paused INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass
+        # Опция «перезвон при недозвоне» — включается галочкой при запуске
+        # обзвона (по умолчанию ВЫКЛ). Если исход именно no_answer — контакт
+        # возвращается в очередь на повторный набор (лимит по attempts).
+        try:
+            conn.execute(
+                "ALTER TABLE voicecall_campaigns ADD COLUMN retry_no_answer INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         # candidate_validations: привязка к контакту обзвона (для истории ВСЕХ
         # попыток дозвона по одному контакту, не только последней), точный
         # raw-статус звонка, вопрос обрыва, ссылка на запись разговора у
@@ -268,6 +276,7 @@ def init_db() -> None:
             ("recheck_transcript", "TEXT"),
             ("needs_review", "INTEGER DEFAULT 0"),
             ("review_note", "TEXT"),
+            ("duration_s", "REAL"),  # длительность попытки (в т.ч. недозвона), сек
         ]:
             try:
                 conn.execute(f"ALTER TABLE candidate_validations ADD COLUMN {_cv_col} {_cv_type}")
@@ -4292,7 +4301,7 @@ def vc_contact_detail(cid: int):
         history_rows = conn.execute(
             "SELECT id, started_at, ended_at, verdict, stop_reason, call_status, "
             "       dropped_at_step, recording_url, answers_json, transcript_json, summary, "
-            "       recheck_transcript, needs_review, review_note "
+            "       recheck_transcript, needs_review, review_note, duration_s "
             "FROM candidate_validations WHERE contact_id=? ORDER BY started_at ASC, id ASC",
             (cid,)).fetchall()
     d = dict(row)
@@ -4312,6 +4321,7 @@ def vc_contact_detail(cid: int):
             "recheck_transcript": h["recheck_transcript"],
             "needs_review": bool(h["needs_review"]),
             "review_note": h["review_note"],
+            "duration_s": h["duration_s"],
         }
         for h in history_rows
     ]
@@ -4345,11 +4355,15 @@ def vc_delete_campaign(cid: int):
 # ════════════════════════════════════════════════════════════════════════
 
 @app.post("/voicecall/campaigns/{cid}/start-dispatch")
-def vc_start_dispatch(cid: int, request: Request):
+def vc_start_dispatch(cid: int, request: Request, retry_no_answer: bool = False):
     """Кнопка «Начать обзвон» на портале — просто ставит кампании флаг,
     локальный агент подхватит её на следующем опросе (_vcs_check_password
     объявлен ниже по файлу, но вызывается здесь во время запроса — на
-    момент реального HTTP-запроса модуль уже полностью загружен)."""
+    момент реального HTTP-запроса модуль уже полностью загружен).
+
+    retry_no_answer (галочка «перезвон при недозвоне», по умолчанию ВЫКЛ) —
+    фиксируем на кампании при запуске: при исходе no_answer контакт вернётся
+    в очередь на повторный набор (см. vc_dispatch_result)."""
     _vcs_check_password(request)
     with db() as conn:
         camp = conn.execute(
@@ -4364,9 +4378,10 @@ def vc_start_dispatch(cid: int, request: Request):
         if not n_pending:
             raise HTTPException(400, "Нет контактов в очереди (все уже обработаны)")
         conn.execute(
-            "UPDATE voicecall_campaigns SET dispatch_state='requested', dispatch_paused=0 WHERE id=?",
-            (cid,))
-    return {"ok": True, "pending": n_pending}
+            "UPDATE voicecall_campaigns SET dispatch_state='requested', dispatch_paused=0, "
+            "retry_no_answer=? WHERE id=?",
+            (int(retry_no_answer), cid))
+    return {"ok": True, "pending": n_pending, "retry_no_answer": retry_no_answer}
 
 
 @app.post("/voicecall/campaigns/{cid}/pause-dispatch")
@@ -4610,7 +4625,7 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         if not contact:
             raise HTTPException(404, "Contact not found")
         camp = conn.execute(
-            "SELECT scenario_id, scenario_name FROM voicecall_campaigns WHERE id=?",
+            "SELECT scenario_id, scenario_name, retry_no_answer FROM voicecall_campaigns WHERE id=?",
             (contact["campaign_id"],)).fetchone()
 
         new_status = _VC_STATUS_MAP.get(req.status, "failed")
@@ -4626,8 +4641,8 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
             "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
             "answers_json, transcript_json, summary, browser, ip, "
             "contact_id, call_status, dropped_at_step, call_session_id, "
-            "needs_review, review_note) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "needs_review, review_note, duration_s) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (camp["scenario_id"] if camp else "unknown",
              camp["scenario_name"] if camp else None,
              now, now, req.verdict or "declined", req.stop_reason,
@@ -4635,16 +4650,20 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
              json.dumps(req.transcript, ensure_ascii=False),
              None, "dispatch-agent", "",
              req.contact_id, req.status, req.dropped_at_step, req.call_session_id,
-             int(susp_review), susp_note),
+             int(susp_review), susp_note, req.duration_s),
         )
         validation_id = cur.lastrowid
 
-        # Транзиентный сбой Novofon (SIP 500 / «не перезвонил на линию») —
-        # кандидату даже не звонило. Возвращаем в очередь на ОДИН авто-
-        # повтор (реальный тест Яндекс-3: 3 контакта подряд сгорели в
-        # «ошибка», через минуту всё восстановилось). Лимит по attempts,
-        # чтобы стабильно-битый номер не крутился вечно.
-        requeue = req.status == "error" and (contact["attempts"] or 0) < 2
+        # Возврат контакта в очередь на ОДИН повторный набор (лимит по
+        # attempts, чтобы стабильно-битый номер не крутился вечно). Два
+        # случая:
+        #  • error — транзиентный сбой Novofon (SIP 500 / «не перезвонил
+        #    на линию»), кандидату даже не звонило (тест Яндекс-3);
+        #  • no_answer — если у кампании включена галочка «перезвон при
+        #    недозвоне» (retry_no_answer). Именно недозвон — не автоответчик,
+        #    не отказ.
+        retry_na = req.status == "no_answer" and camp and bool(camp["retry_no_answer"])
+        requeue = bool((req.status == "error" or retry_na) and (contact["attempts"] or 0) < 2)
         if requeue:
             conn.execute(
                 "UPDATE voicecall_contacts SET status='pending', last_call_status=?, "
