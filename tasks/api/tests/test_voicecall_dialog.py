@@ -90,6 +90,28 @@ class TestAiAssistantAndVoicemail2026_07_10:
             assert not dialog.is_voicemail_phrase(p), f"ложное срабатывание на живом: {p}"
 
 
+class TestRingbackDetection2026_07_10:
+    """Голосовой ринг-бэк «идёт дозвон» — не автоответчик и не кандидат;
+    исход «не взял трубку», не «не распознали» (тест Яндекс-3, Дмитрий-153)."""
+
+    def test_ringback_detected_and_not_voicemail(self):
+        for p in ["продолжаем дозваниваться до абонента пятый",
+                   "продолжив дозваниваться оставайтесь на линии",
+                   "ожидайте ответа абонента"]:
+            assert dialog.is_ringback_phrase(p), f"ринг-бэк не пойман: {p}"
+            assert not dialog.is_voicemail_phrase(p), f"ринг-бэк ошибочно = voicemail: {p}"
+
+    def test_real_voicemail_is_not_ringback(self):
+        for p in ["оставьте сообщение после звукового сигнала",
+                   "абонент занят перезвоните позднее"]:
+            assert not dialog.is_ringback_phrase(p)
+            assert dialog.is_voicemail_phrase(p)
+
+    def test_real_answers_not_ringback(self):
+        for p in ["да удобно", "москва", "мне тридцать лет", "нет не интересно"]:
+            assert not dialog.is_ringback_phrase(p)
+
+
 class TestCallbackRequestDetection:
     """Живой кандидат, просящий перезвонить позже, не должен теряться в
     воронке как "автоответчик" — is_callback_request() проверяется

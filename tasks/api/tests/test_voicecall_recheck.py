@@ -111,3 +111,25 @@ class TestAgeGrounded:
         corr, _, _ = da._recheck_critical_answers(
             "x", scenario, {"Возраст": 24}, "да вообще четыре года в петербурге")
         assert "Возраст" not in corr  # не подменили галлюцинацией
+
+
+class TestRobotSecretaryClassifier:
+    """П2 (2026-07-10): LLM-классификация робота-секретаря по записи там,
+    где точные фразы бьют мимо (искажения STT / новые формулировки)."""
+
+    def test_robot_verdict(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "робот"
+        assert da._llm_is_robot_secretary("x", "[Дорожка 1] я секретарь передам сообщение")
+
+    def test_human_verdict(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "человек"
+        assert not da._llm_is_robot_secretary("x", "[Дорожка 1] да мне тридцать лет москва")
+
+    def test_ambiguous_defaults_to_human(self):
+        # безопасность: неясный ответ LLM НЕ должен стоить живого кандидата
+        da._llm_ask = lambda base, prompt, num_predict=12: "не знаю"
+        assert not da._llm_is_robot_secretary("x", "[Дорожка 1] что-то")
+
+    def test_empty_transcript_is_human(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "робот"
+        assert not da._llm_is_robot_secretary("x", "   ")

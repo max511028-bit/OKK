@@ -47,3 +47,4 @@ Thumbs.db
 *.swp
 *~
 __pycache__/
+voicecall/diag/

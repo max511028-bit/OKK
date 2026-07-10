@@ -4605,7 +4605,7 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
     now = _vc_dt.datetime.now().isoformat(timespec="seconds")
     with db() as conn:
         contact = conn.execute(
-            "SELECT id, campaign_id FROM voicecall_contacts WHERE id=?",
+            "SELECT id, campaign_id, attempts FROM voicecall_contacts WHERE id=?",
             (req.contact_id,)).fetchone()
         if not contact:
             raise HTTPException(404, "Contact not found")
@@ -4616,8 +4616,11 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         new_status = _VC_STATUS_MAP.get(req.status, "failed")
         full_answers = dict(req.answers)
         full_answers.update(req.notes)
+        # ВАЖНО: считаем «не распознано» по ОБЪЕДИНЁННОМУ словарю — движок
+        # кладёт нераспознанные ответы в notes, а не в answers (dialog.py),
+        # поэтому раньше П2-флаг молчал на робо-«годен» (тест Яндекс-3).
         susp_review, susp_note = _vc_suspicious_result(
-            req.verdict, req.status, req.answers, req.notes)
+            req.verdict, req.status, full_answers, req.notes)
         cur = conn.execute(
             "INSERT INTO candidate_validations "
             "(project_id, project_name, started_at, ended_at, verdict, stop_reason, "
@@ -4636,14 +4639,26 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         )
         validation_id = cur.lastrowid
 
-        conn.execute(
-            "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
-            "last_call_status=?, dropped_at_step=?, validation_id=? WHERE id=?",
-            (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
-             validation_id, req.contact_id),
-        )
+        # Транзиентный сбой Novofon (SIP 500 / «не перезвонил на линию») —
+        # кандидату даже не звонило. Возвращаем в очередь на ОДИН авто-
+        # повтор (реальный тест Яндекс-3: 3 контакта подряд сгорели в
+        # «ошибка», через минуту всё восстановилось). Лимит по attempts,
+        # чтобы стабильно-битый номер не крутился вечно.
+        requeue = req.status == "error" and (contact["attempts"] or 0) < 2
+        if requeue:
+            conn.execute(
+                "UPDATE voicecall_contacts SET status='pending', last_call_status=?, "
+                "validation_id=? WHERE id=?",
+                (req.status, validation_id, req.contact_id))
+        else:
+            conn.execute(
+                "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
+                "last_call_status=?, dropped_at_step=?, validation_id=? WHERE id=?",
+                (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
+                 validation_id, req.contact_id),
+            )
     _VC_LIVE_TRANSCRIPTS.pop(req.contact_id, None)
-    return {"ok": True}
+    return {"ok": True, "requeued": requeue}
 
 
 class VCDispatchRecordingReq(BaseModel):
@@ -4676,6 +4691,7 @@ class VCDispatchRecheckReq(BaseModel):
     review_note: Optional[str] = None
     corrected_answers: dict = {}  # {crit: значение} — уточнения по записи
     reclassify_voicemail: bool = False  # запись показала автоответчик, а live — нет
+    reclassify_status: Optional[str] = None  # переклассификация в произвольный исход (напр. no_answer для ринг-бэка)
 
 
 @app.post("/voicecall/dispatch/recheck-transcript")
@@ -4728,6 +4744,20 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
                 "stop_reason=NULL, last_call_status='voicemail' WHERE id=?",
                 (req.contact_id,))
             return {"ok": True, "reclassified": "voicemail"}
+        if req.reclassify_status:
+            # Переклассификация в произвольный исход попытки (напр. ринг-бэк
+            # → 'no_answer': не соединилось, перезвон уместен). Снимаем
+            # verdict/stop_reason, укрупнённый статус — 'failed'.
+            st = req.reclassify_status
+            conn.execute(
+                "UPDATE candidate_validations SET recheck_transcript=?, needs_review=0, "
+                "review_note=?, call_status=? WHERE id=?",
+                (req.recheck_transcript, req.review_note, st, row["id"]))
+            conn.execute(
+                "UPDATE voicecall_contacts SET status=?, verdict=NULL, "
+                "stop_reason=NULL, last_call_status=? WHERE id=?",
+                (_VC_STATUS_MAP.get(st, "failed"), st, req.contact_id))
+            return {"ok": True, "reclassified": st}
         answers = {}
         if req.corrected_answers:
             try:

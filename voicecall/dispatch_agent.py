@@ -198,6 +198,26 @@ def _llm_ask(base_url: str, prompt: str, num_predict: int = 12) -> str:
         return ""
 
 
+def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
+    """LLM-классификация: собеседник в записи — живой кандидат или робот-
+    секретарь/голосовой ассистент/автоответчик? Нужна там, где точные
+    фразы бьют мимо из-за искажений STT или новых формулировок робота
+    (тест Яндекс-3). Осторожно: по умолчанию считаем ЧЕЛОВЕКОМ — реклассим
+    в робота только при явном «робот», чтобы не потерять живого кандидата."""
+    if not combined_transcript.strip():
+        return False
+    ans = _llm_ask(
+        base_url,
+        "Телефонный звонок: бот-рекрутёр (Диана) задаёт вопросы про вакансию, "
+        "с ним говорит собеседник. Вот расшифровка (обе стороны вперемешку):\n"
+        f"{combined_transcript}\n\n"
+        "Кто отвечал боту — ЖИВОЙ кандидат (человек, ищущий работу) или "
+        "РОБОТ (голосовой ассистент/секретарь/автоответчик, который предлагает "
+        "передать сообщение, записать обращение, отвечает вместо абонента)? "
+        "Ответь ОДНИМ словом: человек / робот.", num_predict=6)
+    return "робот" in ans and "человек" not in ans
+
+
 def _norm_answer(s: str) -> str:
     """Нормализация для сравнения/поиска: нижний регистр, только буквы/цифры,
     схлопнутые пробелы."""
@@ -475,7 +495,7 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     #    высокоспецифичны (проверено: 0 ложных срабатываний на реальных
     #    ответах кандидатов; дорожка бота тоже не триггерит), так что
     #    переклассифицируем при любом вердикте.
-    from dialog import is_voicemail_phrase
+    from dialog import is_voicemail_phrase, is_ringback_phrase
     if any(is_voicemail_phrase(t) for t in transcripts):
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
@@ -486,6 +506,36 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
              timeout=15)
         print(f"🔁 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота по "
               f"записи (live-вердикт был: {verdict or 'нет'}).", flush=True)
+        return
+
+    # 0б) голосовой РИНГ-БЭК в записи («идёт дозвон, оставайтесь на линии»)
+    #     без осмысленных ответов — не соединилось, исход «не взял трубку»
+    #     (перезвон уместен), а не «не распознали» (тест Яндекс-3, Дмитрий-153).
+    if verdict not in ("passed", "stopped") and any(is_ringback_phrase(t) for t in transcripts):
+        _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+             json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                        "reclassify_status": "no_answer",
+                        "review_note": "По записи — голосовой ринг-бэк (дозвон), "
+                                       "абонент не ответил."},
+             timeout=15)
+        print(f"📞 contact_id={contact_id} переклассифицирован в НЕ ВЗЯЛ ТРУБКУ "
+              f"(ринг-бэк по записи).", flush=True)
+        return
+
+    # 0в) LLM-классификация робота-секретаря, которого НЕ поймали фразы
+    #     (STT искажает «взять трубку»→«взять труп то»; роботы говорят по-
+    #     новому). Только для доигравших сценарий (passed/stopped) — это и
+    #     есть ложные «годен»/«стоп» (тест Яндекс-3: 4 робо-«годен»). LLM
+    #     устойчива к искажениям, где точные фразы бьют мимо.
+    if verdict in ("passed", "stopped") and _llm_is_robot_secretary(base_url, combined):
+        _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+             json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                        "reclassify_voicemail": True,
+                        "review_note": "Переклассифицировано по записи (LLM): собеседник — "
+                                       "робот-секретарь/голосовой ассистент, не живой кандидат."},
+             timeout=15)
+        print(f"🤖 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота "
+              f"(LLM по записи; live-вердикт был: {verdict}).", flush=True)
         return
 
     # 1) сверка причины ОТКАЗА с записью (ложные отказы)

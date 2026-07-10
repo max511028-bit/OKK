@@ -63,7 +63,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, CALLBACK_BYE_TEXT, FILLER_PHRASES
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, CALLBACK_BYE_TEXT, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -1128,6 +1128,19 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             except Exception: pass
             return
 
+        # Голосовой ринг-бэк «идёт дозвон, оставайтесь на линии» — абонент
+        # ещё НЕ ответил, мы говорим в гудок. Это не автоответчик: исход
+        # «не взял трубку» (перезвон уместен), а не «не распознали».
+        if answer and is_ringback_phrase(answer):
+            log(f"📞 На линии голосовой ринг-бэк (идёт дозвон): «{answer}» — не соединилось, вешаю трубку.")
+            result["status"] = "no_answer"
+            result["error"] = answer
+            result["transcript"] = sess.transcript
+            _attach_call_quality_note(result["notes"], call_metrics, log)
+            try: call.hangup()
+            except Exception: pass
+            return
+
         if answer:
             heard_anything = True
             consecutive_unrecognized = 0
@@ -1177,7 +1190,18 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                 # вердикт "passed" в конце).
                 log(f"🔇 {consecutive_unrecognized} вопроса подряд без единого распознанного ответа — "
                     f"продолжать вслепую бессмысленно (не факт что автоответчик!). Завершаю звонок.")
-                result["status"] = "low_recognition"
+                # Если кандидат УСПЕЛ дать ≥2 осмысленных ответа, а потом
+                # пропал — это ОБРЫВ разговора, а не «речь не распознали»:
+                # собранные ответы сохраняем, рекрутёр дозвонит (реальный
+                # случай Рафат: назвал 52/Россия/Москва, потом замолчал —
+                # терялся в «не распознали» с потерей уже собранного).
+                meaningful = sum(1 for v in (sess.answers or {}).values()
+                                 if str(v).strip() and not str(v).startswith("не распознано"))
+                if meaningful >= 2:
+                    result["status"] = "hangup_by_candidate"
+                    log(f"   (но {meaningful} ответа уже собрано — помечаю как обрыв, не потеря)")
+                else:
+                    result["status"] = "low_recognition"
                 result["error"] = f"{consecutive_unrecognized} шагов подряд без распознанного ответа"
                 result["answers"] = sess.answers
                 result["notes"] = sess.notes

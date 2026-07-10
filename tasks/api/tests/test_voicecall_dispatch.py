@@ -568,6 +568,54 @@ class TestCallHistoryAndRecording:
         assert last["needs_review"] is True
         assert "не распознан" in (last["review_note"] or "")
 
+    def test_unrecognized_in_notes_also_counted(self, client, portal_token):
+        """Регресс (тест Яндекс-3): движок кладёт «не распознано» в notes, а
+        не в answers — П2-флаг обязан считать по объединённому словарю."""
+        cid = self._campaign_with_one_contact(client, phone="79993330091")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Актуальность": "да"},
+            notes={"Возраст": "не распознано: откажусь", "Город": "не распознано: уточните"})
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["history"][-1]["needs_review"] is True
+
+    def test_reclassify_status_ringback_to_no_answer(self, client, portal_token):
+        """П4 (2026-07-10): голосовой ринг-бэк по записи → «не взял трубку»."""
+        cid = self._campaign_with_one_contact(client, phone="79993330092")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "low_recognition", answers={"Актуальность": "не распознано"})
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] продолжаем дозваниваться оставайтесь на линии",
+            "reclassify_status": "no_answer",
+            "review_note": "По записи — ринг-бэк."})
+        assert r.status_code == 200 and r.json()["reclassified"] == "no_answer"
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["last_call_status"] == "no_answer"
+        assert detail["verdict"] is None
+
+    def test_error_status_requeues_for_retry(self, client, portal_token):
+        """П5 (2026-07-10): транзиентный сбой Novofon → контакт назад в
+        очередь на один авто-повтор (attempts < 2), а не сгорает в «ошибка»."""
+        cid = self._campaign_with_one_contact(client, phone="79993330093")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                            headers=auth).json()
+        contact_id = claim["contact_id"]
+        r = client.post("/voicecall/dispatch/result", headers=auth,
+                        json={"contact_id": contact_id, "status": "error"})
+        assert r.status_code == 200 and r.json()["requeued"] is True
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["status"] == "pending"  # снова в очереди
+
     def test_passed_clean_not_flagged(self, client, portal_token):
         cid = self._campaign_with_one_contact(client, phone="79993330082")
         auth = {"X-Auth-Token": portal_token}
