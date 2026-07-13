@@ -3,6 +3,7 @@ cloudflared*.exe
 ngrok.exe
 
 # Секреты и креды
+docs-internal/СЕКРЕТЫ.local.md
 tasks/api/google_credentials.json
 tasks/api/auth_secret.bin
 recruiter/service_account.json
