@@ -991,7 +991,9 @@ class TestFunnelAndExport:
         assert funnel["pending"] == 1
 
     def test_export_returns_valid_xlsx(self, client):
-        content = _xlsx_bytes(["Имя", "Телефон"], [["В", "79991110002"]])
+        """Формат отчёта 16.07: №/Имя/Телефон/КАТЕГОРИЯ/… + лист «Сводка»,
+        порядок строк = порядок загрузки."""
+        content = _xlsx_bytes(["Имя", "Телефон"], [["В", "79991110002"], ["Г", "79991110003"]])
         r = client.post(
             "/voicecall/upload-contacts",
             files={"file": ("t.xlsx", content,
@@ -1003,8 +1005,22 @@ class TestFunnelAndExport:
         assert r.status_code == 200
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(r.content))
-        ws = wb.active
+        ws = wb["Отчёт"]
         headers = [c.value for c in next(ws.iter_rows(max_row=1))]
-        assert headers[:2] == ["Имя", "Телефон"]
+        assert headers[:5] == ["№", "Имя", "Телефон", "КАТЕГОРИЯ", "Обоснование"]
         rows = list(ws.iter_rows(min_row=2, values_only=True))
-        assert rows[0][0] == "В"
+        assert rows[0][1] == "В" and rows[1][1] == "Г"  # порядок загрузки
+        assert "Сводка" in wb.sheetnames
+
+    def test_categorize_contact_rules(self, client, main_module):
+        """Правила категорий отчёта (согласованы 16.07)."""
+        f = main_module._vc_categorize_contact
+        assert f("answered_completed", "passed", False, None)[0] == "ЦЕЛЕВОЙ"
+        assert f("answered_completed", "passed", True, None)[0] == "СПОРНЫЙ"
+        assert f("no_answer", None, False, None)[0] == "НЕЦЕЛЕВОЙ"
+        assert f("voicemail", None, False, None)[0] == "НЕЦЕЛЕВОЙ"
+        assert f("answered_completed", "stopped", False, "не ищет")[0] == "НЕЦЕЛЕВОЙ"
+        assert f("answered_completed", "stopped", True, "судимость?")[0] == "СПОРНЫЙ"
+        assert f("hangup_by_candidate", None, False, None)[0] == "СПОРНЫЙ"
+        assert f("low_recognition", None, False, None)[0] == "СПОРНЫЙ"
+        assert f("error", None, False, None)[0] == "СПОРНЫЙ"

@@ -43,7 +43,7 @@
 | POST | `/voicecall/dispatch/recheck-transcript` | vc_dispatch_recheck_transcript | 4716 | Агент шлёт сюда текст ПОВТОРНОГО распознавания разговора — по |
 | GET | `/voicecall/campaigns/{cid}/funnel` | vc_campaign_funnel | 4808 | Воронка обзвона по этапам: загружено/отсеяно → попытки дозвона → |
 | GET | `/voicecall/campaigns/{cid}/suspect-voicemails` | vc_campaign_suspect_voicemails | 4860 | Пункт 3 доработок 2026-07: конвейер пополнения базы фраз |
-| GET | `/voicecall/campaigns/{cid}/export` | vc_campaign_export | 4916 | Отчёт .xlsx: Имя/Телефон/Статус/точная причина/Вердикт/причина стопа |
+| GET | `/voicecall/campaigns/{cid}/export` | vc_campaign_export | ~4950 | Отчёт .xlsx (формат 16.07): КАТЕГОРИЯ целевой/спорный/нецелевой с цветом + все параметры + ответы, лист «Сводка»; порядок = порядок загрузки |
 | POST | `/voicecall/test/start` | vc_test_start | 5033 |  |
 | POST | `/voicecall/test/{sid}/answer` | vc_test_answer | 5106 | Принимает уже распознанный текст ответа, продвигает диалог, |
 | GET | `/voicecall/test/summary/{validation_id}` | vc_test_get_summary | 5226 | Возвращает summary конкретного завершённого звонка. Polling-эндпоинт |

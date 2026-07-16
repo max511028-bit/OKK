@@ -4913,44 +4913,134 @@ def vc_campaign_suspect_voicemails(cid: int, request: Request):
     return {"items": out, "total": len(out)}
 
 
+def _vc_categorize_contact(last_call_status, verdict, needs_review, stop_reason):
+    """Категория контакта для отчёта (формат согласован с владельцем 16.07):
+      ЦЕЛЕВОЙ    — 100% годен: verdict=passed и все автопроверки чисты;
+      НЕЦЕЛЕВОЙ  — 100% негоден: недозвон, подтверждённый автоответчик/робот,
+                   подтверждённый стоп-фактор (кандидат сам сказал);
+      СПОРНЫЙ    — всё остальное: годен/стоп с ⚠, оборвался посреди,
+                   не распознали, техсбой — нужен взгляд рекрутёра.
+    Возвращает (категория, короткое обоснование)."""
+    if verdict == "passed" and not needs_review:
+        return "ЦЕЛЕВОЙ", "годен, автопроверки чисты"
+    if last_call_status in ("no_answer", "busy"):
+        return "НЕЦЕЛЕВОЙ", "недозвон"
+    if last_call_status == "voicemail":
+        return "НЕЦЕЛЕВОЙ", "автоответчик/робот-секретарь (подтверждён)"
+    if verdict == "stopped" and not needs_review:
+        return "НЕЦЕЛЕВОЙ", f"стоп-фактор подтверждён: {stop_reason or '—'}"
+    if verdict == "passed" and needs_review:
+        return "СПОРНЫЙ", "годен, но ⚠ есть расхождения — проверить"
+    if verdict == "stopped" and needs_review:
+        return "СПОРНЫЙ", "стоп, но автосверка не подтвердила причину"
+    if last_call_status == "hangup_by_candidate":
+        return "СПОРНЫЙ", "живой человек, бросил трубку посреди разговора"
+    if last_call_status == "low_recognition":
+        return "СПОРНЫЙ", "речь не распозналась — не факт что автоответчик"
+    if last_call_status == "error":
+        return "СПОРНЫЙ", "техсбой звонка — кандидату не звонило"
+    if last_call_status == "callback_requested":
+        return "СПОРНЫЙ", "просил перезвонить"
+    return "СПОРНЫЙ", "прочее"
+
+
 @app.get("/voicecall/campaigns/{cid}/export")
 def vc_campaign_export(cid: int):
-    """Отчёт .xlsx: Имя/Телефон/Статус/точная причина/Вердикт/причина стопа
-    + по колонке на каждый вопрос сценария, заполненной либо ответом из
-    реального звонка (candidate_validations), либо тем что было в файле
-    (known_answers_json), если звонка не потребовалось/не было."""
+    """Отчёт .xlsx в формате «целевые/спорные/нецелевые» (16.07): порядок
+    строк = порядок загрузки базы; КАТЕГОРИЯ с цветом и обоснованием, затем
+    все параметры звонка (исход, вердикт, ⚠, длительность...) + по колонке
+    на каждый вопрос сценария (ответ из звонка либо из файла). Второй лист —
+    сводка по категориям с правилами."""
     with db() as conn:
         camp = conn.execute(
-            "SELECT id, scenario_id FROM voicecall_campaigns WHERE id=?", (cid,)).fetchone()
+            "SELECT id, name, scenario_id, total FROM voicecall_campaigns WHERE id=?",
+            (cid,)).fetchone()
         if not camp:
             raise HTTPException(404, "Campaign not found")
         scenario = _vt_load_scenario(camp["scenario_id"]) if _VT_DIALOG_OK else {"steps": []}
         crits = _vc_scenario_crits(scenario)
         rows = conn.execute(
             "SELECT ct.name, ct.phone, ct.status, ct.last_call_status, ct.verdict, "
-            "       ct.stop_reason, ct.known_answers_json, cv.answers_json "
+            "       ct.stop_reason, ct.attempts, ct.dropped_at_step, "
+            "       ct.known_answers_json, cv.answers_json, cv.needs_review, "
+            "       cv.review_note, cv.duration_s "
             "FROM voicecall_contacts ct "
             "LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
-            "WHERE ct.campaign_id=? ORDER BY ct.created_at", (cid,)).fetchall()
+            "WHERE ct.campaign_id=? ORDER BY ct.id", (cid,)).fetchall()
 
-    _STATUS_RU = {"pending": "В очереди", "calling": "Звоним сейчас",
-                  "done": "Дозвонились", "skipped": "Отсеян", "failed": "Не дозвонились"}
-    headers = ["Имя", "Телефон", "Статус", "Точная причина", "Вердикт", "Причина стопа"] + crits
-    out_rows = []
-    for r in rows:
+    _LCS_RU = {"no_answer": "не взял трубку", "voicemail": "автоответчик",
+               "low_recognition": "не распознали (не факт что автоответчик)",
+               "answered_completed": "дошёл до конца", "hangup_by_candidate": "оборвался",
+               "error": "ошибка звонка", "busy": "занято",
+               "callback_requested": "просил перезвонить"}
+    _VERDICT_RU = {"passed": "годен", "stopped": "стоп", "declined": "отказ"}
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Отчёт"
+    headers = ["№", "Имя", "Телефон", "КАТЕГОРИЯ", "Обоснование", "Исход звонка",
+               "Вердикт", "Причина стопа", "⚠ проверить", "Комментарий автопроверки",
+               "Попыток", "Длительность, с", "Оборвался на вопросе"] + crits
+    ws.append(headers)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+        c.fill = PatternFill("solid", start_color="D9D9D9")
+
+    fills = {"ЦЕЛЕВОЙ": PatternFill("solid", start_color="C6EFCE"),
+             "СПОРНЫЙ": PatternFill("solid", start_color="FFEB9C"),
+             "НЕЦЕЛЕВОЙ": PatternFill("solid", start_color="FFC7CE")}
+    counts = {"ЦЕЛЕВОЙ": 0, "СПОРНЫЙ": 0, "НЕЦЕЛЕВОЙ": 0}
+
+    for i, r in enumerate(rows, 1):
+        cat, why = _vc_categorize_contact(
+            r["last_call_status"], r["verdict"], bool(r["needs_review"]), r["stop_reason"])
+        counts[cat] += 1
         answers = {}
-        if r["known_answers_json"]:
-            answers.update(json.loads(r["known_answers_json"]))
-        if r["answers_json"]:
-            answers.update(json.loads(r["answers_json"]))
-        out_rows.append([
-            r["name"] or "", r["phone"], _STATUS_RU.get(r["status"], r["status"]),
-            r["last_call_status"] or "", r["verdict"] or "", r["stop_reason"] or "",
-        ] + [str(answers.get(c, "")) for c in crits])
+        try:
+            if r["known_answers_json"]:
+                answers.update(json.loads(r["known_answers_json"]))
+            if r["answers_json"]:
+                answers.update(json.loads(r["answers_json"]))
+        except Exception:
+            pass
+        ws.append([i, r["name"] or "", r["phone"], cat, why,
+                   _LCS_RU.get(r["last_call_status"], r["last_call_status"] or ""),
+                   _VERDICT_RU.get(r["verdict"], r["verdict"] or ""),
+                   r["stop_reason"] or "", "да" if r["needs_review"] else "",
+                   r["review_note"] or "", r["attempts"], r["duration_s"],
+                   r["dropped_at_step"] or ""]
+                  + [str(answers.get(c, "")) for c in crits])
+        cell = ws.cell(row=i + 1, column=4)
+        cell.fill = fills[cat]
+        cell.font = Font(bold=True)
 
-    content = _vc_build_xlsx_bytes(headers, out_rows)
+    for j, w in enumerate([5, 14, 16, 13, 40, 24, 9, 22, 10, 38, 8, 12, 20]
+                          + [18] * len(crits), 1):
+        ws.column_dimensions[ws.cell(row=1, column=j).column_letter].width = w
+    ws.freeze_panes = "A2"
+
+    sm = wb.create_sheet("Сводка")
+    sm.append(["Кампания", f"{camp['name']} · {camp['total']} контактов"])
+    sm.append([])
+    sm.append(["Категория", "Кол-во", "Доля"])
+    total = max(len(rows), 1)
+    for k in ("ЦЕЛЕВОЙ", "СПОРНЫЙ", "НЕЦЕЛЕВОЙ"):
+        sm.append([k, counts[k], f"{counts[k] / total * 100:.0f}%"])
+    sm.append([])
+    sm.append(["Правила категорий:"])
+    sm.append(["ЦЕЛЕВОЙ", "вердикт «годен» и все автопроверки чисты (без ⚠)"])
+    sm.append(["НЕЦЕЛЕВОЙ", "недозвон · подтверждённый автоответчик/робот · подтверждённый стоп-фактор"])
+    sm.append(["СПОРНЫЙ", "годен/стоп с пометкой ⚠ · оборвался посреди · не распознали · техсбой"])
+    for j, w in enumerate([16, 70, 8], 1):
+        sm.column_dimensions[sm.cell(row=1, column=j).column_letter].width = w
+
+    buf = _vc_io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
     return StreamingResponse(
-        _vc_io.BytesIO(content),
+        buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="otchet_obzvon_{cid}.xlsx"'},
     )
