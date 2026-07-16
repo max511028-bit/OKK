@@ -63,7 +63,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, CALLBACK_BYE_TEXT, FILLER_PHRASES
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, llm_is_robot_live, CALLBACK_BYE_TEXT, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -1160,8 +1160,14 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
                                max_total_sec=10.0)
                 if probe:
                     log(f"[свободное распознавание] «{probe}»")
-                    if is_voicemail_phrase(probe):
-                        log(f"📼 Автоответчик подтверждён свободным распознаванием — вешаю трубку.")
+                    # Двухступенчатый детект робота (16.07): (1) точные фразы;
+                    # (2) если фразы мимо (STT искажает) — короткий LLM-вопрос
+                    # «человек/робот» (llm_is_robot_live, таймаут 2.5с,
+                    # по умолчанию — человек). Раньше роботы без точной фразы
+                    # доигрывали весь сценарий: 83с медианы, 58 мин эфира на
+                    # кампанию из 129 контактов.
+                    if is_voicemail_phrase(probe) or llm_is_robot_live(probe):
+                        log(f"📼 Автоответчик/робот подтверждён (фразы или LLM) — вешаю трубку.")
                         result["status"] = "voicemail"
                         result["error"] = probe
                         result["answers"] = sess.answers

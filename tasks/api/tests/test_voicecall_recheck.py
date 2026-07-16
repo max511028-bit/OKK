@@ -113,6 +113,56 @@ class TestAgeGrounded:
         assert "Возраст" not in corr  # не подменили галлюцинацией
 
 
+class TestQuestionAskedInRecording:
+    """У4 (16.07): вопрос считается достигнутым и если он ЗВУЧАЛ в записи
+    (дорожка бота) — спасает живых, оборвавшихся по «3 без ответа» на первом
+    шаге (Ахмединмухтор: «да ну двадцать шесть» в записи, возраст терялся)."""
+
+    def setup_method(self):
+        self.scenario = {"steps": [
+            {"crit": "Шаг 1", "expect": "yesno", "bot": "находитесь сейчас в поиске работы?"},
+            {"crit": "Возраст", "expect": "age", "bot": "Сколько вам полных лет?"},
+        ]}
+
+    def test_age_recovered_when_question_heard_in_recording(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "26"
+        transcript = ("[Дорожка 1] да ну двадцать шесть\n"
+                      "[Дорожка 2] находитесь сейчас в поиске работы сколько вам полных лет")
+        live = {"Шаг 1": "не распознано"}  # возраст в live отсутствует — обрыв раньше
+        corr, nr, _ = da._recheck_critical_answers("x", self.scenario, live, transcript)
+        assert "Возраст" in corr and "26" in corr["Возраст"]
+        assert nr is True
+
+    def test_no_recovery_when_question_not_heard(self):
+        """Вопрос возраста НЕ звучал → не выдумываем (защита Ахмата 09.07)."""
+        da._llm_ask = lambda base, prompt, num_predict=12: "26"
+        transcript = ("[Дорожка 1] двадцать шесть чего то там\n"
+                      "[Дорожка 2] находитесь сейчас в поиске работы")
+        corr, _, _ = da._recheck_critical_answers("x", self.scenario, {"Шаг 1": "нет"}, transcript)
+        assert "Возраст" not in corr
+
+    def test_grounding_still_blocks_hallucination(self):
+        """Вопрос звучал, но названного LLM числа в записи нет → не берём."""
+        da._llm_ask = lambda base, prompt, num_predict=12: "29"
+        transcript = ("[Дорожка 1] алло алло\n"
+                      "[Дорожка 2] сколько вам полных лет")
+        corr, _, _ = da._recheck_critical_answers("x", self.scenario, {}, transcript)
+        assert "Возраст" not in corr
+
+
+class TestReviewSummary:
+    """У6 (16.07): LLM-саммари записи для ⚠-контактов."""
+
+    def test_summary_returned_and_bounded(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "живой кандидат, 26 лет, москва " * 30
+        s = da._llm_summary_for_review("x", "[Дорожка 1] текст")
+        assert s and len(s) <= 300
+
+    def test_empty_transcript_no_summary(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "что-то"
+        assert da._llm_summary_for_review("x", "   ") == ""
+
+
 class TestRobotSecretaryClassifier:
     """П2 (2026-07-10): LLM-классификация робота-секретаря по записи там,
     где точные фразы бьют мимо (искажения STT / новые формулировки)."""

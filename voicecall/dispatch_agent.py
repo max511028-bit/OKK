@@ -218,6 +218,22 @@ def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
     return "робот" in ans and "человек" not in ans
 
 
+def _llm_summary_for_review(base_url: str, combined_transcript: str) -> str:
+    """Короткое саммари записи для контактов с ⚠ (16.07): рекрутёр читает
+    два предложения вместо прослушивания. Лучшее старание — пусто при сбое."""
+    if not combined_transcript.strip():
+        return ""
+    ans = _llm_ask(
+        base_url,
+        "Расшифровка телефонного звонка бота-рекрутёра (обе дорожки):\n"
+        f"{combined_transcript[:2500]}\n\n"
+        "Одним-двумя короткими предложениями для рекрутёра: кто отвечал "
+        "(живой кандидат / робот / непонятно) и какие ключевые данные "
+        "прозвучали (возраст, город, согласие/отказ). Без вступлений.",
+        num_predict=70)
+    return ans[:300]
+
+
 def _norm_answer(s: str) -> str:
     """Нормализация для сравнения/поиска: нижний регистр, только буквы/цифры,
     схлопнутые пробелы."""
@@ -286,19 +302,37 @@ def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
     def _live_unrecognized(v):
         return (not isinstance(v, (int, float))) and str(v).startswith("не распознано")
 
+    # «Достигнут ли вопрос» — раньше только по live_answers, и это теряло
+    # живых кандидатов (тест 16.07: Ахмединмухтор/Rohit называли возраст,
+    # запись его содержит, но звонок оборвался по «3 без ответа» на первом
+    # шаге → ключа возраста в live нет → восстановление скипалось). Теперь
+    # вопрос считается достигнутым и если он РЕАЛЬНО ЗВУЧАЛ в записи
+    # (дорожка бота в combined_transcript). Защита от галлюцинаций прежняя:
+    # ответ принимается только если он сам звучит в записи (grounding).
+    norm_transcript = _norm_answer(combined_transcript)
+
+    def _question_was_asked(st):
+        crit = st.get("crit") or st.get("id")
+        if crit in live_answers:
+            return True
+        bot = st.get("bot") or ""
+        words = [w for w in _norm_answer(bot).split() if len(w) >= 4][:4]
+        if len(words) < 2:
+            return False
+        hits = sum(1 for w in words if w[:5] in norm_transcript)
+        return hits >= max(2, len(words) - 1)
+
     for st in scenario.get("steps", []):
         crit = st.get("crit") or st.get("id")
         expect = st.get("expect")
         live = live_answers.get(crit)
 
         if expect == "age":
-            # Восстанавливаем возраст ТОЛЬКО если вопрос реально задавался в
-            # звонке (ключ есть в live_answers). Иначе — звонок оборвался
-            # раньше этого шага, возраста в разговоре нет, а крохотная LLM
-            # на мусорной расшифровке галлюцинирует число (реальный случай
-            # 2026-07-09: Ахмат/Алексей бросили трубку на приветствии, а в
-            # карточку прилетело фейковое «Возраст: 29 (по записи)»).
-            if crit not in live_answers:
+            # Восстанавливаем возраст ТОЛЬКО если вопрос реально задавался
+            # (ключ в live_answers ИЛИ вопрос звучал в записи — см.
+            # _question_was_asked). Иначе LLM галлюцинирует число на мусоре
+            # (случай Ахмата 09.07: фейковое «29» бросившему трубку).
+            if not _question_was_asked(st):
                 continue
             ans = _llm_ask(
                 base_url,
@@ -335,8 +369,11 @@ def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
 
         elif (expect in ("crime", "gender_male", "shifts")
               or (expect == "yesno" and (st.get("end_on_yes") or st.get("end_on_no")))):
-            # Критичный да/нет: добираем ТОЛЬКО потерянные (нераспознанные) ответы
-            if not _live_unrecognized(live):
+            # Критичный да/нет: добираем ТОЛЬКО потерянные ответы — live
+            # «не распознано», либо (16.07) вопрос звучал в записи, а в live
+            # его вообще нет (обрыв по «3 без ответа» раньше фиксации).
+            asked_but_missing = live is None and _question_was_asked(st)
+            if not (_live_unrecognized(live) or asked_but_missing):
                 continue
             ans = _llm_ask(
                 base_url,
@@ -364,7 +401,8 @@ def _recheck_critical_answers(base_url: str, scenario: dict, live_answers: dict,
             # Верифицированное — основное значение, realtime — в скобках как
             # аудит-след. ⚠ на проверку ставим только для критичного
             # citizen_rf, для прочих свободных полей — просто чистим.
-            if crit not in live_answers:
+            # С 16.07 «достигнутость» — и по звучанию вопроса в записи.
+            if not _question_was_asked(st):
                 continue
             ans = _llm_ask(
                 base_url,
@@ -439,7 +477,8 @@ def _recheck_verdict(base_url: str, verdict: str, stop_reason: str, combined_tra
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
                          api_secret: str, call_session_id: int,
                          verdict: str = "", stop_reason: str = "",
-                         scenario: dict = None, live_answers: dict = None) -> None:
+                         scenario: dict = None, live_answers: dict = None,
+                         live_status: str = "") -> None:
     """Пакетная перепроверка распознавания по WAV-дорожкам разговора (без
     потоковых огрехов реального времени — эмпирически заметно точнее).
     Novofon хранит ОТДЕЛЬНУЮ дорожку на каждую «ногу» звонка, но
@@ -524,10 +563,11 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
 
     # 0в) LLM-классификация робота-секретаря, которого НЕ поймали фразы
     #     (STT искажает «взять трубку»→«взять труп то»; роботы говорят по-
-    #     новому). Только для доигравших сценарий (passed/stopped) — это и
-    #     есть ложные «годен»/«стоп» (тест Яндекс-3: 4 робо-«годен»). LLM
-    #     устойчива к искажениям, где точные фразы бьют мимо.
-    if verdict in ("passed", "stopped") and _llm_is_robot_secretary(base_url, combined):
+    #     новому). С 16.07 — для ВСЕХ исходов с записью, не только
+    #     passed/stopped: Надир-кейс — AI-секретарь упал в low_recognition
+    #     и не переклассифицировался, засоряя «спорных». По умолчанию
+    #     LLM отвечает «человек» — живых не теряем.
+    if _llm_is_robot_secretary(base_url, combined):
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
                         "reclassify_voicemail": True,
@@ -537,6 +577,25 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         print(f"🤖 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота "
               f"(LLM по записи; live-вердикт был: {verdict}).", flush=True)
         return
+
+    # 0г) «ПОЗДНИЙ ОТВЕТ» (16.07, Анастасия-кейс): live-статус «не взял
+    #     трубку», но в дорожке кандидата слышна человеческая речь (не
+    #     робот и не ринг-бэк — они отсеяны выше) — человек, вероятно,
+    #     ответил в последний момент, после нашего таймаута. Статус не
+    #     меняем (соединения не было), но помечаем ⚠ — рекрутёру стоит
+    #     перезвонить лично.
+    if live_status == "no_answer":
+        cand_track = (transcripts[0] if transcripts else "").strip()
+        if cand_track and cand_track != "(тишина/не распознано)" and len(cand_track) >= 4:
+            _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+                 json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                            "needs_review": True,
+                            "review_note": "В записи слышна речь — возможно, кандидат "
+                                           "взял трубку в последний момент. Стоит перезвонить."},
+                 timeout=15)
+            print(f"🕓 contact_id={contact_id}: недозвон, но в записи речь — помечен ⚠ "
+                  f"(поздний ответ?).", flush=True)
+            return
 
     # 1) сверка причины ОТКАЗА с записью (ложные отказы)
     needs_review, review_note = _recheck_verdict(base_url, verdict, stop_reason, combined)
@@ -555,6 +614,14 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         except Exception as e:
             print(f"⚠️  Сверка критичных ответов с записью пропущена: {e}", flush=True)
 
+    # 3) LLM-САММАРИ записи для помеченных ⚠ (16.07): рекрутёр решает по
+    #    двум предложениям вместо прослушивания записи. Только при
+    #    needs_review — не жжём LLM на чистых контактах.
+    if needs_review:
+        summary = _llm_summary_for_review(base_url, combined)
+        if summary:
+            notes.append(f"📋 По записи: {summary}")
+
     _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
          json_body={"contact_id": contact_id, "recheck_transcript": combined,
                     "needs_review": needs_review,
@@ -567,7 +634,8 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
 
 def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                                  call_session_id, verdict: str = "", stop_reason: str = "",
-                                 scenario: dict = None, live_answers: dict = None) -> None:
+                                 scenario: dict = None, live_answers: dict = None,
+                                 live_status: str = "") -> None:
     """Фоновый поток (не блокирует основной цикл обзвона): Novofon
     обрабатывает запись разговора не мгновенно после звонка, поэтому
     пробуем несколько раз с паузой. Лучшее старание — если записи нет
@@ -598,7 +666,8 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
             try:
                 _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id,
                                      verdict=verdict, stop_reason=stop_reason,
-                                     scenario=scenario, live_answers=live_answers)
+                                     scenario=scenario, live_answers=live_answers,
+                                     live_status=live_status)
             except Exception as e:
                 print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
             return
@@ -704,7 +773,8 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
                 kwargs={"verdict": result.get("verdict") or "",
                         "stop_reason": result.get("stop_reason") or "",
                         "scenario": scenario,
-                        "live_answers": dict(result.get("answers") or {})},
+                        "live_answers": dict(result.get("answers") or {}),
+                        "live_status": result.get("status") or ""},
                 daemon=True,
             ).start()
 

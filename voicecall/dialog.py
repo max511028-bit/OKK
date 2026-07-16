@@ -232,6 +232,38 @@ def interpret(step: dict, raw: str) -> dict:
 _LLM_DEAD_UNTIL = 0.0
 
 
+def llm_is_robot_live(raw: str) -> bool:
+    """Ранний LLM-детект робота ВО ВРЕМЯ звонка (тест 16.07: бот доигрывал
+    сценарий роботам по 83с медианы — 58 мин эфира на кампанию 129).
+    Вызывается на пробе свободного распознавания после 2 нераспознанных
+    шагов, когда точные фразы не совпали (STT искажает). Тот же короткий
+    таймаут и dead-cache, что у llm_classify — кандидат не должен ждать.
+    Осторожно: по умолчанию ЧЕЛОВЕК — рвём звонок только на явном «робот»."""
+    global _LLM_DEAD_UNTIL
+    if not raw or len(raw.split()) < 4:
+        return False  # на паре слов не судим
+    if time.time() < _LLM_DEAD_UNTIL:
+        return False
+    try:
+        payload = json.dumps(
+            {"text": raw,
+             "labels": ["человек", "робот", "unclear"],
+             "question": "Кто это говорит в телефонной трубке: живой человек, "
+                         "отвечающий на вопросы, или робот/голосовой ассистент/"
+                         "автоответчик (предлагает передать сообщение, записать, "
+                         "отвечает вместо абонента)?"},
+            ensure_ascii=False).encode("utf-8")
+        req = _urllib.Request(
+            PORTAL_BASE + "/validator/llm-classify", data=payload,
+            headers={"Content-Type": "application/json"}, method="POST")
+        with _urllib.urlopen(req, timeout=2.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data.get("label") == "робот"
+    except Exception:
+        _LLM_DEAD_UNTIL = time.time() + 300
+        return False
+
+
 def llm_classify(step: dict, raw: str) -> Optional[dict]:
     """Fallback к Qwen — если regex запутался. Возвращает {val, stop?} или None."""
     global _LLM_DEAD_UNTIL
@@ -389,7 +421,14 @@ _VOICEMAIL_PATTERN = re.compile(
     r"не пропускать звонки|не пропускает звонки|"
     r"нейросекретар\w*|виртуальн\w+ секретар\w*|"
     r"искусственн\w+ интеллект\w*\s+помога|"
-    r"по какому вопросу вы звоните)"
+    r"по какому вопросу вы звоните|"
+    # Тест 16.07: STT искажает канонические формулировки — ловим устойчивые
+    # ядра. «звонок был перенаправлен на [бортовой/мой/...] почтовый ящик»:
+    # слово «голосовой» теряется, но «перенаправлен» и «почтовый ящик» —
+    # остаются (кандидат так не говорит). Надир-кейс: «передаю ваше
+    # сообщение», «сейчас запишу» — активный AI-секретарь.
+    r"перенаправлен|почтовый ящик|"
+    r"передаю ваш\w* сообщени\w*|сейчас запишу|запишу ваше)"
 )
 
 

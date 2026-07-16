@@ -90,6 +90,48 @@ class TestAiAssistantAndVoicemail2026_07_10:
             assert not dialog.is_voicemail_phrase(p), f"ложное срабатывание на живом: {p}"
 
 
+class TestVoicemailPhrases2026_07_16:
+    """Тест 16.07: STT искажает канонические фразы — детектор должен ловить
+    устойчивые ядра («перенаправлен … почтовый ящик» без «голосовой»,
+    «передаю ваше сообщение»)."""
+
+    def test_catches_distorted_voicemail_greetings(self):
+        for p in [
+            "вайны абонент звонок был перенаправлен на бортовой почтовый ящик вы можете",
+            "давай моя баня звонок был перенаправлен на мой почтовый ящик",
+            "двойной абонент занят звонок был перенаправлен на почтовый ящик",
+            "уже передаю ваше сообщение абоненту сейчас запишу хотите что то добавить",
+        ]:
+            assert dialog.is_voicemail_phrase(p), f"должен ловить: {p}"
+
+    def test_real_answers_still_clean(self):
+        for p in ["да ну двадцать шесть", "я да двадцать пять да хорошо",
+                   "напишите мне на почту лучше", "да сообщение получил от вас в вотсапе",
+                   "я перезвоню позже сейчас занят"]:
+            assert not dialog.is_voicemail_phrase(p), f"ложное: {p}"
+
+
+class TestLlmIsRobotLive:
+    """Ранний LLM-детект робота во время звонка (16.07). Сеть мокается."""
+
+    def test_short_text_never_robot(self):
+        # на паре слов не судим — и сеть не дёргаем
+        assert dialog.llm_is_robot_live("алло да") is False
+        assert dialog.llm_is_robot_live("") is False
+
+    def test_dead_cache_short_circuits(self, monkeypatch):
+        import time as _t
+        monkeypatch.setattr(dialog, "_LLM_DEAD_UNTIL", _t.time() + 300)
+        assert dialog.llm_is_robot_live("я голосовой помощник передам ваше сообщение абоненту") is False
+
+    def test_network_error_defaults_human_and_sets_dead(self, monkeypatch):
+        dialog._LLM_DEAD_UNTIL = 0.0
+        monkeypatch.setattr(dialog, "PORTAL_BASE", "http://127.0.0.1:1")  # гарантированный отказ
+        assert dialog.llm_is_robot_live("длинный текст похожий на робота передам сообщение абоненту") is False
+        assert dialog._LLM_DEAD_UNTIL > 0  # дальше не мучаем кандидата ожиданием
+        dialog._LLM_DEAD_UNTIL = 0.0
+
+
 class TestRingbackDetection2026_07_10:
     """Голосовой ринг-бэк «идёт дозвон» — не автоответчик и не кандидат;
     исход «не взял трубку», не «не распознали» (тест Яндекс-3, Дмитрий-153)."""
