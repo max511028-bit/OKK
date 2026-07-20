@@ -132,6 +132,37 @@ class TestLlmIsRobotLive:
         dialog._LLM_DEAD_UNTIL = 0.0
 
 
+class TestMimicRobots2026_07_17:
+    """Тест 17.07: «мимикрирующие» секретари Яндекса играют живого
+    собеседника. Ловим фразами-проговорками + поведенческим детектором."""
+
+    def test_new_secretary_phrases_caught(self):
+        for p in ["что я могу передать для него",
+                   "кажется мои умные алгоритмы разобрались",
+                   "как абонент может связаться с вами для обсуждения"]:
+            assert dialog.is_voicemail_phrase(p), f"должен ловить: {p}"
+
+    def test_live_similar_phrases_not_caught(self):
+        for p in ["да я могу передать трубку жене",
+                   "у меня есть опыт аналитики данных",
+                   "могу связаться с вами позже сам"]:
+            assert not dialog.is_voicemail_phrase(p), f"ложное: {p}"
+
+    def test_evasive_counter_positive(self):
+        ev = dialog.answer_is_evasive
+        assert ev({"expect": "yesno"}, "представьтесь пожалуйста слушаю вас")
+        assert ev({"expect": "age"}, "затрудняюсь ответить нужно немного времени")
+        assert ev({"expect": "yesno"}, "скажите откуда у вас мой номер вообще")
+
+    def test_evasive_counter_negative_on_real_answers(self):
+        ev = dialog.answer_is_evasive
+        assert not ev({"expect": "age"}, "двадцать шесть")
+        assert not ev({"expect": "age"}, "мне 45 лет")
+        assert not ev({"expect": "yesno"}, "да готов")
+        assert not ev({"expect": "yesno"}, "нет не хочу")
+        assert not ev({"expect": "free"}, "москва")
+
+
 class TestRingbackDetection2026_07_10:
     """Голосовой ринг-бэк «идёт дозвон» — не автоответчик и не кандидат;
     исход «не взял трубку», не «не распознали» (тест Яндекс-3, Дмитрий-153)."""

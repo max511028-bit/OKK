@@ -17,7 +17,7 @@ import httpx
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from pydantic import BaseModel
 
 DB_PATH = os.getenv("TASKS_DB", "/var/www/okk/tasks/api/tasks.db")
@@ -237,6 +237,10 @@ def init_db() -> None:
             ("screen_out_reason", "TEXT"),
             ("last_call_status", "TEXT"),
             ("dropped_at_step", "TEXT"),
+            # Двухфазный статус (17.07): 'pending' = ⏳ идёт пере-проверка по
+            # записи, 'final' = проверка завершена/не требуется. NULL у
+            # легаси-строк трактуем как final.
+            ("review_state", "TEXT"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE voicecall_contacts ADD COLUMN {_vc_col} {_vc_type}")
@@ -4221,8 +4225,21 @@ def vc_list_campaigns(limit: int = 50):
     return {"items": out}
 
 
+def _vc_maybe_gzip(request: Request, payload) -> Response:
+    """Точечный gzip для крупных JSON обзвона (17.07: детализация кампании
+    ~33КБ висла на деградированной сети — сжатие даёт ~6x). Глобальный
+    GZipMiddleware сознательно НЕ ставим: он буферизует стриминг AI-чата."""
+    import gzip as _gz
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    if len(body) > 2048 and "gzip" in (request.headers.get("accept-encoding") or "").lower():
+        return Response(content=_gz.compress(body, 6), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(content=body, media_type="application/json")
+
+
 @app.get("/voicecall/contacts")
 def vc_list_contacts(
+    request: Request,
     campaign_id: Optional[int] = None,
     status: Optional[str] = None,
     limit: int = 200,
@@ -4243,6 +4260,7 @@ def vc_list_contacts(
             f"SELECT ct.id, ct.campaign_id, ct.name, ct.phone, ct.source, ct.status, ct.verdict, "
             f"       ct.stop_reason, ct.screen_out_reason, ct.last_call_status, "
             f"       ct.attempts, ct.last_attempt_at, ct.validation_id, ct.created_at, "
+            f"       ct.review_state, "
             f"       cv.needs_review AS needs_review "
             f"FROM voicecall_contacts ct "
             f"LEFT JOIN candidate_validations cv ON cv.id = ct.validation_id "
@@ -4253,10 +4271,10 @@ def vc_list_contacts(
         total = conn.execute(
             f"SELECT COUNT(*) FROM voicecall_contacts ct {where}", params
         ).fetchone()[0]
-    return {
+    return _vc_maybe_gzip(request, {
         "items": [dict(r) for r in rows],
         "total": int(total),
-    }
+    })
 
 
 @app.post("/voicecall/contacts/{cid}/skip")
@@ -4283,7 +4301,7 @@ def vc_retry_contact(cid: int):
 
 
 @app.get("/voicecall/contacts/{cid}/detail")
-def vc_contact_detail(cid: int):
+def vc_contact_detail(cid: int, request: Request):
     """Полная карточка контакта для модалки на портале: всё что знаем —
     откуда взяты известные заранее ответы, что ответили вживую на
     последнем звонке, полный транскрипт, на каком вопросе оборвались
@@ -4325,7 +4343,7 @@ def vc_contact_detail(cid: int):
         }
         for h in history_rows
     ]
-    return d
+    return _vc_maybe_gzip(request, d)
 
 
 @app.get("/voicecall/contacts/{cid}/live")
@@ -4664,17 +4682,29 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         #    не отказ.
         retry_na = req.status == "no_answer" and camp and bool(camp["retry_no_answer"])
         requeue = bool((req.status == "error" or retry_na) and (contact["attempts"] or 0) < 2)
+
+        # Двухфазный статус (17.07): для исходов, по которым ждём запись и
+        # пере-проверку (дошёл/оборвался/не распознали при наличии
+        # call_session_id) — контакт помечается «⏳ проверяется» и
+        # ФИНАЛИЗИРУЕТСЯ только рекчеком (или агентом с пометкой «записи
+        # нет»). Реальный кейс 17.07: 4 «годен» остались без пере-проверки
+        # и стояли как финальные вслепую.
+        review_state = ("pending"
+                        if req.call_session_id and req.status in
+                           ("answered_completed", "hangup_by_candidate", "low_recognition")
+                        else "final")
         if requeue:
             conn.execute(
                 "UPDATE voicecall_contacts SET status='pending', last_call_status=?, "
-                "validation_id=? WHERE id=?",
+                "validation_id=?, review_state='final' WHERE id=?",
                 (req.status, validation_id, req.contact_id))
         else:
             conn.execute(
                 "UPDATE voicecall_contacts SET status=?, verdict=?, stop_reason=?, "
-                "last_call_status=?, dropped_at_step=?, validation_id=? WHERE id=?",
+                "last_call_status=?, dropped_at_step=?, validation_id=?, review_state=? "
+                "WHERE id=?",
                 (new_status, req.verdict, req.stop_reason, req.status, req.dropped_at_step,
-                 validation_id, req.contact_id),
+                 validation_id, review_state, req.contact_id),
             )
     _VC_LIVE_TRANSCRIPTS.pop(req.contact_id, None)
     return {"ok": True, "requeued": requeue}
@@ -4760,7 +4790,8 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
                 (req.recheck_transcript, req.review_note, row["id"]))
             conn.execute(
                 "UPDATE voicecall_contacts SET status='failed', verdict=NULL, "
-                "stop_reason=NULL, last_call_status='voicemail' WHERE id=?",
+                "stop_reason=NULL, last_call_status='voicemail', review_state='final' "
+                "WHERE id=?",
                 (req.contact_id,))
             return {"ok": True, "reclassified": "voicemail"}
         if req.reclassify_status:
@@ -4774,7 +4805,7 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
                 (req.recheck_transcript, req.review_note, st, row["id"]))
             conn.execute(
                 "UPDATE voicecall_contacts SET status=?, verdict=NULL, "
-                "stop_reason=NULL, last_call_status=? WHERE id=?",
+                "stop_reason=NULL, last_call_status=?, review_state='final' WHERE id=?",
                 (_VC_STATUS_MAP.get(st, "failed"), st, req.contact_id))
             return {"ok": True, "reclassified": st}
         answers = {}
@@ -4802,6 +4833,10 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
              *([json.dumps(answers, ensure_ascii=False)] if req.corrected_answers else []),
              row["id"]),
         )
+        # Двухфазный статус (17.07): рекчек — финальная точка проверки,
+        # контакт больше не «⏳ проверяется».
+        conn.execute("UPDATE voicecall_contacts SET review_state='final' WHERE id=?",
+                     (req.contact_id,))
     return {"ok": True, "corrected": list(req.corrected_answers.keys())}
 
 
@@ -4961,7 +4996,7 @@ def vc_campaign_export(cid: int):
         crits = _vc_scenario_crits(scenario)
         rows = conn.execute(
             "SELECT ct.name, ct.phone, ct.status, ct.last_call_status, ct.verdict, "
-            "       ct.stop_reason, ct.attempts, ct.dropped_at_step, "
+            "       ct.stop_reason, ct.attempts, ct.dropped_at_step, ct.review_state, "
             "       ct.known_answers_json, cv.answers_json, cv.needs_review, "
             "       cv.review_note, cv.duration_s "
             "FROM voicecall_contacts ct "
@@ -4982,7 +5017,7 @@ def vc_campaign_export(cid: int):
     ws.title = "Отчёт"
     headers = ["№", "Имя", "Телефон", "КАТЕГОРИЯ", "Обоснование", "Исход звонка",
                "Вердикт", "Причина стопа", "⚠ проверить", "Комментарий автопроверки",
-               "Попыток", "Длительность, с", "Оборвался на вопросе"] + crits
+               "Проверка записи", "Попыток", "Длительность, с", "Оборвался на вопросе"] + crits
     ws.append(headers)
     for c in ws[1]:
         c.font = Font(bold=True)
@@ -5009,14 +5044,16 @@ def vc_campaign_export(cid: int):
                    _LCS_RU.get(r["last_call_status"], r["last_call_status"] or ""),
                    _VERDICT_RU.get(r["verdict"], r["verdict"] or ""),
                    r["stop_reason"] or "", "да" if r["needs_review"] else "",
-                   r["review_note"] or "", r["attempts"], r["duration_s"],
+                   r["review_note"] or "",
+                   "⏳ идёт" if r["review_state"] == "pending" else "✓",
+                   r["attempts"], r["duration_s"],
                    r["dropped_at_step"] or ""]
                   + [str(answers.get(c, "")) for c in crits])
         cell = ws.cell(row=i + 1, column=4)
         cell.fill = fills[cat]
         cell.font = Font(bold=True)
 
-    for j, w in enumerate([5, 14, 16, 13, 40, 24, 9, 22, 10, 38, 8, 12, 20]
+    for j, w in enumerate([5, 14, 16, 13, 40, 24, 9, 22, 10, 38, 11, 8, 12, 20]
                           + [18] * len(crits), 1):
         ws.column_dimensions[ws.cell(row=1, column=j).column_letter].width = w
     ws.freeze_panes = "A2"

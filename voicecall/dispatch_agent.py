@@ -39,8 +39,12 @@ RESULT_POST_RETRY_DELAY = 5
 # Novofon обрабатывает запись не мгновенно после звонка — несколько
 # попыток с паузами, не блокируя основной цикл обзвона (см. поток в
 # _fetch_and_attach_recording).
-RECORDING_FETCH_ATTEMPTS = 5
-RECORDING_FETCH_DELAY_SEC = 8
+RECORDING_FETCH_ATTEMPTS = 8
+RECORDING_FETCH_DELAY_SEC = 10
+# Вторая серия попыток забрать запись (17.07: у 4 «годен» запись так и не
+# пришла за первую серию → финальный статус стоял вслепую). После второй
+# серии — принудительная финализация с пометкой «без записи».
+RECORDING_RETRY_ROUND2_DELAY_SEC = 120
 
 # Перепроверка транскрипта (см. _recheck_transcript) реально грузит CPU —
 # распознаёт ДВЕ WAV-дорожки той же тяжёлой Vosk-моделью, что использует
@@ -182,12 +186,13 @@ def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None
             print(f"✨ Нормализован ответ «{crit}»: {store[crit]}", flush=True)
 
 
-def _llm_ask(base_url: str, prompt: str, num_predict: int = 12) -> str:
+def _llm_ask(base_url: str, prompt: str, num_predict: int = 12,
+             model: str = "qwen3:1.7b") -> str:
     """Один короткий запрос к LLM портала. Возвращает строку ответа
     (lower/strip) или "" при любой ошибке (лучшее старание)."""
     try:
         data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
-            "model": "qwen3:1.7b",
+            "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False, "think": False,
             "options": {"temperature": 0.1, "num_predict": num_predict},
@@ -638,11 +643,12 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                                  live_status: str = "") -> None:
     """Фоновый поток (не блокирует основной цикл обзвона): Novofon
     обрабатывает запись разговора не мгновенно после звонка, поэтому
-    пробуем несколько раз с паузой. Лучшее старание — если записи нет
-    вообще (недозвон/автоответчик) или Novofon так и не отдал её за все
-    попытки, просто молча сдаёмся. Как только запись готова — пробуем
-    заодно и перепроверку транскрипта (см. _recheck_transcript), т.к.
-    обе WAV-дорожки обычно готовы одновременно с mp3."""
+    пробуем несколько раз с паузой, затем ВТОРУЮ серию через пару минут.
+    Если записи так и нет — с 17.07 НЕ сдаёмся молча: контакт с двухфазным
+    статусом должен быть финализирован, поэтому шлём рекчек-финализацию
+    с пометкой «без записи» (для passed/stopped — с ⚠, финальный статус
+    без пере-проверки нельзя считать надёжным). Как только запись готова —
+    пере-проверка транскрипта (см. _recheck_transcript)."""
     if not call_session_id:
         return
     try:
@@ -650,27 +656,57 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
         api_secret = require(env, "NOVOFON_API_SECRET")
     except SystemExit:
         return
-    for attempt in range(1, RECORDING_FETCH_ATTEMPTS + 1):
-        time.sleep(RECORDING_FETCH_DELAY_SEC)
+
+    def _try_series(n_attempts, delay):
+        for _ in range(n_attempts):
+            time.sleep(delay)
+            try:
+                u = call_api.get_recording_url(api_secret, call_session_id)
+            except Exception:
+                u = None
+            if u:
+                return u
+        return None
+
+    url = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
+    if not url:
+        # вторая серия — Novofon иногда отдаёт запись через минуты
+        print(f"🎙 Запись contact_id={contact_id} не готова, вторая серия через "
+              f"{RECORDING_RETRY_ROUND2_DELAY_SEC}с...", flush=True)
+        time.sleep(RECORDING_RETRY_ROUND2_DELAY_SEC)
+        url = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
+
+    if url:
         try:
-            url = call_api.get_recording_url(api_secret, call_session_id)
-        except Exception:
-            url = None
-        if url:
-            try:
-                _rpc(base_url, "POST", "/voicecall/dispatch/recording", token=token,
-                     json_body={"contact_id": contact_id, "recording_url": url}, timeout=10)
-                print(f"🎙 Запись звонка contact_id={contact_id} прикреплена.", flush=True)
-            except Exception as e:
-                print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
-            try:
-                _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id,
-                                     verdict=verdict, stop_reason=stop_reason,
-                                     scenario=scenario, live_answers=live_answers,
-                                     live_status=live_status)
-            except Exception as e:
-                print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
-            return
+            _rpc(base_url, "POST", "/voicecall/dispatch/recording", token=token,
+                 json_body={"contact_id": contact_id, "recording_url": url}, timeout=10)
+            print(f"🎙 Запись звонка contact_id={contact_id} прикреплена.", flush=True)
+        except Exception as e:
+            print(f"⚠️  Не смог отправить ссылку на запись: {e}", flush=True)
+        try:
+            _recheck_transcript(base_url, token, contact_id, api_secret, call_session_id,
+                                 verdict=verdict, stop_reason=stop_reason,
+                                 scenario=scenario, live_answers=live_answers,
+                                 live_status=live_status)
+        except Exception as e:
+            print(f"⚠️  Перепроверка транскрипта не удалась: {e}", flush=True)
+        return
+
+    # Записи нет совсем — финализируем «вслепую» с честной пометкой.
+    try:
+        blind = verdict in ("passed", "stopped")
+        _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+             json_body={"contact_id": contact_id,
+                        "recheck_transcript": "(запись не получена от Novofon)",
+                        "needs_review": blind,
+                        "review_note": ("Финализирован БЕЗ пере-проверки записи "
+                                        "(Novofon не отдал запись) — проверьте вручную."
+                                        if blind else None)},
+             timeout=15)
+        print(f"🕳 contact_id={contact_id}: записи нет — финализирован"
+              + (" с ⚠ (вслепую)." if blind else "."), flush=True)
+    except Exception as e:
+        print(f"⚠️  Финализация без записи не удалась: {e}", flush=True)
 
 
 def _load_scenario_from_portal(base_url: str, scenario_id: str) -> dict:

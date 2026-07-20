@@ -63,7 +63,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, llm_is_robot_live, CALLBACK_BYE_TEXT, FILLER_PHRASES
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, llm_is_robot_live, answer_is_evasive, CALLBACK_BYE_TEXT, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -966,6 +966,13 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     # Три подряд полностью нераспознанных шага — гораздо более надёжный
     # сигнал "тут не с кем разговаривать", не зависящий от словаря.
     consecutive_unrecognized = 0
+    # Ф2 (17.07): счётчик УКЛОНЧИВЫХ ответов — «мимикрирующие» роботы
+    # Яндекса отвечают на простые вопросы встречными («представьтесь»,
+    # «откуда мой номер», «нужно подумать»), поэтому старый детект по
+    # нераспознанным шагам их не ловит (они «отвечают»). Два уклончивых
+    # подряд → LLM-проба «человек/робот» по накопленным репликам.
+    evasive_streak = 0
+    evasive_utterances = []
     UNRECOGNIZED_LIMIT = 3
 
     # Тайминги/качество связи по ходу разговора — чтобы при жалобе "были
@@ -1142,6 +1149,26 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             return
 
         if answer:
+            cur_step = sess.steps[sess.i] if sess.i < len(sess.steps) else {}
+            if answer_is_evasive(cur_step, answer):
+                evasive_streak += 1
+                evasive_utterances.append(answer)
+                log(f"[поведение] уклончивый ответ #{evasive_streak}: «{answer[:60]}»")
+                if evasive_streak >= 2:
+                    probe_text = " ".join(evasive_utterances[-3:])
+                    if llm_is_robot_live(probe_text):
+                        log("🤖 Два уклончивых ответа подряд + LLM подтвердил робота — вешаю трубку.")
+                        result["status"] = "voicemail"
+                        result["error"] = probe_text
+                        result["answers"] = sess.answers
+                        result["notes"] = sess.notes
+                        result["transcript"] = sess.transcript
+                        _attach_call_quality_note(result["notes"], call_metrics, log)
+                        try: call.hangup()
+                        except Exception: pass
+                        return
+            else:
+                evasive_streak = 0
             heard_anything = True
             consecutive_unrecognized = 0
         else:

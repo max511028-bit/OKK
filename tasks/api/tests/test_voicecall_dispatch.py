@@ -684,6 +684,88 @@ class TestCallHistoryAndRecording:
         detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
         assert detail["history"][-1]["needs_review"] is False
 
+    def test_review_state_two_phase(self, client, portal_token):
+        """Ф1 (17.07): дошедший до конца звонок с call_session_id →
+        «⏳ проверяется» (pending); после рекчека → final. Недозвон —
+        сразу final (записи не ждём)."""
+        cid = self._campaign_with_one_contact(client, phone="79993330111")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Актуальность": "да"}, call_session_id=777001)
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        assert items[0]["review_state"] == "pending"
+
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id, "recheck_transcript": "[Дорожка 1] да"})
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        assert items[0]["review_state"] == "final"
+
+    def test_no_answer_is_final_immediately(self, client, portal_token):
+        cid = self._campaign_with_one_contact(client, phone="79993330112")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        self._claim_and_result(client, auth, cid, "no_answer")
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        assert items[0]["review_state"] == "final"
+
+    def test_reclassify_also_finalizes(self, client, portal_token):
+        """Ф1: переклассификация в автоответчик тоже снимает «⏳»."""
+        cid = self._campaign_with_one_contact(client, phone="79993330113")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Шаг 1": "да"}, call_session_id=777002)
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] оставьте сообщение после сигнала",
+            "reclassify_voicemail": True, "review_note": "робот"})
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        assert items[0]["review_state"] == "final"
+        assert items[0]["last_call_status"] == "voicemail"
+
+    def test_finalize_without_recording_flags_passed(self, client, portal_token):
+        """Ф3 (17.07): записи нет — агент финализирует с ⚠ «вслепую» (кейс
+        4 слепых «годен» из теста 17.07)."""
+        cid = self._campaign_with_one_contact(client, phone="79993330114")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="passed",
+            answers={"Шаг 1": "да"}, call_session_id=777003)
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "(запись не получена от Novofon)",
+            "needs_review": True,
+            "review_note": "Финализирован БЕЗ пере-проверки записи — проверьте вручную."})
+        items = client.get(f"/voicecall/contacts?campaign_id={cid}").json()["items"]
+        assert items[0]["review_state"] == "final"
+        d = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert d["history"][-1]["needs_review"] is True
+
+    def test_contacts_gzip_when_accepted(self, client, portal_token):
+        """Ф4 (17.07): крупный список контактов отдаётся gzip'ом (детализация
+        висла на деградированной сети; сжатие ~6x)."""
+        content = _xlsx_bytes(["Имя", "Телефон"],
+                              [[f"Кандидат {i}", f"799955501{i:02d}"] for i in range(40)])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Gzip тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        cid = r.json()["campaign_id"]
+        r = client.get(f"/voicecall/contacts?campaign_id={cid}&limit=1000",
+                       headers={"Accept-Encoding": "gzip"})
+        assert r.status_code == 200
+        assert r.json()["total"] == 40  # httpx сам распаковывает
+
     def test_needs_review_flag_stored_and_visible_in_detail(self, client, portal_token):
         """Пункт 7 доработок 2026-07: агент может пометить попытку на
         ручную проверку, если пакетная перепроверка записи не

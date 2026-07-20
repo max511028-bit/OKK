@@ -960,6 +960,11 @@ function ctStatusPill(ct, talking){
   // случай раньше: "не было судимостей" услышали как "глебова", кандидата
   // ошибочно отклонили без единого сигнала для рекрутёра о сомнении).
   var reviewBadge = ct.needs_review ? " <span class='pill' style='background:#4a2e0a;color:#f0b355;border-color:#7a4d15;' title='Автосверка с записью не подтвердила причину — стоит перепроверить вручную'>⚠ проверить</span>" : "";
+  // Двухфазный статус (17.07): пока идёт пере-проверка по записи — статус
+  // предварительный, категория может ещё измениться (робот → автоответчик).
+  if (ct.review_state === "pending") {
+    reviewBadge += " <span class='pill' style='background:#26303d;color:#8fa8c7;border-color:#3b4c61;' title='Идёт пере-проверка по записи разговора — статус предварительный и может измениться'>⏳ проверяется</span>";
+  }
   return (ct.status === "pending" ? "<span class='pill pending'>⏳ ждёт</span>" :
     ct.status === "calling" ? (talking
       ? "<span class='pill calling'>🗣 идёт разговор</span>"
