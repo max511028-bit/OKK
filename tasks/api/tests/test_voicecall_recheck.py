@@ -163,6 +163,49 @@ class TestReviewSummary:
         assert da._llm_summary_for_review("x", "   ") == ""
 
 
+class TestMimicRobotAgeSignal:
+    """Анти-мимикрия (17.07): «годен» без названного возраста → ⚠.
+    Детерминированно, на реальных расшифровках теста 17.07."""
+
+    SCEN = {"steps": [{"expect": "yesno", "bot": "ищете работу?"},
+                      {"expect": "age", "bot": "сколько вам лет?"},
+                      {"expect": "free", "bot": "город?"}]}
+
+    def test_stated_age_various_forms(self):
+        for t in ["да тридцать семь лет москва", "пятьдесят шесть россия",
+                   "двадцать два", "восемнадцать люберцы", "мне 45 лет"]:
+            assert da._candidate_stated_age(t), t
+
+    def test_no_age_evasive_robot(self):
+        for t in ["алло ник может взять трубку кстати спасибо за предложение",
+                   "представьтесь пожалуйста слушаю говорите говорите",
+                   "я голосовать могу помочь если хотите ещё что-то сообщить"]:
+            assert not da._candidate_stated_age(t), t
+
+    def test_passed_no_age_flags_review(self):
+        # мимикрирующий робот: годен, но возраст не назван → True (пометить)
+        assert da._passed_but_no_age(
+            self.SCEN, "passed",
+            ["алло да говорите кто звонит откуда у вас мой номер представьтесь"])
+
+    def test_passed_with_age_not_flagged(self):
+        # живой: годен и назвал возраст → False (не трогаем)
+        assert not da._passed_but_no_age(
+            self.SCEN, "passed", ["да тридцать семь белорус москва да"])
+
+    def test_not_passed_never_flagged(self):
+        # только для «годен»: стоп/оборвался не наша забота
+        assert not da._passed_but_no_age(self.SCEN, "stopped", ["не ищу работу"])
+
+    def test_no_age_step_in_scenario_skips(self):
+        scen = {"steps": [{"expect": "yesno", "bot": "ищете работу?"}]}
+        assert not da._passed_but_no_age(scen, "passed", ["да говорите кто это"])
+
+    def test_empty_candidate_track_skips(self):
+        # кандидат толком не говорил — это не про мимикрию
+        assert not da._passed_but_no_age(self.SCEN, "passed", ["(тишина/не распознано)"])
+
+
 class TestRobotSecretaryClassifier:
     """П2 (2026-07-10): LLM-классификация робота-секретаря по записи там,
     где точные фразы бьют мимо (искажения STT / новые формулировки)."""
