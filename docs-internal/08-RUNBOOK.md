@@ -122,3 +122,33 @@ duplicate». Файл удалён — сжатие делает сам бэке
 Урок: ЛЮБОЕ изменение конфигов nginx на VPS — только через `nginx -t` ДО
 reload, и обязательная проверка `systemctl is-enabled` + тестовый старт.
 Открытый техдолг по итогам: swap-файл на VPS + мониторинг OOM (P0).
+
+## Укрепление VPS после инцидента 22.07.2026
+
+Сделано на VPS (сохраняется после перезагрузки):
+
+| Мера | Где | Зачем |
+|---|---|---|
+| **Swap 2 ГБ** | `/swapfile` + запись в `/etc/fstab`, `vm.swappiness=20` | 960 МБ RAM без swap = зависание при любом пике |
+| **Авто-рестарт сервисов** | `/etc/systemd/system/{nginx,tasks-api}.service.d/restart.conf` | у nginx было `Restart=no` — он и остался лежать после ребута |
+| **Защита бэкенда от OOM** | `tasks-api.service.d/oom.conf` → `OOMScoreAdjust=-500` | при нехватке памяти ядро убьёт что угодно, но не портал |
+| **Вотчдог зависания** | `portal-watchdog.timer` (раз в 3 мин) + `/usr/local/bin/portal-health-watchdog.sh` | `Restart=always` ловит смерть процесса, но НЕ ступор: 2 провала health подряд → рестарт |
+| **Лимит журнала** | `/etc/systemd/journald.conf.d/size-limit.conf` (50 МБ) | журнал разросся до 193 МБ |
+| **Ротация логов по размеру** | `/etc/logrotate.d/00-size-caps` (50 МБ, 3 копии) | auth.log вырос до 1.9 ГБ и забил диск |
+| **Отключены ненужные демоны** | ModemManager, udisks2, multipathd (`disable` + `mask`) | ~50 МБ RAM на безголовом VPS без модемов и multipath |
+| **ClientAlive для sshd** | `/etc/ssh/sshd_config.d/99-tunnel-keepalive.conf` | мёртвые сессии туннеля держали порты 21434/25001 |
+
+### Корневая причина заполнения диска (важно!)
+
+`auth.log` рос на **~700 МБ/сутки** из-за войны дублей SSH-туннеля: копии
+`start-ai-tunnel.ps1` стартовали из нескольких мест (задача при входе,
+STH-Portal-Watchdog, ручной перезапуск), дрались за порты, а `precleanup`
+внутри скрипта убивал на VPS сессию «победителя» — бесконечный цикл.
+Лечение: **мьютекс single-instance** в `scripts/start-ai-tunnel.ps1`
+(файл НЕ коммитится — правило №1 в CLAUDE.md, живёт только на ПК).
+После фикса: 494 КБ/мин → 2 КБ/мин.
+
+Проверка здоровья VPS одной командой:
+```
+ssh root@195.208.119.67 "free -m; df -h /; systemctl is-active nginx tasks-api portal-watchdog.timer"
+```
