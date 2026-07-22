@@ -4741,6 +4741,11 @@ class VCDispatchRecheckReq(BaseModel):
     corrected_answers: dict = {}  # {crit: значение} — уточнения по записи
     reclassify_voicemail: bool = False  # запись показала автоответчик, а live — нет
     reclassify_status: Optional[str] = None  # переклассификация в произвольный исход (напр. no_answer для ринг-бэка)
+    # Финализация «записи нет»: recheck_transcript — плейсхолдер, не текст
+    # записи. Тест 21.07: поток error-попытки затёр плейсхолдером НАСТОЯЩУЮ
+    # пере-проверку параллельного потока — с этим флагом бэкенд не даёт
+    # плейсхолдеру перезаписать непустой recheck_transcript.
+    no_recording: bool = False
 
 
 @app.post("/voicecall/dispatch/recheck-transcript")
@@ -4768,10 +4773,19 @@ def vc_dispatch_recheck_transcript(req: VCDispatchRecheckReq, request: Request):
     _vc_touch_agent()
     with db() as conn:
         row = conn.execute(
-            "SELECT id, answers_json, needs_review, review_note FROM candidate_validations "
+            "SELECT id, answers_json, needs_review, review_note, recheck_transcript "
+            "FROM candidate_validations "
             "WHERE contact_id=? ORDER BY id DESC LIMIT 1", (req.contact_id,)).fetchone()
         if not row:
             return {"ok": False, "reason": "no validation row"}
+        if req.no_recording and (row["recheck_transcript"] or "").strip() not in (
+                "", "(запись не получена от Novofon)"):
+            # Настоящая пере-проверка уже есть (успел параллельный поток
+            # другой попытки, тест 21.07) — плейсхолдер «записи нет» её НЕ
+            # перезаписывает, только гарантируем финализацию контакта.
+            conn.execute("UPDATE voicecall_contacts SET review_state='final' WHERE id=?",
+                         (req.contact_id,))
+            return {"ok": True, "kept_existing_recheck": True}
         if req.reclassify_voicemail:
             # Запись однозначно показала автоответчик, а live-распознавание
             # приняло заглушку оператора за ответ кандидата (реальный случай:

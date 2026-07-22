@@ -283,8 +283,16 @@ def _passed_but_no_age(scenario: dict, verdict: str, transcripts: list) -> bool:
 
 def _llm_summary_for_review(base_url: str, combined_transcript: str) -> str:
     """Короткое саммари записи для контактов с ⚠ (16.07): рекрутёр читает
-    два предложения вместо прослушивания. Лучшее старание — пусто при сбое."""
-    if not combined_transcript.strip():
+    два предложения вместо прослушивания. Лучшее старание — пусто при сбое.
+
+    Защита от галлюцинаций (тест 21.07: на скудном тексте qwen3:1.7b
+    сочинила «возраст — 25 лет, город — москва, согласие — да» для
+    кандидата, который вообще не разговаривал): (1) на коротком/пустом
+    транскрипте саммари не делаем; (2) промпт запрещает выдумывать;
+    (3) числа в саммари сверяются с транскриптом — упомянута цифра,
+    которой в разговоре не было, → саммари отбрасывается целиком."""
+    words = combined_transcript.split()
+    if len(words) < 15:
         return ""
     ans = _llm_ask(
         base_url,
@@ -292,9 +300,20 @@ def _llm_summary_for_review(base_url: str, combined_transcript: str) -> str:
         f"{combined_transcript[:2500]}\n\n"
         "Одним-двумя короткими предложениями для рекрутёра: кто отвечал "
         "(живой кандидат / робот / непонятно) и какие ключевые данные "
-        "прозвучали (возраст, город, согласие/отказ). Без вступлений.",
+        "прозвучали. СТРОГО: упоминай возраст/город/согласие ТОЛЬКО если "
+        "они буквально есть в расшифровке выше; если данных нет — напиши "
+        "«данных мало». НИЧЕГО не выдумывай. Без вступлений.",
         num_predict=70)
-    return ans[:300]
+    ans = ans[:300]
+    # Grounding: каждое число из саммари должно звучать в транскрипте
+    # (цифрой или словом — реюз _age_grounded: «25» ← «двадцать пять»).
+    for num in re.findall(r"\d+", ans):
+        try:
+            if not _age_grounded(int(num), combined_transcript):
+                return ""  # LLM упомянула число, которого в разговоре не было
+        except Exception:
+            return ""
+    return ans
 
 
 def _norm_answer(s: str) -> str:
@@ -729,23 +748,39 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
         return
 
     def _try_series(n_attempts, delay):
+        """Возвращает (url|None, были_ли_сетевые_ошибки). Сетевая ошибка ≠
+        «записи нет»: Novofon отвечает None, когда записи реально нет, а
+        исключение — это недоступность сети/портала-прокси."""
+        net_err = False
         for _ in range(n_attempts):
             time.sleep(delay)
             try:
                 u = call_api.get_recording_url(api_secret, call_session_id)
             except Exception:
-                u = None
+                u, net_err = None, True
             if u:
-                return u
-        return None
+                return u, net_err
+        return None, net_err
 
-    url = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
+    url, net_err = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
     if not url:
         # вторая серия — Novofon иногда отдаёт запись через минуты
         print(f"🎙 Запись contact_id={contact_id} не готова, вторая серия через "
               f"{RECORDING_RETRY_ROUND2_DELAY_SEC}с...", flush=True)
         time.sleep(RECORDING_RETRY_ROUND2_DELAY_SEC)
-        url = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
+        url, net_err = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
+
+    # Тест 21.07: обе серии попали в сетевой обрыв ПК↔VPS, запись у Novofon
+    # СУЩЕСТВОВАЛА (владелец скачал её руками), а контакт финализировался
+    # «вслепую». Сетевые ошибки — повод ЖДАТЬ и повторять, а не сдаваться:
+    # до 3 дополнительных раундов по 5 минут, пока ошибки именно сетевые.
+    extra_round = 0
+    while not url and net_err and extra_round < 3:
+        extra_round += 1
+        print(f"🌐 Запись contact_id={contact_id}: сеть недоступна, доп. раунд "
+              f"{extra_round}/3 через 300с...", flush=True)
+        time.sleep(300)
+        url, net_err = _try_series(RECORDING_FETCH_ATTEMPTS, RECORDING_FETCH_DELAY_SEC)
 
     if url:
         try:
@@ -764,17 +799,25 @@ def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
         return
 
     # Записи нет совсем — финализируем «вслепую» с честной пометкой.
+    # no_recording=True: бэкенд знает, что это плейсхолдер, и НЕ затирает
+    # настоящий recheck-транскрипт, если его успел записать параллельный
+    # поток другой попытки (тест 21.07: поток error-попытки затёр реальную
+    # пере-проверку). Никаких LLM-этапов здесь нет и не должно быть —
+    # автосверка/саммари на заглушке галлюцинируют («возраст 25, москва»
+    # у кандидата, который вообще не разговаривал).
     try:
         blind = verdict in ("passed", "stopped")
+        why = "сеть/портал были недоступны" if net_err else "Novofon не отдал запись"
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id,
                         "recheck_transcript": "(запись не получена от Novofon)",
+                        "no_recording": True,
                         "needs_review": blind,
-                        "review_note": ("Финализирован БЕЗ пере-проверки записи "
-                                        "(Novofon не отдал запись) — проверьте вручную."
-                                        if blind else None)},
+                        "review_note": (f"Финализирован БЕЗ пере-проверки записи "
+                                        f"({why}) — статусу нельзя полностью "
+                                        f"доверять, проверьте вручную." if blind else None)},
              timeout=15)
-        print(f"🕳 contact_id={contact_id}: записи нет — финализирован"
+        print(f"🕳 contact_id={contact_id}: записи нет ({why}) — финализирован"
               + (" с ⚠ (вслепую)." if blind else "."), flush=True)
     except Exception as e:
         print(f"⚠️  Финализация без записи не удалась: {e}", flush=True)

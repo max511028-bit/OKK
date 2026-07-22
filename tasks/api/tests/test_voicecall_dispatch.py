@@ -465,6 +465,56 @@ class TestCallHistoryAndRecording:
                          json={"contact_id": 1, "recheck_transcript": "x"})
         assert r.status_code == 403
 
+    def test_no_recording_placeholder_does_not_overwrite_real_recheck(self, client, portal_token):
+        """Тест 21.07: поток error-попытки финализировал «записи нет» и
+        ЗАТЁР настоящую пере-проверку параллельного потока. С флагом
+        no_recording плейсхолдер не перезаписывает непустой recheck."""
+        cid = self._campaign_with_one_contact(client, phone="79993330077")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="stopped")
+
+        # настоящий recheck от «быстрого» потока
+        client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "[Дорожка 1] записала ваш ответ для абонента",
+        })
+        # затем «медленный» поток пытается финализировать плейсхолдером
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "(запись не получена от Novofon)",
+            "no_recording": True, "needs_review": True,
+            "review_note": "Финализирован БЕЗ пере-проверки записи.",
+        })
+        assert r.status_code == 200 and r.json().get("kept_existing_recheck")
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert "записала ваш ответ" in detail["history"][-1]["recheck_transcript"]
+        assert detail["review_state"] == "final"
+
+    def test_no_recording_placeholder_stored_when_no_real_recheck(self, client, portal_token):
+        """А если настоящего recheck нет — плейсхолдер с ⚠ пишется как раньше."""
+        cid = self._campaign_with_one_contact(client, phone="79993330078")
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        contact_id = self._claim_and_result(
+            client, auth, cid, "answered_completed", verdict="stopped")
+
+        r = client.post("/voicecall/dispatch/recheck-transcript", headers=auth, json={
+            "contact_id": contact_id,
+            "recheck_transcript": "(запись не получена от Novofon)",
+            "no_recording": True, "needs_review": True,
+            "review_note": "Финализирован БЕЗ пере-проверки записи.",
+        })
+        assert r.status_code == 200
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert "не получена" in detail["history"][-1]["recheck_transcript"]
+        assert detail["history"][-1]["needs_review"] == 1
+        assert detail["review_state"] == "final"
+
     def test_corrected_answers_merged_into_latest_attempt(self, client, portal_token):
         """Пере-валидация критичных ответов по записи (2026-07-08):
         уточнённые значения (возраст/стоп-факторы, потерянные маленькой

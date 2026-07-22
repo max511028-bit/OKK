@@ -7,6 +7,7 @@ VOICECALL_DIR = Path(__file__).resolve().parents[3] / "voicecall"
 sys.path.insert(0, str(VOICECALL_DIR))
 
 import dispatch_agent as da  # noqa: E402
+import dialog  # noqa: E402
 
 
 TRANSCRIPT = ("[Дорожка 1] да двадцать девять двадцать девять двадцать "
@@ -155,12 +156,68 @@ class TestReviewSummary:
 
     def test_summary_returned_and_bounded(self):
         da._llm_ask = lambda *a, **k: "живой кандидат, 26 лет, москва " * 30
-        s = da._llm_summary_for_review("x", "[Дорожка 1] текст")
+        # с 21.07 транскрипт должен быть ≥15 слов, а число 26 — реально
+        # звучать («двадцать шесть»), иначе саммари отбрасывается (grounding)
+        tr = ("[Дорожка 1] да здравствуйте мне двадцать шесть лет живу в москве "
+              "работу ищу да готов выйти в ближайшее время спасибо")
+        s = da._llm_summary_for_review("x", tr)
         assert s and len(s) <= 300
 
     def test_empty_transcript_no_summary(self):
         da._llm_ask = lambda *a, **k: "что-то"
         assert da._llm_summary_for_review("x", "   ") == ""
+
+
+class TestSummaryGrounding2107:
+    """Тест 21.07: саммари галлюцинировало «возраст — 25 лет, город —
+    москва, согласие — да» для кандидата, который не разговаривал.
+    Защита: короткий транскрипт → без саммари; число не из записи →
+    саммари отбрасывается."""
+
+    LONG_TR = ("[Дорожка 1] сейчас вам не могу ответить записала ваш ответ для "
+               "абонента пока что он занят другим звонком а вы по срочному вопросу\n"
+               "[Дорожка 2] добрый день максим звоню вам по поводу работы")
+
+    def test_short_transcript_no_summary(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "кандидат отвечал живо, 25 лет"
+        assert da._llm_summary_for_review("x", "(запись не получена от Novofon)") == ""
+
+    def test_hallucinated_number_dropped(self):
+        # LLM сочинила «25 лет» — в записи числа нет → саммари в мусор
+        da._llm_ask = lambda base, prompt, num_predict=12: "живой кандидат, 25 лет, москва, согласие — да"
+        assert da._llm_summary_for_review("x", self.LONG_TR) == ""
+
+    def test_grounded_number_kept(self):
+        tr = self.LONG_TR + "\nмне двадцать пять лет"
+        da._llm_ask = lambda base, prompt, num_predict=12: "живой кандидат, 25 лет"
+        assert "25" in da._llm_summary_for_review("x", tr)
+
+    def test_no_numbers_kept(self):
+        da._llm_ask = lambda base, prompt, num_predict=12: "отвечал робот-секретарь, данных мало"
+        assert "робот" in da._llm_summary_for_review("x", self.LONG_TR)
+
+
+class TestOwnerAssistantPhrases2107:
+    """Регресс с реальной записи 21.07 (session_394102934): Яндекс-ассистент
+    владельца прошёл как живой «стоп». Теперь фразы должны ловить."""
+
+    REAL = ("сейчас вам не мог фар необходимо ли вам перезвонить записала ваш "
+            "ответ для абонента пока что он занят другим звонком а вы по срочному вопросу")
+
+    def test_real_transcript_caught(self):
+        assert dialog.is_voicemail_phrase(self.REAL)
+
+    def test_fragments_caught(self):
+        for p in ["записала ваш ответ для абонента", "записал ваш ответ",
+                   "пока что он занят другим звонком", "необходимо ли вам перезвонить"]:
+            assert dialog.is_voicemail_phrase(p), p
+
+    def test_live_answers_still_clean(self):
+        # «перезвоните позже» сюда не берём: это давний паттерн голосовой
+        # почты, а живого с той же фразой первым ловит is_callback_request.
+        for p in ["да записала адрес спасибо", "нет не ищу работу",
+                   "да мне двадцать пять", "я занят сейчас на смене говорите быстрее"]:
+            assert not dialog.is_voicemail_phrase(p), p
 
 
 class TestMimicRobotAgeSignal:
