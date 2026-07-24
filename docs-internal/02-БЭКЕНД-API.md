@@ -39,6 +39,7 @@
 | POST | `/voicecall/dispatch/claim` | vc_dispatch_claim | 4493 | Атомарно забирает самый старый (сверху вниз в списке на портале) |
 | POST | `/voicecall/dispatch/live` | vc_dispatch_live | 4599 | Агент шлёт сюда снимок транскрипта по ходу звонка (не только в |
 | POST | `/voicecall/dispatch/result` | vc_dispatch_result | 4609 | Агент шлёт сюда результат реального звонка. Каждая попытка (даже |
+| POST | `/voicecall/dispatch/campaign-cost` | vc_dispatch_campaign_cost | итог стоимости телефонии по кампании от агента (руб) |
 | POST | `/voicecall/dispatch/recording` | vc_dispatch_recording | 4688 | Агент шлёт сюда ссылку на запись разговора отдельным (не блокирующим |
 | POST | `/voicecall/dispatch/recheck-transcript` | vc_dispatch_recheck_transcript | 4716 | Агент шлёт сюда текст ПОВТОРНОГО распознавания разговора — по |
 | GET | `/voicecall/campaigns/{cid}/funnel` | vc_campaign_funnel | 4808 | Воронка обзвона по этапам: загружено/отсеяно → попытки дозвона → |

@@ -252,6 +252,14 @@ def init_db() -> None:
                 "ALTER TABLE voicecall_campaigns ADD COLUMN dispatch_state TEXT NOT NULL DEFAULT 'idle'")
         except sqlite3.OperationalError:
             pass
+        # Стоимость телефонии по кампании (23.07): агент забирает финотчёт
+        # Novofon (get.financial_call_legs_report) и присылает сумму списаний
+        # в рублях + когда обновлено. NULL — стоимость ещё не подтягивалась.
+        for _cc_col, _cc_type in [("cost_rub", "REAL"), ("cost_updated_at", "TEXT")]:
+            try:
+                conn.execute(f"ALTER TABLE voicecall_campaigns ADD COLUMN {_cc_col} {_cc_type}")
+            except sqlite3.OperationalError:
+                pass
         # Пауза: текущий звонок доигрывается до конца, следующий не начинается,
         # пока не нажали «Продолжить» (см. pause-dispatch/resume-dispatch).
         try:
@@ -4197,7 +4205,7 @@ def vc_list_campaigns(limit: int = 50):
     with db() as conn:
         rows = conn.execute(
             "SELECT c.id, c.name, c.scenario_id, c.scenario_name, c.created_at, c.total, c.source, "
-            "       c.dispatch_state, c.dispatch_paused, "
+            "       c.dispatch_state, c.dispatch_paused, c.cost_rub, c.cost_updated_at, "
             "       SUM(CASE WHEN ct.status='pending' THEN 1 ELSE 0 END) AS pending_n, "
             "       SUM(CASE WHEN ct.status='calling' THEN 1 ELSE 0 END) AS calling_n, "
             "       SUM(CASE WHEN ct.status='done' THEN 1 ELSE 0 END) AS done_n, "
@@ -4221,6 +4229,7 @@ def vc_list_campaigns(limit: int = 50):
             "done": int(r["done_n"] or 0), "skipped": int(r["skipped_n"] or 0),
             "failed": int(r["failed_n"] or 0),
             "passed": int(r["passed_n"] or 0), "stopped": int(r["stopped_n"] or 0),
+            "cost_rub": r["cost_rub"], "cost_updated_at": r["cost_updated_at"],
         })
     return {"items": out}
 
@@ -4733,6 +4742,32 @@ def vc_dispatch_recording(req: VCDispatchRecordingReq, request: Request):
     return {"ok": True}
 
 
+class VCCampaignCostReq(BaseModel):
+    campaign_id: int
+    cost_rub: float
+
+
+@app.post("/voicecall/dispatch/campaign-cost")
+def vc_dispatch_campaign_cost(req: VCCampaignCostReq, request: Request):
+    """Агент присылает итоговую стоимость телефонии по кампании в рублях
+    (сумма списаний Novofon из get.financial_call_legs_report, сведённая по
+    call_session_id звонков этой кампании — см. dispatch_agent). Обновляем
+    поле кампании; отображается на карточке и в «Сводке» отчёта."""
+    _vcs_check_password(request)
+    _vc_touch_agent()
+    import datetime as _dt
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    with db() as conn:
+        r = conn.execute("SELECT id FROM voicecall_campaigns WHERE id=?",
+                         (req.campaign_id,)).fetchone()
+        if not r:
+            raise HTTPException(404, "Campaign not found")
+        conn.execute(
+            "UPDATE voicecall_campaigns SET cost_rub=?, cost_updated_at=? WHERE id=?",
+            (round(float(req.cost_rub), 2), now, req.campaign_id))
+    return {"ok": True, "cost_rub": round(float(req.cost_rub), 2)}
+
+
 class VCDispatchRecheckReq(BaseModel):
     contact_id: int
     recheck_transcript: str
@@ -5002,7 +5037,7 @@ def vc_campaign_export(cid: int):
     сводка по категориям с правилами."""
     with db() as conn:
         camp = conn.execute(
-            "SELECT id, name, scenario_id, total FROM voicecall_campaigns WHERE id=?",
+            "SELECT id, name, scenario_id, total, cost_rub FROM voicecall_campaigns WHERE id=?",
             (cid,)).fetchone()
         if not camp:
             raise HTTPException(404, "Campaign not found")
@@ -5074,6 +5109,8 @@ def vc_campaign_export(cid: int):
 
     sm = wb.create_sheet("Сводка")
     sm.append(["Кампания", f"{camp['name']} · {camp['total']} контактов"])
+    if camp["cost_rub"] is not None:
+        sm.append(["Стоимость телефонии", f"{camp['cost_rub']:.2f} ₽"])
     sm.append([])
     sm.append(["Категория", "Кол-во", "Доля"])
     total = max(len(rows), 1)

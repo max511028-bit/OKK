@@ -716,6 +716,13 @@ function campDispatchBtnHtml(c){
   return "<span class='pill' style='color:var(--muted)'>✓ завершён</span>";
 }
 
+function campCostHtml(c){
+  // Стоимость телефонии по кампании (23.07): агент сводит списания Novofon
+  // после обзвона. Пока не подтянулась (свежая/идёт кампания) — не показываем.
+  if(c.cost_rub === null || c.cost_rub === undefined) return "";
+  return " · 📞 " + Number(c.cost_rub).toFixed(2) + " ₽";
+}
+
 function campStatsHtml(c){
   return (c.pending ? "<span class='pill pending'>⏳ "+c.pending+"</span>" : "")
     + (c.calling ? "<span class='pill calling'>📞 "+c.calling+"</span>" : "")
@@ -745,7 +752,7 @@ function renderCampaignList(){
       + "  <div class='camp-head' onclick='toggleCampaign("+c.id+")'>"
       + "    <div>"
       + "      <div class='camp-title'>"+escHtml(c.name)+"</div>"
-      + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+" · 📋 "+escHtml(c.scenario_name||c.scenario_id||"?")+"</div>"
+      + "      <div class='camp-meta'>"+fmtTs(c.created_at)+" · "+escHtml(c.source||"")+" · всего "+c.total+" · 📋 "+escHtml(c.scenario_name||c.scenario_id||"?")+campCostHtml(c)+"</div>"
       + "    </div>"
       + "    <div class='camp-stats'>" + campStatsHtml(c) + "</div>"
       + "  </div>"

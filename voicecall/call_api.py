@@ -190,3 +190,24 @@ def get_wav_track_urls(access_token: str, call_session_id: int,
         return None
     return [WAV_URL_TEMPLATE.format(communication_id=row["communication_id"], record_id=r)
             for r in records]
+
+
+def get_charges_by_session(access_token: str, session_ids: "set[int]",
+                            date_from: str, date_till: str) -> "dict[int, float]":
+    """Стоимость телефонии по звонкам за период (23.07). Использует
+    get.financial_call_legs_report (Data API) — там на каждую «ногу» звонка
+    есть total_charge (списание, руб) и call_session_id. Возвращает
+    {call_session_id: суммарное_списание} только для переданных session_ids.
+    Novofon тарифицирует поминутно с округлением вверх, у звонка может быть
+    несколько ног — суммируем все по одному call_session_id."""
+    result = _rpc(DATA_API_URL, "get.financial_call_legs_report", {
+        "access_token": access_token,
+        "date_from": date_from,
+        "date_till": date_till,
+    })
+    charges: "dict[int, float]" = {}
+    for leg in result.get("data", []):
+        sid = leg.get("call_session_id")
+        if sid in session_ids:
+            charges[sid] = charges.get(sid, 0.0) + float(leg.get("total_charge") or 0)
+    return charges

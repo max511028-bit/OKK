@@ -1156,3 +1156,60 @@ class TestFunnelAndExport:
         assert f("hangup_by_candidate", None, False, None)[0] == "СПОРНЫЙ"
         assert f("low_recognition", None, False, None)[0] == "СПОРНЫЙ"
         assert f("error", None, False, None)[0] == "СПОРНЫЙ"
+
+
+class TestCampaignCost:
+    """Стоимость телефонии по кампании (23.07): агент сводит списания Novofon
+    и шлёт итог, портал показывает его в списке кампаний и в «Сводке» отчёта."""
+
+    def _campaign(self, client):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["A", "79995550001"]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Стоимость тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        return r.json()["campaign_id"]
+
+    def test_cost_none_until_reported(self, client):
+        cid = self._campaign(client)
+        camps = client.get("/voicecall/campaigns").json()["items"]
+        me = [c for c in camps if c["id"] == cid][0]
+        assert me["cost_rub"] is None
+
+    def test_post_cost_requires_password(self, client):
+        r = client.post("/voicecall/dispatch/campaign-cost",
+                        json={"campaign_id": 1, "cost_rub": 10.0})
+        assert r.status_code == 403
+
+    def test_cost_stored_and_shown(self, client, portal_token):
+        cid = self._campaign(client)
+        auth = {"X-Auth-Token": portal_token}
+        r = client.post("/voicecall/dispatch/campaign-cost", headers=auth,
+                        json={"campaign_id": cid, "cost_rub": 132.006})
+        assert r.status_code == 200
+        assert r.json()["cost_rub"] == 132.01  # округление до копеек
+        camps = client.get("/voicecall/campaigns").json()["items"]
+        me = [c for c in camps if c["id"] == cid][0]
+        assert me["cost_rub"] == 132.01 and me["cost_updated_at"]
+
+    def test_cost_unknown_campaign_404(self, client, portal_token):
+        r = client.post("/voicecall/dispatch/campaign-cost",
+                        headers={"X-Auth-Token": portal_token},
+                        json={"campaign_id": 999999, "cost_rub": 5.0})
+        assert r.status_code == 404
+
+    def test_cost_in_export_summary(self, client, portal_token):
+        cid = self._campaign(client)
+        auth = {"X-Auth-Token": portal_token}
+        client.post("/voicecall/dispatch/campaign-cost", headers=auth,
+                    json={"campaign_id": cid, "cost_rub": 44.55})
+        r = client.get(f"/voicecall/campaigns/{cid}/export")
+        assert r.status_code == 200
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(r.content))
+        joined = " ".join(
+            str(v) for row in wb["Сводка"].iter_rows(values_only=True)
+            for v in row if v is not None)
+        assert "44.55" in joined and "Стоимость" in joined

@@ -727,6 +727,54 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
           + (" ⚠️ ПОМЕЧЕН НА ПРОВЕРКУ." if needs_review else ""), flush=True)
 
 
+def _reconcile_campaign_cost(base_url: str, token: str, campaign_id: int,
+                              session_ids: "set[int]", started_at) -> None:
+    """Свести стоимость телефонии по кампании из финотчёта Novofon и
+    отправить на портал (23.07). Фоновый поток: у биллинга Novofon есть
+    задержка, поэтому ждём и делаем несколько попыток, пока сумма растёт.
+    Лучшее старание — при сбое просто не обновляем стоимость."""
+    from datetime import datetime, timedelta
+    try:
+        env = load_env()
+        api_secret = require(env, "NOVOFON_API_SECRET")
+    except SystemExit:
+        return
+    df = (started_at - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+    prev_total, stable = -1.0, 0
+    for attempt in range(6):
+        time.sleep(60 if attempt else 20)
+        dt = (datetime.now() + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            charges = call_api.get_charges_by_session(api_secret, session_ids, df, dt)
+        except Exception as e:
+            print(f"⚠️  Стоимость кампании {campaign_id}: финотчёт не получен: {e}", flush=True)
+            continue
+        total = round(sum(charges.values()), 2)
+        # Стабилизировалось (2 замера подряд одинаковы) ИЛИ все звонки учтены —
+        # можно фиксировать. Иначе биллинг ещё «докручивает» — ждём дальше.
+        if total == prev_total:
+            stable += 1
+        else:
+            stable, prev_total = 0, total
+        if stable >= 1 or len(charges) >= len(session_ids):
+            try:
+                _rpc(base_url, "POST", "/voicecall/dispatch/campaign-cost", token=token,
+                     json_body={"campaign_id": campaign_id, "cost_rub": total}, timeout=15)
+                print(f"💰 Стоимость кампании {campaign_id}: {total:.2f} ₽ "
+                      f"({len(charges)}/{len(session_ids)} звонков учтено).", flush=True)
+            except Exception as e:
+                print(f"⚠️  Не смог отправить стоимость кампании: {e}", flush=True)
+            return
+    # Не стабилизировалось за все попытки — шлём что есть (лучше, чем ничего).
+    if prev_total >= 0:
+        try:
+            _rpc(base_url, "POST", "/voicecall/dispatch/campaign-cost", token=token,
+                 json_body={"campaign_id": campaign_id, "cost_rub": prev_total}, timeout=15)
+            print(f"💰 Стоимость кампании {campaign_id}: ~{prev_total:.2f} ₽ (не финализ.).", flush=True)
+        except Exception:
+            pass
+
+
 def _fetch_and_attach_recording(base_url: str, token: str, contact_id: int,
                                  call_session_id, verdict: str = "", stop_reason: str = "",
                                  scenario: dict = None, live_answers: dict = None,
@@ -841,6 +889,12 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
     # звонке (см. _run_dialog_loop в phone_call.py), иначе ключ TTS-кэша
     # не совпадёт и каждая фраза будет синтезироваться вживую посреди
     # разговора вместо мгновенной отдачи из кэша.
+    # Стоимость телефонии (23.07): собираем call_session_id всех звонков
+    # кампании и время старта, чтобы в конце свести списания Novofon.
+    from datetime import datetime as _dt
+    _camp_started = _dt.now()
+    _session_ids: "set[int]" = set()
+
     _settings = scenario.get("settings") or {}
     _voice = _settings.get("voice") or DEFAULT_VOICE
     _rate = _settings.get("rate") or "+0%"
@@ -882,6 +936,14 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
                 print(f"Кампания {campaign_id} на паузе, возвращаюсь к опросу.", flush=True)
             else:
                 print(f"Кампания {campaign_id} обзвонена, возвращаюсь к опросу.", flush=True)
+                # Свести стоимость телефонии в фоне (у биллинга Novofon —
+                # задержка, поэтому с паузой и ретраями; не блокируем опрос).
+                if _session_ids:
+                    threading.Thread(
+                        target=_reconcile_campaign_cost,
+                        args=(base_url, token, campaign_id, set(_session_ids),
+                              _camp_started),
+                        daemon=True).start()
             return token
 
         contact_id = claim["contact_id"]
@@ -914,6 +976,8 @@ def _run_campaign(base_url: str, token: str, campaign_id: int, scenario_id: str,
             except Exception as e:
                 print(f"⚠️  Нормализация ответов пропущена: {e}", flush=True)
         posted, token = _post_result_with_retries(base_url, token, contact_id, result, password)
+        if result.get("call_session_id"):
+            _session_ids.add(result["call_session_id"])
         if posted and result.get("call_session_id"):
             # В фоне — следующий контакт в очереди не должен ждать, пока
             # Novofon обработает запись разговора (может занять десятки секунд).
