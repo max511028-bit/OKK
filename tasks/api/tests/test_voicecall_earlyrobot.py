@@ -50,19 +50,19 @@ class TestLayer2FirstTurnUnrecognized:
 class TestLayer3NoProgress:
     """Слой 3: за ~35с не ушли дальше 1-2 вопроса — робот топчется."""
 
-    def test_stuck_after_35s_triggers(self):
+    def test_stuck_after_ceiling_triggers(self):
         assert reason(turn=4, answer="да", speech=True, dur=1000,
-                      sess_i=1, elapsed=40) is not None
+                      sess_i=1, elapsed=50) is not None
 
-    def test_progress_after_35s_ok(self):
+    def test_progress_after_ceiling_ok(self):
         # ушли на 4-й вопрос — живой отвечает, не трогаем
         assert reason(turn=6, answer="да", speech=True, dur=1000,
-                      sess_i=4, elapsed=50) is None
+                      sess_i=4, elapsed=60) is None
 
-    def test_stuck_but_early_ok(self):
-        # 20с — рано, живой мог задуматься
+    def test_stuck_but_before_ceiling_ok(self):
+        # 40с — ещё в запасе (порог 45с), живой мог задуматься
         assert reason(turn=2, answer="да", speech=True, dur=1000,
-                      sess_i=1, elapsed=20) is None
+                      sess_i=1, elapsed=40) is None
 
     def test_fires_once(self):
         # уже проверяли (no_progress_used=True) — второй раз молчим
