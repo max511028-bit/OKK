@@ -527,6 +527,31 @@ BARGE_IN_WARMUP_MS = 300        # первые N мс фразы только к
 # а осознанная попытка перебить бота — да.
 
 
+# Пороги раннего отсева робота (Слой 1/3, экономия эфира 24.07). Вынесены
+# из _run_dialog_loop, чтобы решение о запуске свободной пробы было
+# юнит-тестируемым отдельно от живого звонка.
+LONG_OPENING_MS = 3500     # непрерывная речь длиннее — приветствие робота, не «алло»
+NO_PROGRESS_SEC = 35.0     # столько без сдвига дальше 1-2 вопроса = робот топчется
+
+
+def _early_robot_probe_reason(turn_index: int, answer: str, speech_started: bool,
+                               speech_dur_ms: int, sess_i: int, elapsed_sec: float,
+                               no_progress_used: bool) -> "str | None":
+    """Надо ли запустить СВОБОДНУЮ пробу «робот ли» на этом ходу. Возвращает
+    причину (для лога) или None. Само решение «робот/человек» принимает уже
+    проба (фразы + LLM, по умолчанию человек) — здесь только КОГДА её звать.
+      Слой 1: длинная непрерывная речь на первых 2 ходах = приветствие робота.
+      Слой 2: на 1-м ходу была речь, но грамматика её не разобрала.
+      Слой 3: за ~35с не ушли дальше 1-2 вопроса — робот топчется."""
+    if turn_index < 2 and speech_dur_ms > LONG_OPENING_MS:
+        return f"длинная речь в начале ({speech_dur_ms}мс, «{(answer or '?')[:40]}»)"
+    if turn_index == 0 and not answer and speech_started:
+        return "речь на 1-м ходу не распозналась грамматикой"
+    if not no_progress_used and sess_i <= 1 and elapsed_sec > NO_PROGRESS_SEC:
+        return f"{NO_PROGRESS_SEC:.0f}с без прогресса (шаг {sess_i + 1})"
+    return None
+
+
 def speak(call, text: str, allow_interrupt: bool = True,
           interrupt_threshold_mult: float = BARGE_IN_THRESHOLD_MULT,
           interrupt_min_rms: float = BARGE_IN_MIN_RMS,
@@ -769,6 +794,7 @@ def listen(call, vocab: Optional[list] = None,
     last_partial = ""
     last_change_at = time.time()
     speech_started = False
+    speech_started_at = None  # момент первой речи — для длительности сегмента
     start = time.time()
     chunk_len = 160  # 20мс при 8kHz, 1 байт/сэмпл (8-bit)
 
@@ -791,6 +817,7 @@ def listen(call, vocab: Optional[list] = None,
     if preroll_pcm16:
         r = rec.feed(preroll_pcm16)
         speech_started = True
+        speech_started_at = time.time()
         if r.get("final"):
             parts.append(r["final"])
         elif r.get("partial"):
@@ -844,6 +871,8 @@ def listen(call, vocab: Optional[list] = None,
                 last_partial = cur
                 last_change_at = now
                 if cur:
+                    if not speech_started:
+                        speech_started_at = now
                     speech_started = True
                     if on_partial:
                         try: on_partial(cur)
@@ -874,6 +903,13 @@ def listen(call, vocab: Optional[list] = None,
         # _run_dialog_loop: на настоящей тишине переспрашивать вслух не
         # нужно, лучше молча подождать ещё раз.
         metrics["speech_started"] = speech_started
+        # Длительность непрерывного речевого сегмента (от первой речи до
+        # последнего изменения = конца речи). Живое «алло» коротко (~0.5-1.5с);
+        # автоответчик/робот-приветствие — 4-10с непрерывной речи. Ключевой
+        # ранний сигнал робота (Слой 1, экономия эфира 24.07).
+        metrics["speech_dur_ms"] = (
+            round((last_change_at - speech_started_at) * 1000)
+            if speech_started_at is not None else 0)
         metrics["raw_pcm16"] = bytes(captured_pcm)  # для дампа при «громко, но пусто»
 
     return " ".join(p for p in parts if p).strip()
@@ -975,6 +1011,48 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
     evasive_utterances = []
     UNRECOGNIZED_LIMIT = 3
 
+    # Экономия эфира (24.07): роботы/автоответчики доигрывали весь сценарий
+    # (медиана 88с = ~3 тарифные минуты Novofon), потому что грамматика
+    # да/нет/число не даёт нам «услышать» их проговорки во время звонка.
+    #   Слой 1 — длинная стартовая речь: живое «алло» коротко, робот выдаёт
+    #     4-10с непрерывной речи → сразу свободная проба.
+    #   Слой 2 — свободное распознавание на первых ходах (see LAYER2 ниже).
+    #   Слой 3 — потолок «нет прогресса»: за ~35с ноль конкретных ответов
+    #     → свободная проба + LLM.
+    turn_index = 0                 # номер хода кандидата (0 = первый)
+    dialog_started_at = time.time()
+    no_progress_checked = False    # Слой 3 срабатывает один раз за звонок
+
+    def _hangup_as_voicemail(reason_log: str, probe_text: str):
+        """Единая точка «это робот/автоответчик — вешаю трубку»: копит
+        собранное, ставит status=voicemail, прикладывает метрики, кладёт
+        трубку. Возвращать после вызова."""
+        log(reason_log)
+        result["status"] = "voicemail"
+        result["error"] = probe_text
+        result["answers"] = sess.answers
+        result["notes"] = sess.notes
+        result["transcript"] = sess.transcript
+        _attach_call_quality_note(result["notes"], call_metrics, log)
+        try: call.hangup()
+        except Exception: pass
+
+    def _free_probe_is_robot(reason: str) -> bool:
+        """Один круг СВОБОДНОГО распознавания (без грамматики) + детекторы:
+        фразы автоответчика ИЛИ LLM «робот». По умолчанию — НЕ робот
+        (живого не теряем). Возвращает True, если решено что робот."""
+        log(f"🔎 {reason} — слушаю свободным распознаванием, робот ли...")
+        probe = listen(call, vocab=None, silence_before_speech_sec=3.0, max_total_sec=10.0)
+        if not probe:
+            return False
+        log(f"[свободное распознавание] «{probe}»")
+        if is_voicemail_phrase(probe) or llm_is_robot_live(probe):
+            _hangup_as_voicemail(
+                f"📼 Автоответчик/робот подтверждён свободным распознаванием ({reason}).",
+                probe)
+            return True
+        return False
+
     # Тайминги/качество связи по ходу разговора — чтобы при жалобе "были
     # большие паузы"/"плохое качество" можно было посмотреть в логе звонка,
     # а не гадать. latency_ms — пауза МЕЖДУ репликами (от момента когда
@@ -1069,6 +1147,20 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
             m_listen = m_listen2
         last_event_at = time.time()
         log(f"[КАНДИДАТ] {answer or '(тишина)'}")
+
+        # ── ЭКОНОМИЯ ЭФИРА: ранний отсев робота (24.07, Слои 1-3) ──
+        # Условие «когда звать пробу» — в _early_robot_probe_reason (тестируемо);
+        # само решение робот/человек принимает проба (фразы + LLM, деф. человек).
+        _probe_reason = _early_robot_probe_reason(
+            turn_index, answer, bool(m_listen.get("speech_started")),
+            m_listen.get("speech_dur_ms", 0), sess.i,
+            time.time() - dialog_started_at, no_progress_checked)
+        if _probe_reason:
+            if "без прогресса" in _probe_reason:
+                no_progress_checked = True
+            if _free_probe_is_robot(_probe_reason):
+                return
+        turn_index += 1
         if m_listen.get("candidate_rms"):
             quality = ("тихо" if m_listen["candidate_rms"] < 800 else
                        "нормально" if m_listen["candidate_rms"] < 2500 else "громко")
