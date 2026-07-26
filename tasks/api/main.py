@@ -4690,7 +4690,17 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         #    недозвоне» (retry_no_answer). Именно недозвон — не автоответчик,
         #    не отказ.
         retry_na = req.status == "no_answer" and camp and bool(camp["retry_no_answer"])
-        requeue = bool((req.status == "error" or retry_na) and (contact["attempts"] or 0) < 2)
+        # 26.07: «бросил трубку, не сказав ни слова» — это живой человек с
+        # рабочим номером (21 такой в тестах 40/41/47), но данных ноль. Раньше
+        # он шёл рекрутёру в спорные, где разбирать нечего. Теперь — второй
+        # авто-набор по той же галочке кампании, что и недозвоны; если и там
+        # молчок, категоризатор отправит его в нецелевые.
+        silent_hangup = (
+            req.status == "hangup_by_candidate"
+            and not (req.answers or {})
+            and camp and bool(camp["retry_no_answer"]))
+        requeue = bool((req.status == "error" or retry_na or silent_hangup)
+                       and (contact["attempts"] or 0) < 2)
 
         # Двухфазный статус (17.07): для исходов, по которым ждём запись и
         # пере-проверку (дошёл/оборвался/не распознали при наличии
@@ -4997,7 +5007,8 @@ def vc_campaign_suspect_voicemails(cid: int, request: Request):
     return {"items": out, "total": len(out)}
 
 
-def _vc_categorize_contact(last_call_status, verdict, needs_review, stop_reason):
+def _vc_categorize_contact(last_call_status, verdict, needs_review, stop_reason,
+                            answers_count=None, attempts=None):
     """Категория контакта для отчёта (формат согласован с владельцем 16.07):
       ЦЕЛЕВОЙ    — 100% годен: verdict=passed и все автопроверки чисты;
       НЕЦЕЛЕВОЙ  — 100% негоден: недозвон, подтверждённый автоответчик/робот,
@@ -5018,11 +5029,21 @@ def _vc_categorize_contact(last_call_status, verdict, needs_review, stop_reason)
     if verdict == "stopped" and needs_review:
         return "СПОРНЫЙ", "стоп, но автосверка не подтвердила причину"
     if last_call_status == "hangup_by_candidate":
-        return "СПОРНЫЙ", "живой человек, бросил трубку посреди разговора"
+        # 26.07: делим обрывы на два случая. Если кандидат не дал НИ ОДНОГО
+        # ответа (21 из 44 в тестах 40/41/47) — рекрутёру разбирать нечего,
+        # данных нет; такие уходят в нецелевые (повторный набор — авто, по
+        # галочке кампании). Если ответы есть — это ценный контакт с
+        # частичными данными, оставляем в спорных для ручного дозвона.
+        if answers_count == 0:
+            return "НЕЦЕЛЕВОЙ", "бросил трубку сразу, ответов нет — разговор не состоялся"
+        return "СПОРНЫЙ", "живой человек, бросил трубку посреди разговора (ответы частично есть)"
     if last_call_status == "low_recognition":
         return "СПОРНЫЙ", "речь не распозналась — не факт что автоответчик"
     if last_call_status == "error":
-        return "СПОРНЫЙ", "техсбой звонка — кандидату не звонило"
+        # 26.07: было СПОРНЫЙ — рекрутёр разбирал наши техсбои (10 контактов
+        # в тестах 40/41/47). Кандидат тут ни при чём и разбирать нечего:
+        # разговора не было. Авто-повтор уже отработал (attempts<2).
+        return "НЕЦЕЛЕВОЙ", "техсбой связи — разговора не было, кандидату не звонило"
     if last_call_status == "callback_requested":
         return "СПОРНЫЙ", "просил перезвонить"
     return "СПОРНЫЙ", "прочее"
@@ -5078,9 +5099,6 @@ def vc_campaign_export(cid: int):
     counts = {"ЦЕЛЕВОЙ": 0, "СПОРНЫЙ": 0, "НЕЦЕЛЕВОЙ": 0}
 
     for i, r in enumerate(rows, 1):
-        cat, why = _vc_categorize_contact(
-            r["last_call_status"], r["verdict"], bool(r["needs_review"]), r["stop_reason"])
-        counts[cat] += 1
         answers = {}
         try:
             if r["known_answers_json"]:
@@ -5089,6 +5107,17 @@ def vc_campaign_export(cid: int):
                 answers.update(json.loads(r["answers_json"]))
         except Exception:
             pass
+        # Сколько РЕАЛЬНЫХ ответов собрано (без техметрики и нераспознанных) —
+        # нужно категоризатору, чтобы отличить «бросил трубку молча» от
+        # «оборвался, но данные есть» (см. _vc_categorize_contact, 26.07).
+        answers_count = sum(
+            1 for k, v in answers.items()
+            if "качеств" not in str(k).lower() and str(v).strip()
+            and not str(v).startswith("не распознано"))
+        cat, why = _vc_categorize_contact(
+            r["last_call_status"], r["verdict"], bool(r["needs_review"]), r["stop_reason"],
+            answers_count=answers_count, attempts=r["attempts"])
+        counts[cat] += 1
         ws.append([i, r["name"] or "", r["phone"], cat, why,
                    _LCS_RU.get(r["last_call_status"], r["last_call_status"] or ""),
                    _VERDICT_RU.get(r["verdict"], r["verdict"] or ""),

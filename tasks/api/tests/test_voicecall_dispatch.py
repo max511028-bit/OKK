@@ -1153,9 +1153,21 @@ class TestFunnelAndExport:
         assert f("voicemail", None, False, None)[0] == "НЕЦЕЛЕВОЙ"
         assert f("answered_completed", "stopped", False, "не ищет")[0] == "НЕЦЕЛЕВОЙ"
         assert f("answered_completed", "stopped", True, "судимость?")[0] == "СПОРНЫЙ"
-        assert f("hangup_by_candidate", None, False, None)[0] == "СПОРНЫЙ"
         assert f("low_recognition", None, False, None)[0] == "СПОРНЫЙ"
-        assert f("error", None, False, None)[0] == "СПОРНЫЙ"
+
+    def test_categorize_buckets_revision_2607(self, client, main_module):
+        """Ревизия корзин 26.07: рекрутёр не должен разбирать наши техсбои и
+        обрывы без данных — там нечего проверять. Обрыв С ответами остаётся
+        спорным (ценный контакт с частичными данными)."""
+        f = main_module._vc_categorize_contact
+        # техсбой связи — наша проблема, не кандидата
+        assert f("error", None, False, None)[0] == "НЕЦЕЛЕВОЙ"
+        # бросил трубку молча (ответов 0) — разбирать нечего
+        assert f("hangup_by_candidate", None, False, None, answers_count=0)[0] == "НЕЦЕЛЕВОЙ"
+        # бросил трубку, но ответы успели собраться — ценно, в спорные
+        assert f("hangup_by_candidate", None, False, None, answers_count=2)[0] == "СПОРНЫЙ"
+        # без данных о числе ответов поведение прежнее (обратная совместимость)
+        assert f("hangup_by_candidate", None, False, None)[0] == "СПОРНЫЙ"
 
 
 class TestCampaignCost:
