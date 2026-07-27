@@ -687,7 +687,32 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     #     passed/stopped: Надир-кейс — AI-секретарь упал в low_recognition
     #     и не переклассифицировался, засоряя «спорных». По умолчанию
     #     LLM отвечает «человек» — живых не теряем.
-    if _llm_is_robot_secretary(base_url, combined):
+    #     27.07 — ДВА ФИКСА после ложного срабатывания на живом кандидате
+    #     (контакт 467: анкета собрана полностью — «да, двадцать девять,
+    #     российская, казань, да подходит» — и всё равно ушёл в автоответчик):
+    #       (1) в классификатор подаём ТОЛЬКО дорожку кандидата. Раньше шла
+    #           склейка обеих, т.е. вместе с репликами НАШЕГО бота — модель
+    #           честно видела там робота (нашего же) и отвечала «робот».
+    #           Замер на этой записи: обе дорожки → робот 3/3, только
+    #           кандидат → человек 3/3.
+    #       (2) детерминированный стоп-кран: если кандидат назвал КОНКРЕТНЫЕ
+    #           данные о себе (возраст числом), переклассификации по одному
+    #           мнению маленькой LLM не делаем — робот-секретарь возраст не
+    #           называет (тот же признак, что в _passed_but_no_age). Максимум
+    #           помечаем ⚠, чтобы решил рекрутёр. Живого не теряем.
+    cand_track_for_robot = (transcripts[0] if transcripts else "").strip()
+    if _llm_is_robot_secretary(base_url, cand_track_for_robot or combined):
+        if _candidate_stated_age(cand_track_for_robot):
+            print(f"🛡 contact_id={contact_id}: LLM сочла роботом, но кандидат назвал "
+                  f"возраст — НЕ переклассифицирую, помечаю ⚠.", flush=True)
+            _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+                 json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                            "needs_review": True,
+                            "review_note": "LLM заподозрила робота-секретаря, но кандидат "
+                                           "назвал конкретные данные о себе (возраст) — "
+                                           "статус оставлен, проверьте запись."},
+                 timeout=15)
+            return
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
                         "reclassify_voicemail": True,

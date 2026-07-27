@@ -138,3 +138,35 @@ class TestCallbackShortPhrases:
     def test_unrelated_phrases_not_callback(self):
         for s in ["да двадцать пять москва", "нет не ищу работу", "алло слушаю"]:
             assert not dialog.is_callback_request(s), s
+
+
+class TestNoRobotReclassOnLiveCandidate2707:
+    """Регресс 27.07: живой кандидат (контакт 467) с полностью собранной
+    анкетой — «да, двадцать девять, российская, казань, да подходит» — был
+    переклассифицирован в АВТООТВЕТЧИК по мнению qwen3:1.7b. Две причины:
+    в классификатор шла склейка ОБЕИХ дорожек (включая речь нашего бота —
+    модель видела робота и «признавала» роботом кандидата), и не учитывался
+    детерминированный контр-сигнал: робот-секретарь не называет свой возраст."""
+
+    CAND = ("он а гидом а да нахожусь двадцать девять российская казань "
+            "да подходит надо посмотреть возможно есть")
+    BOT = ("добрый день максим звоню вам по поводу работы меня зовут анастасия "
+           "специалист по подбору персонала подскажите находитесь сейчас в поиске "
+           "работы сколько вам полных лет ваше гражданство в каком городе проживаете")
+
+    def test_age_is_the_counter_signal(self):
+        # именно этот признак должен спасать живого от переклассификации
+        assert da._candidate_stated_age(self.CAND) is True
+
+    def test_robot_secretary_track_has_no_age(self):
+        # у настоящего робота-секретаря возраста нет — стоп-кран не помешает
+        robot = ("какие контактные данные могу передать абоненту говорите "
+                 "пожалуйста а я все запишу")
+        assert da._candidate_stated_age(robot) is False
+
+    def test_bot_own_script_is_not_voicemail_phrase(self):
+        # наш собственный сценарий не должен выглядеть автоответчиком
+        assert not dialog.is_voicemail_phrase(self.BOT)
+
+    def test_live_candidate_track_is_not_voicemail_phrase(self):
+        assert not dialog.is_voicemail_phrase(self.CAND)
