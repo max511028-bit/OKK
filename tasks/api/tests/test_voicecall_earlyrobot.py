@@ -85,3 +85,45 @@ class TestLiveCandidateNotDisturbed:
         ]
         for t in turns:
             assert reason(**t) is None, t
+
+
+class TestSipRegistrationGuard2707:
+    """Фикс 27.07: тестовый звонок владельца дважды дал «ошибка звонка».
+    Novofon сообщил finish_reason='sip_offline' — наша линия числилась у него
+    офлайн, поэтому он не перезвонил для сведения разговора, а мы 30 секунд
+    ждали впустую и писали загадочное «Novofon не перезвонил»."""
+
+    class _Phone:
+        """Мини-заглушка VoIPPhone: отдаёт статусы по заданному сценарию."""
+        def __init__(self, statuses):
+            self._statuses = list(statuses)
+        def get_status(self):
+            return self._statuses.pop(0) if len(self._statuses) > 1 else self._statuses[0]
+
+    def test_registered_passes_immediately(self):
+        from pyVoIP.VoIP import PhoneStatus
+        ph = self._Phone([PhoneStatus.REGISTERED])
+        assert pc._wait_sip_registered(ph, lambda *_: None, timeout=1.0) is True
+
+    def test_registering_then_registered_waits(self):
+        from pyVoIP.VoIP import PhoneStatus
+        ph = self._Phone([PhoneStatus.REGISTERING, PhoneStatus.REGISTERING,
+                          PhoneStatus.REGISTERED])
+        assert pc._wait_sip_registered(ph, lambda *_: None, timeout=2.0) is True
+
+    def test_failed_stops_fast(self):
+        from pyVoIP.VoIP import PhoneStatus
+        logged = []
+        ph = self._Phone([PhoneStatus.FAILED])
+        assert pc._wait_sip_registered(ph, lambda m: logged.append(m), timeout=5.0) is False
+        assert logged, "должны залогировать причину"
+
+    def test_stuck_registering_times_out(self):
+        from pyVoIP.VoIP import PhoneStatus
+        ph = self._Phone([PhoneStatus.REGISTERING])
+        assert pc._wait_sip_registered(ph, lambda *_: None, timeout=0.3) is False
+
+    def test_timeout_constant_is_sane(self):
+        # регистрация на здоровой сети ~100мс; таймаут должен быть заметно
+        # меньше 30с ожидания обратного звонка, чтобы не терять время зря
+        assert 2.0 <= pc.SIP_REGISTER_TIMEOUT_SEC <= 15.0

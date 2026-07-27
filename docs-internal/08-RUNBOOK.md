@@ -152,3 +152,21 @@ STH-Portal-Watchdog, ручной перезапуск), дрались за п�
 ```
 ssh root@195.208.119.67 "free -m; df -h /; systemctl is-active nginx tasks-api portal-watchdog.timer"
 ```
+
+## «Ошибка звонка» у всех контактов подряд — проверь SIP-линию
+
+Симптом: контакты получают `error`, в логе агента «❌ Novofon не перезвонил
+на нашу линию за 30 сек».
+
+Диагностика (с 27.07 агент делает это сам и пишет причину в лог/карточку):
+причина берётся из отчёта Novofon — `finish_reason`. Значение **`sip_offline`**
+означает, что наша SIP-линия 0125878 числилась у Novofon офлайн, поэтому он
+не перезвонил нам для сведения разговора. Кандидату при этом НЕ звонили.
+
+Лечение: агент сам перерегистрируется и делает второй круг. Если не помогло —
+проверить регистрацию вручную:
+```
+python -c "import sys;sys.path.insert(0,'voicecall');from _sip_config import load_env,require;import phone_call as pc;from pyVoIP.VoIP import VoIPPhone;e=load_env();p=VoIPPhone(server=require(e,'SIP_SERVER'),port=int(e.get('SIP_PORT','5060')),username=require(e,'SIP_USER'),password=require(e,'SIP_PASS'),myIP=pc.get_local_ip(),callCallback=lambda c:None);p.start();print(p.get_status())"
+```
+Ожидаем `PhoneStatus.REGISTERED`. Если нет — смотреть сеть на ПК и статус
+линии в личном кабинете Novofon.

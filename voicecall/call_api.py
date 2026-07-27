@@ -211,3 +211,16 @@ def get_charges_by_session(access_token: str, session_ids: "set[int]",
         if sid in session_ids:
             charges[sid] = charges.get(sid, 0.0) + float(leg.get("total_charge") or 0)
     return charges
+
+
+def get_finish_reason(access_token: str, call_session_id: int,
+                       lookback_minutes: float = 15.0) -> "str | None":
+    """Почему звонок не состоялся — глазами Novofon (27.07). Ключевое
+    значение: 'sip_offline' = наша SIP-линия числилась офлайн, поэтому
+    Novofon НЕ перезвонил нам для сведения разговора. Без этого в карточке
+    оставалось невнятное «Novofon не перезвонил за 30 сек», и причину
+    приходилось искать руками в их отчёте."""
+    row = _find_call_report_row(access_token, call_session_id, lookback_minutes)
+    if not row:
+        return None
+    return row.get("finish_reason")

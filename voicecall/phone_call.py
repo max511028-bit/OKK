@@ -414,6 +414,36 @@ def _patch_sip_socket(phone) -> None:
     phone.sip.out = wrapped
 
 
+# Сколько ждём подтверждения SIP-регистрации перед тем как просить Novofon
+# перезвонить. На здоровой сети приходит за ~100мс (замер 27.07); запас на
+# случай подтормаживания. Если не дождались — Novofon увидит линию офлайн
+# и звонить не станет, так что лучше упасть сразу с понятной причиной, чем
+# ждать 30с впустую (на массовом обзвоне это часы на пустом месте).
+SIP_REGISTER_TIMEOUT_SEC = 8.0
+
+
+def _wait_sip_registered(phone, log, timeout: float = SIP_REGISTER_TIMEOUT_SEC) -> bool:
+    """Дождаться, что SIP-линия РЕАЛЬНО зарегистрирована (27.07).
+    VoIPPhone.start() выставляет статус REGISTERING и возвращает управление —
+    подтверждение от сервера приходит отдельно. Раньше мы сразу просили
+    Novofon перезвонить: если регистрация не доехала, он видел линию офлайн
+    (finish_reason='sip_offline'), не звонил, и мы получали загадочное
+    «Novofon не перезвонил за 30 сек» (реальный случай, тест 27.07)."""
+    from pyVoIP.VoIP import PhoneStatus
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        st = phone.get_status()
+        if st == PhoneStatus.REGISTERED:
+            return True
+        if st == PhoneStatus.FAILED:
+            log("❌ SIP-регистрация отклонена сервером (статус FAILED).")
+            return False
+        time.sleep(0.05)
+    log(f"❌ SIP-регистрация не подтверждена за {timeout:.0f}с "
+        f"(статус: {phone.get_status().name}).")
+    return False
+
+
 def normalize_number(raw: str) -> str:
     """Чистим номер до формата 7XXXXXXXXXX (Novofon принимает без +)."""
     digits = "".join(c for c in str(raw) if c.isdigit())
@@ -1620,30 +1650,73 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
         log("Регистрируюсь в SIP...")
         phone.start()
         _patch_sip_socket(phone)
-
-        log(f"Прошу Novofon перезвонить на линию {user} и соединить с +{target}...")
-        try:
-            call_session_id = call_api.start_employee_call(
-                api_secret, target, employee_id, user, virtual_number)
-        except call_api.NovofonAPIError as e:
+        if not _wait_sip_registered(phone, log):
             result["status"] = "error"
-            result["error"] = f"Call API отказал: {e}"
-            log(f"❌ {result['error']}")
+            result["error"] = ("SIP-линия не зарегистрирована — Novofon не сможет "
+                               "перезвонить (звонок не начинался)")
             return result
-        result["call_session_id"] = call_session_id
-        log(f"call_session_id={call_session_id}, жду входящий звонок на нашу линию...")
 
-        try:
-            # Novofon реально перезванивает нам за секунды — 30с уже щедрый
-            # запас. Раньше стояло 70с, из-за чего худший случай недозвона
-            # (вместе с ожиданием ответа кандидата ниже) растягивался почти
-            # на 2 минуты на один контакт — на базе с массовыми недозвонами
-            # это часы впустую.
-            call = incoming.get(timeout=30)
-        except queue.Empty:
+        # Заявка на звонок + ожидание обратного вызова. До ДВУХ кругов:
+        # если Novofon сообщил, что линия числилась офлайн (sip_offline —
+        # реальный случай 27.07, обе попытки владельца), перерегистрируемся
+        # и пробуем ещё раз, вместо того чтобы отдавать «ошибка звонка».
+        call = None
+        for round_no in (1, 2):
+            log(f"Прошу Novofon перезвонить на линию {user} и соединить с +{target}...")
+            try:
+                call_session_id = call_api.start_employee_call(
+                    api_secret, target, employee_id, user, virtual_number)
+            except call_api.NovofonAPIError as e:
+                result["status"] = "error"
+                result["error"] = f"Call API отказал: {e}"
+                log(f"❌ {result['error']}")
+                return result
+            result["call_session_id"] = call_session_id
+            log(f"call_session_id={call_session_id}, жду входящий звонок на нашу линию...")
+
+            try:
+                # Novofon реально перезванивает нам за секунды — 30с уже щедрый
+                # запас. Раньше стояло 70с, из-за чего худший случай недозвона
+                # (вместе с ожиданием ответа кандидата ниже) растягивался почти
+                # на 2 минуты на один контакт — на базе с массовыми недозвонами
+                # это часы впустую.
+                call = incoming.get(timeout=30)
+                break
+            except queue.Empty:
+                # Спрашиваем у Novofon ПРИЧИНУ, а не гадаем: в карточке должно
+                # быть видно «линия была офлайн», а не глухое «не перезвонил».
+                try:
+                    reason = call_api.get_finish_reason(api_secret, call_session_id)
+                except Exception:
+                    reason = None
+                log(f"❌ Novofon не перезвонил за 30 сек (причина по их отчёту: {reason or 'неизвестна'})")
+                if round_no == 1 and reason == "sip_offline":
+                    log("🔁 Линия числилась офлайн — перерегистрируюсь и пробую ещё раз...")
+                    try:
+                        phone.stop()
+                    except Exception:
+                        pass
+                    time.sleep(1.0)
+                    try:
+                        phone.start()
+                        _patch_sip_socket(phone)
+                    except Exception as e:
+                        log(f"❌ Повторная SIP-регистрация не удалась: {e}")
+                        result["status"] = "error"
+                        result["error"] = f"SIP-линия офлайн, перерегистрация не удалась: {e}"
+                        return result
+                    if _wait_sip_registered(phone, log):
+                        continue  # второй круг
+                result["status"] = "error"
+                result["error"] = (
+                    "SIP-линия числилась офлайн у Novofon — он не перезвонил "
+                    "(звонок кандидату не уходил)" if reason == "sip_offline"
+                    else f"Novofon не перезвонил на нашу линию за 30 сек"
+                         + (f" (причина: {reason})" if reason else ""))
+                return result
+        if call is None:
             result["status"] = "error"
-            result["error"] = "Novofon не перезвонил на нашу линию за 30 сек"
-            log(f"❌ {result['error']}")
+            result["error"] = "Novofon не перезвонил на нашу линию"
             return result
 
         log("Ответили на входящий от Novofon. Жду пока дозвонятся до кандидата...")
