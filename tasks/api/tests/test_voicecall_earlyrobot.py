@@ -127,3 +127,47 @@ class TestSipRegistrationGuard2707:
         # регистрация на здоровой сети ~100мс; таймаут должен быть заметно
         # меньше 30с ожидания обратного звонка, чтобы не терять время зря
         assert 2.0 <= pc.SIP_REGISTER_TIMEOUT_SEC <= 15.0
+
+
+class TestNovofonLineStateWait2707:
+    """Корневая причина массовых sip_offline (замер 27.07): pyVoIP рапортует
+    REGISTERED за ~120мс, а коммутатор Novofon переключает physical_state на
+    «Зарегистрирован» только через ~2с. Мы успевали попросить перезвонить в
+    это окно — и получали sip_offline. Ждём подтверждения ОТ NOVOFON."""
+
+    def test_registered_state_accepted(self, monkeypatch):
+        import call_api
+        monkeypatch.setattr(call_api, "get_sip_line_state",
+                            lambda *a, **k: "Зарегистрирован")
+        assert pc._wait_novofon_sees_line("tok", "0125878", lambda *_: None,
+                                          timeout=2.0) is True
+
+    def test_not_registered_times_out(self, monkeypatch):
+        import call_api
+        monkeypatch.setattr(call_api, "get_sip_line_state",
+                            lambda *a, **k: "Не зарегистрирован")
+        assert pc._wait_novofon_sees_line("tok", "0125878", lambda *_: None,
+                                          timeout=1.0) is False
+
+    def test_becomes_registered_after_delay(self, monkeypatch):
+        import call_api
+        calls = {"n": 0}
+        def state(*a, **k):
+            calls["n"] += 1
+            return "Не зарегистрирован" if calls["n"] < 3 else "Зарегистрирован"
+        monkeypatch.setattr(call_api, "get_sip_line_state", state)
+        assert pc._wait_novofon_sees_line("tok", "0125878", lambda *_: None,
+                                          timeout=5.0) is True
+        assert calls["n"] >= 3, "должны были дождаться смены статуса"
+
+    def test_api_error_does_not_crash(self, monkeypatch):
+        import call_api
+        def boom(*a, **k):
+            raise RuntimeError("api down")
+        monkeypatch.setattr(call_api, "get_sip_line_state", boom)
+        assert pc._wait_novofon_sees_line("tok", "0125878", lambda *_: None,
+                                          timeout=0.8) is False
+
+    def test_timeout_constant_sane(self):
+        # 2с типовое ожидание; таймаут должен давать запас, но не тормозить обзвон
+        assert 5.0 <= pc.NOVOFON_LINE_TIMEOUT_SEC <= 20.0

@@ -167,11 +167,20 @@ ssh root@195.208.119.67 "free -m; df -h /; systemctl is-active nginx tasks-api p
 отказ за ~3 секунды (Novofon фиксирует sip_offline мгновенно: start_time ==
 finish_time, 0с — замер 27.07).
 
-⚠️ Если sip_offline идёт МАССОВО (27.07: 7 звонков из 8 за 3 часа) — это не
-разовый сбой, а нестабильность регистрации линии. Известная гипотеза: агент
-регистрируется и де-регистрируется на КАЖДЫЙ звонок, и Novofon не успевает
-за этими переключениями. Кандидат на постоянную (persistent) SIP-регистрацию —
-см. 10-ТЕХДОЛГ. Если не помогло —
+### Корневая причина найдена 27.07 (замер)
+
+`pyVoIP` рапортует `REGISTERED` через **~120 мс** (пришёл 200 OK от SIP-сервера),
+а коммутатор Novofon переключает `physical_state` на «Зарегистрирован» только
+через **~2 секунды**. Всё это окно заявка `start_employee_call` отлетает с
+`sip_offline`. Раньше мы верили локальному статусу и просили перезвонить сразу.
+
+Лечение (в коде): перед заявкой на звонок ждём подтверждения ИМЕННО ОТ
+NOVOFON — `call_api.get_sip_line_state()` → `physical_state`.
+
+Проверить состояние линии глазами Novofon в любой момент:
+```
+python -c "import sys;sys.path.insert(0,'voicecall');import call_api;from _sip_config import load_env,require;e=load_env();print(call_api.get_sip_line_state(require(e,'NOVOFON_API_SECRET'),'0125878'))"
+``` Если не помогло —
 проверить регистрацию вручную:
 ```
 python -c "import sys;sys.path.insert(0,'voicecall');from _sip_config import load_env,require;import phone_call as pc;from pyVoIP.VoIP import VoIPPhone;e=load_env();p=VoIPPhone(server=require(e,'SIP_SERVER'),port=int(e.get('SIP_PORT','5060')),username=require(e,'SIP_USER'),password=require(e,'SIP_PASS'),myIP=pc.get_local_ip(),callCallback=lambda c:None);p.start();print(p.get_status())"

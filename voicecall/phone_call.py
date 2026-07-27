@@ -444,6 +444,35 @@ def _wait_sip_registered(phone, log, timeout: float = SIP_REGISTER_TIMEOUT_SEC) 
     return False
 
 
+# Сколько ждём, пока НАШУ регистрацию увидит коммутатор Novofon. Замер
+# 27.07: pyVoIP рапортует REGISTERED за ~120мс, а physical_state у Novofon
+# переключается на «Зарегистрирован» через ~2с. Все эти 2 секунды заявка
+# на звонок отлетает с sip_offline (7 звонков из 8 в тот день).
+NOVOFON_LINE_TIMEOUT_SEC = 12.0
+
+
+def _wait_novofon_sees_line(api_secret: str, sip_user: str, log,
+                             timeout: float = NOVOFON_LINE_TIMEOUT_SEC) -> bool:
+    """Дождаться, что линия числится зарегистрированной именно У NOVOFON.
+    Локального REGISTERED от pyVoIP недостаточно — см. комментарий выше.
+    Возвращает False по таймауту (вызывающий решает, пробовать ли всё равно)."""
+    deadline = time.time() + timeout
+    t0 = time.time()
+    last = None
+    while time.time() < deadline:
+        try:
+            last = call_api.get_sip_line_state(api_secret, sip_user)
+        except Exception:
+            last = None
+        if last and "не" not in last.lower():
+            log(f"✅ Novofon видит линию как «{last}» ({(time.time() - t0):.1f}с).")
+            return True
+        time.sleep(0.4)
+    log(f"⚠️  Novofon за {timeout:.0f}с так и не увидел линию "
+        f"(статус: {last or 'неизвестен'}).")
+    return False
+
+
 def normalize_number(raw: str) -> str:
     """Чистим номер до формата 7XXXXXXXXXX (Novofon принимает без +)."""
     digits = "".join(c for c in str(raw) if c.isdigit())
@@ -1655,6 +1684,10 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
             result["error"] = ("SIP-линия не зарегистрирована — Novofon не сможет "
                                "перезвонить (звонок не начинался)")
             return result
+        # Локального REGISTERED мало: коммутатор Novofon узнаёт о регистрации
+        # примерно на 2 секунды позже (замер 27.07), и всё это время заявка
+        # отлетает с sip_offline. Ждём подтверждения именно от него.
+        _wait_novofon_sees_line(api_secret, user, log)
 
         # Заявка на звонок + ожидание обратного вызова. До ДВУХ кругов:
         # если Novofon сообщил, что линия числилась офлайн (sip_offline —
@@ -1722,6 +1755,7 @@ def run_call_via_bridge(phone_number: str, scenario_id: str = DEFAULT_SCENARIO,
                     result["error"] = f"SIP-линия офлайн, перерегистрация не удалась: {e}"
                     return result
                 if _wait_sip_registered(phone, log):
+                    _wait_novofon_sees_line(api_secret, user, log)
                     continue  # следующий круг
             result["status"] = "error"
             result["error"] = (

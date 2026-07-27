@@ -224,3 +224,19 @@ def get_finish_reason(access_token: str, call_session_id: int,
     if not row:
         return None
     return row.get("finish_reason")
+
+
+def get_sip_line_state(access_token: str, line_number: str = None) -> "str | None":
+    """Видит ли КОММУТАТОР Novofon нашу SIP-линию зарегистрированной (27.07).
+
+    Ключевой замер, объяснивший массовые sip_offline: pyVoIP сообщает
+    REGISTERED через ~120мс (пришёл 200 OK от SIP-сервера), а вот
+    physical_state у Novofon переключается на «Зарегистрирован» только
+    через ~2 СЕКУНДЫ. Всё это время заявка start_employee_call получает
+    finish_reason='sip_offline' — Novofon считает линию офлайн и не
+    перезванивает. Поэтому перед заявкой ждём именно ЭТОТ статус."""
+    result = _rpc(DATA_API_URL, "get.sip_lines", {"access_token": access_token})
+    for line in result.get("data", []):
+        if line_number is None or str(line.get("phone_number")) == str(line_number):
+            return line.get("physical_state")
+    return None
