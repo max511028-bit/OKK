@@ -163,7 +163,15 @@ ssh root@195.208.119.67 "free -m; df -h /; systemctl is-active nginx tasks-api p
 означает, что наша SIP-линия 0125878 числилась у Novofon офлайн, поэтому он
 не перезвонил нам для сведения разговора. Кандидату при этом НЕ звонили.
 
-Лечение: агент сам перерегистрируется и делает второй круг. Если не помогло —
+Лечение: агент сам перерегистрируется и делает до ТРЁХ кругов, обнаруживая
+отказ за ~3 секунды (Novofon фиксирует sip_offline мгновенно: start_time ==
+finish_time, 0с — замер 27.07).
+
+⚠️ Если sip_offline идёт МАССОВО (27.07: 7 звонков из 8 за 3 часа) — это не
+разовый сбой, а нестабильность регистрации линии. Известная гипотеза: агент
+регистрируется и де-регистрируется на КАЖДЫЙ звонок, и Novofon не успевает
+за этими переключениями. Кандидат на постоянную (persistent) SIP-регистрацию —
+см. 10-ТЕХДОЛГ. Если не помогло —
 проверить регистрацию вручную:
 ```
 python -c "import sys;sys.path.insert(0,'voicecall');from _sip_config import load_env,require;import phone_call as pc;from pyVoIP.VoIP import VoIPPhone;e=load_env();p=VoIPPhone(server=require(e,'SIP_SERVER'),port=int(e.get('SIP_PORT','5060')),username=require(e,'SIP_USER'),password=require(e,'SIP_PASS'),myIP=pc.get_local_ip(),callCallback=lambda c:None);p.start();print(p.get_status())"
