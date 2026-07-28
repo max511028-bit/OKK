@@ -203,6 +203,13 @@ def _llm_ask(base_url: str, prompt: str, num_predict: int = 12,
         return ""
 
 
+# Минимум слов в дорожке кандидата, чтобы вообще судить «человек/робот» по
+# записи (28.07). Меньше — не переклассифицируем: на тесте «НДЗ Пермь» живые
+# уехали в автоответчики по «алло» и «добрый какой». В live-проверке такой
+# порог был изначально (dialog.llm_is_robot_live).
+ROBOT_CHECK_MIN_WORDS = 5
+
+
 def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
     """LLM-классификация: собеседник в записи — живой кандидат или робот-
     секретарь/голосовой ассистент/автоответчик? Нужна там, где точные
@@ -220,9 +227,17 @@ def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
     живых и поймал всех роботов, в отличие от любой LLM.
 
     Осторожно: по умолчанию считаем ЧЕЛОВЕКОМ — реклассим в робота только
-    при явном «робот», чтобы не потерять живого кандидата."""
+    при явном «робот», чтобы не потерять живого кандидата.
+
+    28.07: добавлен порог МИНИМУМА СЛОВ. В live-проверке (llm_is_robot_live)
+    он был с самого начала («на паре слов не судим»), а здесь его не было —
+    и на тесте «НДЗ Пермь» в автоответчики уехали живые люди по огрызкам
+    записи: «алло» (1 слово) и «добрый какой» (2 слова). Под удар попадали
+    именно те, у кого плохая связь или короткий ответ."""
     if not combined_transcript.strip():
         return False
+    if len(combined_transcript.split()) < ROBOT_CHECK_MIN_WORDS:
+        return False  # слишком мало речи, чтобы судить — пусть решает человек
     ans = _llm_ask(
         base_url,
         "Ты анализируешь расшифровку телефонного звонка. Бот-рекрутёр (Диана) "
@@ -594,6 +609,35 @@ def _recheck_verdict(base_url: str, verdict: str, stop_reason: str, combined_tra
     return False, None
 
 
+def _recognize_mp3(url: str) -> str:
+    """Резерв для пере-проверки (28.07): если Novofon не отдал WAV-дорожки,
+    распознаём общую mp3-запись разговора. Конвертируем в WAV 16кГц моно
+    тем же ffmpeg, что уже используется для телефонного аудио (пакет
+    imageio-ffmpeg), и отдаём большой Vosk-модели. Лучшее старание — при
+    любой ошибке возвращаем пустую строку."""
+    import tempfile, os as _os, subprocess
+    import urllib.request as _ur
+    from stt import recognize_wav_file
+    mp3_path = tempfile.mktemp(suffix=".mp3")
+    wav_path = tempfile.mktemp(suffix=".wav")
+    try:
+        _ur.urlretrieve(url, mp3_path)
+        import imageio_ffmpeg
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        subprocess.run([ffmpeg, "-y", "-i", mp3_path, "-ac", "1", "-ar", "16000", wav_path],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=120)
+        with _STT_RECHECK_BUSY:
+            return recognize_wav_file(wav_path) or ""
+    except Exception as e:
+        print(f"⚠️  Не смог распознать mp3-запись: {e}", flush=True)
+        return ""
+    finally:
+        for p in (mp3_path, wav_path):
+            try: _os.remove(p)
+            except Exception: pass
+
+
 def _recheck_transcript(base_url: str, token: str, contact_id: int,
                          api_secret: str, call_session_id: int,
                          verdict: str = "", stop_reason: str = "",
@@ -614,8 +658,6 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     from stt import recognize_wav_file
 
     urls = call_api.get_wav_track_urls(api_secret, call_session_id)
-    if not urls:
-        return
 
     # Скачивание — лёгкое, распознавание — тяжёлое (та же Vosk-модель,
     # что и живой звонок). Держим только STT-часть под семафором, чтобы
@@ -623,7 +665,7 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     # и не мешали текущему живому разговору (см. комментарий у
     # _STT_RECHECK_BUSY).
     transcripts = []
-    for url in urls:
+    for url in (urls or []):
         tmp_path = tempfile.mktemp(suffix=".wav")
         try:
             _ur.urlretrieve(url, tmp_path)
@@ -636,7 +678,46 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
             try: _os.remove(tmp_path)
             except Exception: pass
 
+    # 28.07, резерв: WAV-дорожек может не быть (реальный случай — контакт 477
+    # «НДЗ Пермь»: mp3-запись есть, дорожек нет). Раньше тут был тихий
+    # return — контакт навсегда застревал в «⏳ проверяется» И не проходил
+    # НИ ОДНОЙ проверки на робота, из-за чего автоответчик оставался
+    # «живым» вердиктом «не ищет работу». Берём общую mp3-запись и
+    # распознаём её (одна смешанная дорожка — хуже для разбора «кто где»,
+    # но детекторы робота работают и по ней).
     if not any(t.strip() for t in transcripts):
+        mp3_url = None
+        try:
+            mp3_url = call_api.get_recording_url(api_secret, call_session_id)
+        except Exception:
+            pass
+        if mp3_url:
+            print(f"🎧 contact_id={contact_id}: WAV-дорожек нет, распознаю общую "
+                  f"mp3-запись.", flush=True)
+            txt = _recognize_mp3(mp3_url)
+            if txt.strip():
+                transcripts = [txt]
+
+    if not any(t.strip() for t in transcripts):
+        # Совсем нечего проверять — но контакт ОБЯЗАН быть финализирован,
+        # иначе висит в «⏳ проверяется» вечно (баг 28.07). И честно
+        # помечаем, что статусу нельзя доверять: проверки не было.
+        blind = verdict in ("passed", "stopped")
+        try:
+            _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+                 json_body={"contact_id": contact_id,
+                            "recheck_transcript": "(запись есть, но распознать не удалось)",
+                            "no_recording": True,
+                            "needs_review": blind,
+                            "review_note": ("Пере-проверка по записи не удалась (нет дорожек "
+                                            "и mp3 не распознан) — статус получен только по "
+                                            "распознаванию в реальном времени, проверьте вручную."
+                                            if blind else None)},
+                 timeout=15)
+            print(f"🕳 contact_id={contact_id}: запись не распозналась — финализирован"
+                  + (" с ⚠." if blind else "."), flush=True)
+        except Exception as e:
+            print(f"⚠️  Финализация после неудачной пере-проверки не удалась: {e}", flush=True)
         return
     combined = "\n\n".join(
         f"[Дорожка {i+1}] {t.strip() or '(тишина/не распознано)'}"

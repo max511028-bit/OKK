@@ -1225,3 +1225,65 @@ class TestCampaignCost:
             str(v) for row in wb["Сводка"].iter_rows(values_only=True)
             for v in row if v is not None)
         assert "44.55" in joined and "Стоимость" in joined
+
+
+class TestStalePendingWatchdog:
+    """Сторож зависшего «⏳ проверяется» (28.07). Реальный случай «НДЗ Пермь»:
+    у контакта была запись, но WAV-дорожек Novofon не отдал — агент молча
+    выходил, контакт висел «проверяется» вечно и НЕ проходил проверок."""
+
+    def _campaign(self, client, phone="79994440001"):
+        content = _xlsx_bytes(["Имя", "Телефон"], [["A", phone]])
+        r = client.post(
+            "/voicecall/upload-contacts",
+            files={"file": ("t.xlsx", content,
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"name": "Сторож тест", "scenario_id": SCENARIO, "source": "manual"},
+        )
+        return r.json()["campaign_id"]
+
+    def _make_pending(self, client, portal_token, phone):
+        cid = self._campaign(client, phone)
+        auth = {"X-Auth-Token": portal_token}
+        client.post(f"/voicecall/campaigns/{cid}/start-dispatch", headers=auth)
+        client.get("/voicecall/dispatch/poll", headers=auth)
+        claim = client.post("/voicecall/dispatch/claim", params={"campaign_id": cid},
+                             headers=auth).json()
+        contact_id = claim["contact_id"]
+        # call_session_id → бэкенд ставит review_state='pending'
+        r = client.post("/voicecall/dispatch/result", headers=auth, json={
+            "contact_id": contact_id, "status": "answered_completed",
+            "verdict": "stopped", "stop_reason": "Актуальность поиска работы: нет",
+            "call_session_id": 12345})
+        assert r.status_code == 200
+        return cid, contact_id
+
+    def test_fresh_pending_is_not_touched(self, client, portal_token):
+        """Свежий контакт должен остаться «проверяется» — пере-проверка идёт."""
+        cid, contact_id = self._make_pending(client, portal_token, "79994440002")
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["review_state"] == "pending"
+        client.get("/voicecall/contacts", params={"campaign_id": cid})  # дёргаем сторожа
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["review_state"] == "pending", "свежий не должен финализироваться"
+
+    def test_stale_pending_finalized_with_warning(self, client, portal_token, main_module):
+        """Провисевший дольше порога — финализируется и помечается ⚠."""
+        cid, contact_id = self._make_pending(client, portal_token, "79994440003")
+        # состариваем отметку последней попытки
+        import datetime as dt
+        old = (dt.datetime.now() - dt.timedelta(minutes=30)).isoformat(timespec="seconds")
+        with main_module.db() as conn:
+            conn.execute("UPDATE voicecall_contacts SET last_attempt_at=? WHERE id=?",
+                         (old, contact_id))
+
+        client.get("/voicecall/contacts", params={"campaign_id": cid})  # сторож срабатывает
+
+        detail = client.get(f"/voicecall/contacts/{contact_id}/detail").json()
+        assert detail["review_state"] == "final", "зависший должен быть финализирован"
+        last = detail["history"][-1]
+        assert last["needs_review"] == 1, "статусу нельзя верить вслепую → ⚠"
+        assert "не завершилась" in (last["review_note"] or "")
+
+    def test_threshold_is_ten_minutes(self, main_module):
+        assert main_module._VC_STALE_PENDING_MINUTES == 10

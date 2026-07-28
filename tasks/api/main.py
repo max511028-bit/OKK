@@ -4203,6 +4203,7 @@ async def vc_upload_contacts(
 def vc_list_campaigns(limit: int = 50):
     limit = max(1, min(int(limit), 200))
     with db() as conn:
+        _vc_finalize_stale_pending(conn)   # снять зависшие «⏳ проверяется»
         rows = conn.execute(
             "SELECT c.id, c.name, c.scenario_id, c.scenario_name, c.created_at, c.total, c.source, "
             "       c.dispatch_state, c.dispatch_paused, c.cost_rub, c.cost_updated_at, "
@@ -4265,6 +4266,7 @@ def vc_list_contacts(
         params.append(status)
     where = ("WHERE " + " AND ".join(wh)) if wh else ""
     with db() as conn:
+        _vc_finalize_stale_pending(conn)   # снять зависшие «⏳ проверяется»
         rows = conn.execute(
             f"SELECT ct.id, ct.campaign_id, ct.name, ct.phone, ct.source, ct.status, ct.verdict, "
             f"       ct.stop_reason, ct.screen_out_reason, ct.last_call_status, "
@@ -4446,6 +4448,41 @@ def vc_resume_dispatch(cid: int, request: Request):
 
 
 _VC_STALE_CALLING_MINUTES = 10
+
+# Сколько ждём пере-проверку по записи, прежде чем снять бейдж «⏳ проверяется»
+# принудительно (28.07). Реальный случай «НДЗ Пермь»: у контакта 477 запись
+# была, а WAV-дорожек Novofon не отдал — агент молча выходил, и контакт висел
+# «проверяется» вечно. Агентские правки этот случай закрыли, но сторож нужен
+# как страховка от ЛЮБОГО будущего зависания (упал агент, потеряли сеть).
+_VC_STALE_PENDING_MINUTES = 10
+
+
+def _vc_finalize_stale_pending(conn) -> int:
+    """Снять зависший «⏳ проверяется» и честно пометить, что пере-проверки
+    не было. Вызывается из читающих эндпоинтов — дешёвый UPDATE по индексу."""
+    stale_before = (_vc_dt.datetime.now()
+                    - _vc_dt.timedelta(minutes=_VC_STALE_PENDING_MINUTES)
+                    ).isoformat(timespec="seconds")
+    stuck = conn.execute(
+        "SELECT id, validation_id, verdict FROM voicecall_contacts "
+        "WHERE review_state='pending' AND last_attempt_at IS NOT NULL "
+        "  AND last_attempt_at < ?", (stale_before,)).fetchall()
+    if not stuck:
+        return 0
+    note = ("Пере-проверка по записи не завершилась за отведённое время — "
+            "статус получен только по распознаванию в реальном времени, "
+            "проверьте вручную.")
+    for r in stuck:
+        conn.execute("UPDATE voicecall_contacts SET review_state='final' WHERE id=?",
+                     (r["id"],))
+        # ⚠ ставим только там, где статусу действительно нельзя доверять
+        # вслепую (дошёл до конца/стоп). Недозвоны и автоответчики и так финальны.
+        if r["validation_id"] and r["verdict"] in ("passed", "stopped"):
+            conn.execute(
+                "UPDATE candidate_validations SET needs_review=1, "
+                "review_note=COALESCE(NULLIF(review_note,''), ?) WHERE id=?",
+                (note, r["validation_id"]))
+    return len(stuck)
 
 
 # Последний момент, когда агент обзвона был на связи (любой его запрос:

@@ -170,3 +170,31 @@ class TestNoRobotReclassOnLiveCandidate2707:
 
     def test_live_candidate_track_is_not_voicemail_phrase(self):
         assert not dialog.is_voicemail_phrase(self.CAND)
+
+
+class TestRobotCheckMinWords2807:
+    """Тест «НДЗ Пермь» 28.07: в автоответчики уехали живые люди по огрызкам
+    записи — «алло» (1 слово) и «добрый какой» (2). У live-проверки порог
+    «на паре слов не судим» был изначально, у пост-проверки по записи — нет."""
+
+    def setup_method(self):
+        # если порог не сработает, до сети дело не дойдёт — вернём «робот»
+        da._llm_ask = lambda *a, **k: "робот"
+
+    def test_single_word_never_robot(self):
+        assert da._llm_is_robot_secretary("x", "алло") is False
+
+    def test_two_words_never_robot(self):
+        assert da._llm_is_robot_secretary("x", "добрый какой") is False
+
+    def test_empty_never_robot(self):
+        assert da._llm_is_robot_secretary("x", "   ") is False
+
+    def test_long_enough_track_is_judged(self):
+        # достаточно речи — решение отдаём модели (здесь стаб говорит «робот»)
+        long_track = ("какие контактные данные могу передать абоненту "
+                      "говорите пожалуйста а я все запишу")
+        assert da._llm_is_robot_secretary("x", long_track) is True
+
+    def test_threshold_is_sane(self):
+        assert 3 <= da.ROBOT_CHECK_MIN_WORDS <= 8
