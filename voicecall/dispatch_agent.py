@@ -234,12 +234,63 @@ def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
     и на тесте «НДЗ Пермь» в автоответчики уехали живые люди по огрызкам
     записи: «алло» (1 слово) и «добрый какой» (2 слова). Под удар попадали
     именно те, у кого плохая связь или короткий ответ."""
-    if not combined_transcript.strip():
-        return False
-    if len(combined_transcript.split()) < ROBOT_CHECK_MIN_WORDS:
-        return False  # слишком мало речи, чтобы судить — пусть решает человек
-    ans = _llm_ask(
-        base_url,
+    is_robot, _ = _llm_robot_verdict(base_url, combined_transcript, votes=1)
+    return is_robot
+
+
+# Сколько раз опрашивать модель, когда есть косвенное подозрение на робота
+# (30.07, контакт 564 «Мария»). Причина: на её дорожке тот же промпт даёт
+# «робот» 3 раза из 3 при ручном прогоне, а в бою ответил «человек» — на
+# пограничных записях qwen3:1.7b нестабильна, и один опрос это монетка.
+# Проверка фоновая, ПОСЛЕ звонка (num_predict=6) — задержка никому не мешает.
+ROBOT_CHECK_VOTES = 3
+
+
+def _robot_check_is_suspicious(live_answers: dict, candidate_track: str) -> bool:
+    """Стоит ли переспросить модель несколько раз. Косвенные признаки:
+    возраст за разговор не прозвучал, либо часть ответов не распозналась —
+    ровно та картина, на которой модель и «плавает»."""
+    if not _candidate_stated_age(candidate_track or ""):
+        return True
+    for v in (live_answers or {}).values():
+        if isinstance(v, str) and "не распознано" in v:
+            return True
+    return False
+
+
+def _llm_robot_verdict(base_url: str, transcript: str,
+                       votes: int = 1) -> "tuple[bool, bool]":
+    """(робот?, удалось ли вообще спросить).
+
+    Второе значение важнее, чем кажется. Раньше любая ошибка LLM молча
+    возвращала False, то есть «человек» — а в логе кампаний это 20 ответов
+    «Bad Gateway» и 14 таймаутов. Автоответчик при сетевом сбое тихо
+    оставался «годным». Теперь вызывающий код различает «модель сказала
+    человек» и «спросить не удалось» и во втором случае ставит ⚠.
+
+    votes>1 — опрашиваем несколько раз и берём большинство (см.
+    ROBOT_CHECK_VOTES). Пустой ответ моделью не считается голосом."""
+    if not transcript.strip():
+        return False, True  # судить не о чем — это ответ, а не сбой
+    if len(transcript.split()) < ROBOT_CHECK_MIN_WORDS:
+        return False, True  # слишком мало речи, чтобы судить
+    prompt = _robot_check_prompt(transcript)
+    robot = human = 0
+    for _ in range(max(1, votes)):
+        ans = _llm_ask(base_url, prompt, num_predict=6)
+        if not ans:
+            continue  # сбой или пустой ответ — не голос
+        if "робот" in ans and "человек" not in ans:
+            robot += 1
+        else:
+            human += 1
+    if robot + human == 0:
+        return False, False
+    return robot > human, True
+
+
+def _robot_check_prompt(combined_transcript: str) -> str:
+    return (
         "Ты анализируешь расшифровку телефонного звонка. Бот-рекрутёр (Диана) "
         "задаёт кандидату короткие вопросы про вакансию: ищет ли работу, "
         "сколько лет, гражданство, город. С ботом кто-то говорит.\n\n"
@@ -256,9 +307,7 @@ def _llm_is_robot_secretary(base_url: str, combined_transcript: str) -> bool:
         "абонент не может ответить.\n\n"
         "Главный признак робота: за весь разговор так и НЕ прозвучало ни "
         "возраста, ни города кандидата — одни встречные вопросы и вода.\n\n"
-        "Ответь ОДНИМ словом: человек / робот.",
-        num_predict=6)
-    return "робот" in ans and "человек" not in ans
+        "Ответь ОДНИМ словом: человек / робот.")
 
 
 # Возраст, названный кандидатом: числительные-стемы (без trailing \b — ломается
@@ -275,6 +324,30 @@ def _candidate_stated_age(candidate_track: str) -> bool:
     уклоняется (встречные вопросы, «передать сообщение»). Детерминированно."""
     t = candidate_track or ""
     return bool(_AGE_WORD_RE.search(t) or _AGE_NUM_RE.search(t))
+
+
+# Конкретные факты о себе, которые называет живой кандидат и не называет
+# робот-секретарь: возраст числом (см. _candidate_stated_age), гражданство,
+# наличие медкнижки. Города списком не берём — их слишком много, а ошибка
+# тут дорогая (лишний контакт уедет в автоответчики).
+_PERSONAL_FACT_RE = re.compile(
+    r"(\bрф\b|росси\w*|российск\w*|русск\w*|"
+    r"узбек\w*|таджик\w*|киргиз\w*|кыргыз\w*|казах\w*|армен\w*|азербайдж\w*|"
+    r"грузин\w*|украин\w*|белорус\w*|молдав\w*|туркмен\w*|"
+    r"медкнижк\w*|медицинск\w+ книжк\w*|санитарн\w+ книжк\w*)"
+)
+
+
+def _candidate_gave_personal_data(candidate_track: str) -> bool:
+    """Назвал ли собеседник хоть один конкретный факт о СЕБЕ (возраст,
+    гражданство, медкнижка). Контр-сигнал против переклассификации в
+    роботы: робот-секретарь таких данных не сообщает — он их спрашивает.
+    Расширение _candidate_stated_age на случаи, когда до вопроса про
+    возраст разговор не дошёл."""
+    t = (candidate_track or "").lower().replace("ё", "е")
+    if _candidate_stated_age(t):
+        return True
+    return bool(_PERSONAL_FACT_RE.search(t))
 
 
 def _passed_but_no_age(scenario: dict, verdict: str, transcripts: list) -> bool:
@@ -735,7 +808,8 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     #    высокоспецифичны (проверено: 0 ложных срабатываний на реальных
     #    ответах кандидатов; дорожка бота тоже не триггерит), так что
     #    переклассифицируем при любом вердикте.
-    from dialog import is_voicemail_phrase, is_ringback_phrase
+    from dialog import (is_voicemail_phrase, is_ringback_phrase, is_spamguard_phrase,
+                        count_evasive_markers, EVASIVE_ROBOT_MIN)
     if any(is_voicemail_phrase(t) for t in transcripts):
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
@@ -747,6 +821,56 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
         print(f"🔁 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота по "
               f"записи (live-вердикт был: {verdict or 'нет'}).", flush=True)
         return
+
+    # 0а) СПАМ-ЗАЩИТА оператора (30.07, контакт 525 «Виталий»): робот
+    #     Тинькофф/МТС/Мегафона не объявляет себя автоответчиком, а
+    #     переспрашивает звонящего — «да, да, слушаю вас, а уточните
+    #     пожалуйста, С КЕМ ГОВОРЮ... давайте позже». Фразы (0) его не
+    #     знали, LLM (0в) на реальной дорожке дала «человек» 3/3, а
+    #     реалтайм смял реплику в «потом» → ложный ОТКАЗ «не ищет работу».
+    #     Сама по себе фраза неоднозначна (живой, которому позвонили с
+    #     незнакомого номера, тоже спрашивает «а с кем я говорю?»), поэтому
+    #     решаем ПО СОВОКУПНОСТИ — как в стоп-кране 0в, только зеркально:
+    #       спам-фраза + НИ ОДНОГО факта о себе → робот, переклассифицируем;
+    #       спам-фраза + факты названы      → живой, только ⚠.
+    #     Только на РАЗДЕЛЬНЫХ дорожках: в смешанной mp3 (резерв выше)
+    #     слышен и наш бот, а «представьтесь» рекрутёр может вписать в
+    #     сценарий — на склейке это дало бы ложное срабатывание.
+    #     30.07, второй сигнал той же природы (контакт 564 «Мария»): AI-
+    #     секретарь, который не переспрашивает, а ВЕЖЛИВО ТЯНЕТ ВРЕМЯ —
+    #     «расскажите побольше», «я бы ещё подумал», «паузу возьму чтоб
+    #     подумать», «подъеду к вам лично». За 1м43с ни одного ответа по
+    #     существу, но «да» на первый вопрос дало вердикт ГОДЕН.
+    #     Считаем РАЗНЫЕ уклончивые обороты: три и больше — это уже не
+    #     «человек задумался», а поведение робота. Решение — так же по
+    #     совокупности с отсутствием данных о себе.
+    behaviour_note = None
+    if len(transcripts) >= 2:
+        cand0 = (transcripts[0] or "").strip()
+        hit_spam = is_spamguard_phrase(cand0)
+        evasive_n = count_evasive_markers(cand0)
+        hit_evasive = evasive_n >= EVASIVE_ROBOT_MIN
+        if hit_spam or hit_evasive:
+            why = ("переспрашивал «с кем говорю / цель звонка»" if hit_spam
+                   else f"уклонялся от ответов ({evasive_n} разных оборотов: "
+                        f"«расскажите побольше», «подумаю», «откуда у вас мой номер»)")
+            if not _candidate_gave_personal_data(cand0):
+                _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+                     json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                                "reclassify_voicemail": True,
+                                "review_note": f"Переклассифицировано по записи: собеседник "
+                                               f"{why} и не сообщил о себе ничего конкретного — "
+                                               f"робот-секретарь, а не живой кандидат."},
+                     timeout=15)
+                print(f"🛡 contact_id={contact_id} переклассифицирован в АВТООТВЕТЧИК/робота "
+                      f"(поведение по записи: {'спам-защита' if hit_spam else f'{evasive_n} уклончивых'}"
+                      f"; live-вердикт был: {verdict or 'нет'}).", flush=True)
+                return
+            behaviour_note = (f"Собеседник {why} — так ведёт себя робот-секретарь, но "
+                              f"конкретные данные о себе он назвал. Статус оставлен, "
+                              f"проверьте запись.")
+            print(f"🕵 contact_id={contact_id}: поведение робота, но данные о себе названы — "
+                  f"помечен ⚠, статус не меняю.", flush=True)
 
     # 0б) голосовой РИНГ-БЭК в записи («идёт дозвон, оставайтесь на линии»)
     #     без осмысленных ответов — не соединилось, исход «не взял трубку»
@@ -781,8 +905,17 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     #           мнению маленькой LLM не делаем — робот-секретарь возраст не
     #           называет (тот же признак, что в _passed_but_no_age). Максимум
     #           помечаем ⚠, чтобы решил рекрутёр. Живого не теряем.
+    #     30.07 — ТРЕТИЙ фикс: один опрос модели заменён голосованием, а
+    #     сбой опроса больше не выдаётся за «человек». Контакт 564: ручной
+    #     прогон того же промпта на той же дорожке даёт «робот» 3/3, а в
+    #     бою вернулось «человек» — и автоответчик остался «годным».
     cand_track_for_robot = (transcripts[0] if transcripts else "").strip()
-    if _llm_is_robot_secretary(base_url, cand_track_for_robot or combined):
+    robot_votes = (ROBOT_CHECK_VOTES
+                   if _robot_check_is_suspicious(live_answers, cand_track_for_robot)
+                   else 1)
+    is_robot, robot_checked = _llm_robot_verdict(
+        base_url, cand_track_for_robot or combined, votes=robot_votes)
+    if is_robot:
         if _candidate_stated_age(cand_track_for_robot):
             print(f"🛡 contact_id={contact_id}: LLM сочла роботом, но кандидат назвал "
                   f"возраст — НЕ переклассифицирую, помечаю ⚠.", flush=True)
@@ -826,6 +959,19 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     # 1) сверка причины ОТКАЗА с записью (ложные отказы)
     needs_review, review_note = _recheck_verdict(base_url, verdict, stop_reason, combined)
     notes = [review_note] if review_note else []
+    if behaviour_note:  # см. 0а — поведение робота, но данные о себе названы
+        needs_review = True
+        notes.append(behaviour_note)
+    # Сбой проверки на робота — это НЕ «человек». Раньше падение LLM молча
+    # давало «годен» без единого следа (см. 0в): в логе кампаний 20 ответов
+    # «Bad Gateway» и 14 таймаутов. Теперь рекрутёр видит, что проверки не было.
+    if not robot_checked and verdict in ("passed", "stopped"):
+        needs_review = True
+        notes.append("Проверка «робот или живой» не выполнена — модель не ответила. "
+                     "Статус получен только по распознаванию в реальном времени, "
+                     "проверьте запись.")
+        print(f"❓ contact_id={contact_id}: проверка на робота не выполнена (LLM молчит) — ⚠.",
+              flush=True)
 
     # 2) сверка КРИТИЧНЫХ ответов (возраст + потерянные стоп-факторы) с
     #    записью — восстанавливаем то, что маленькая модель потеряла в

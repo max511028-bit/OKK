@@ -43,6 +43,26 @@ curl https://portalsth.ru/tasks/api/voicecall/agent-status
 задачи `STH-Dispatch-Agent`. После правки `tasks/api/main.py` — push в main (CI сам
 задеплоит и рестартанёт tasks-api, ~3-4 мин).
 
+⚠️ **`Stop-ScheduledTask` НЕ убивает агента** (обнаружено 30.07). Задача стартует через
+VBS-шим, python отцепляется от дерева процессов задачи — Stop гасит шим, а
+`dispatch_agent.py` продолжает работать со СТАРЫМ кодом и продолжает слать heartbeat,
+поэтому «агент онлайн» на портале ничего не доказывает. Внешний признак: `LastTaskResult=0`,
+`State=Ready`, а правки не действуют.
+
+Правильный перезапуск — сначала убить процесс, потом стартовать задачу:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -like '*dispatch_agent*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-ScheduledTask -TaskName STH-Dispatch-Agent
+```
+
+Проверка, что поднялся ИМЕННО новый: у процесса `dispatch_agent.py` время старта должно
+быть свежим, и `/voicecall/agent-status` должен отдать `last_seen` ПОЗЖЕ этого времени.
+Перед снятием процесса убедиться, что нет кампании в состоянии `running` — иначе
+оборвётся живой звонок.
+
 ## 3. Где логи
 
 | Лог | Путь |
