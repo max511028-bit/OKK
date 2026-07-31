@@ -125,15 +125,59 @@ def _post_result_with_retries(base_url: str, token: str, contact_id: int, result
             if attempt < RESULT_POST_RETRIES:
                 time.sleep(RESULT_POST_RETRY_DELAY)
     # Все попытки исчерпаны — не теряем данные звонка молча, пишем в файл
-    # рядом со скриптом, чтобы можно было довнести вручную.
+    # рядом со скриптом. Досылается автоматически при старте агента, см.
+    # _resend_failed_results.
     try:
-        with open("dispatch_agent_failed_results.jsonl", "a", encoding="utf-8") as f:
+        with open(FAILED_RESULTS_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps({"contact_id": contact_id, "result": body}, ensure_ascii=False) + "\n")
         print(f"❌ Результат для contact_id={contact_id} сохранён локально "
-              f"в dispatch_agent_failed_results.jsonl — отправь вручную позже.", flush=True)
+              f"в {FAILED_RESULTS_FILE} — дошлю при следующем запуске агента.", flush=True)
     except Exception as e:
         print(f"❌ Не смог даже сохранить результат локально: {e}", flush=True)
     return False, token
+
+
+FAILED_RESULTS_FILE = "dispatch_agent_failed_results.jsonl"
+
+
+def _resend_failed_results(base_url: str, token: str) -> int:
+    """Дослать результаты звонков, которые не удалось отправить раньше.
+
+    31.07: файл-очередь только ПИСАЛСЯ, читать его было некому — в
+    комментарии честно стояло «отправь вручную позже», и никто, конечно,
+    не отправлял. Разбор «ВКР Лавка»: контакты 610/613/614 висели в
+    кампании как необзвоненные, хотя звонки состоялись и деньги за них
+    списаны — результаты лежали на диске. Теперь досылаем на старте."""
+    import os
+    if not os.path.exists(FAILED_RESULTS_FILE):
+        return 0
+    try:
+        lines = [l for l in open(FAILED_RESULTS_FILE, encoding="utf-8").read().splitlines()
+                 if l.strip()]
+    except Exception as e:
+        print(f"⚠️  Не смог прочитать очередь недоставленных результатов: {e}", flush=True)
+        return 0
+    if not lines:
+        return 0
+    print(f"📤 В очереди {len(lines)} недоставленных результатов, досылаю...", flush=True)
+    left, sent = [], 0
+    for line in lines:
+        try:
+            rec = json.loads(line)
+            _rpc(base_url, "POST", "/voicecall/dispatch/result", token=token,
+                 json_body=rec["result"], timeout=30)
+            sent += 1
+        except Exception as e:
+            print(f"⚠️  Результат contact_id={rec.get('contact_id') if 'rec' in dir() else '?'} "
+                  f"снова не ушёл: {str(e)[:100]}", flush=True)
+            left.append(line)
+    try:
+        with open(FAILED_RESULTS_FILE, "w", encoding="utf-8") as f:
+            f.write(("\n".join(left) + "\n") if left else "")
+    except Exception:
+        pass
+    print(f"📤 Дослано {sent}, осталось в очереди {len(left)}.", flush=True)
+    return sent
 
 
 def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None:
@@ -1359,6 +1403,12 @@ def main():
             try:
                 token = _auth(base_url, password)
                 print("Авторизован на портале.", flush=True)
+                # Связь с порталом только что появилась — самое время
+                # отдать результаты, которые не ушли раньше (см. 31.07).
+                try:
+                    _resend_failed_results(base_url, token)
+                except Exception as e:
+                    print(f"⚠️  Досыл недоставленных результатов не удался: {e}", flush=True)
             except Exception as e:
                 print(f"⚠️  Не смог авторизоваться на портале: {e}. Повтор через {POLL_INTERVAL_SEC}с.",
                       flush=True)
