@@ -63,7 +63,7 @@ except Exception:
     pass
 
 from _sip_config import get_local_ip, load_env, require
-from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_ringback_phrase, llm_is_robot_live, answer_is_evasive, CALLBACK_BYE_TEXT, FILLER_PHRASES
+from dialog import DialogSession, load_scenario, DEFAULT_SCENARIO, vocab_for_step, render_name, all_reask_texts, is_voicemail_phrase, is_callback_request, is_explicit_callback, is_ringback_phrase, llm_is_robot_live, answer_is_evasive, CALLBACK_BYE_TEXT, FILLER_PHRASES
 from tts import synthesize_telephony_pcm, prewarm_scenario, DEFAULT_VOICE
 from stt import StreamingRecognizer, warmup as stt_warmup
 
@@ -1256,16 +1256,34 @@ def _run_dialog_loop(call, scenario, candidate_name: str, log, result: dict,
         # только честный статус, повторный набор строго вручную кнопкой
         # «Заново» (см. tasks/api/main.py _VC_STATUS_MAP).
         if answer and is_callback_request(answer):
-            log(f"🔁 Кандидат просит перезвонить: «{answer}»")
-            speak(call, CALLBACK_BYE_TEXT, allow_interrupt=False, voice=voice, rate=rate)
-            result["status"] = "callback_requested"
-            result["answers"] = sess.answers
-            result["notes"] = sess.notes
-            result["transcript"] = sess.transcript
-            _attach_call_quality_note(result["notes"], call_metrics, log)
-            try: call.hangup()
-            except Exception: pass
-            return
+            # 31.07 (тест «ВКР Лавка»): из 6 контактов с этим статусом минимум
+            # четыре оказались роботами — «а с кем я сейчас говорю», «вы
+            # говорите с секретарём». Разбор уперся в то, что реплика,
+            # включившая статус, НИГДЕ не сохранялась: в этой ветке ответ не
+            # попадает в sess.transcript, и в карточке причины не видно.
+            # Теперь пишем её явно — и в транскрипт, и в заметки.
+            #
+            # И главное: по одному лишь «позже»/«потом» на ПЕРВОЙ реплике
+            # звонок больше не завершаем. Живой человек сначала скажет «да»
+            # или «алло» и только потом попросит перезвонить, а вот робот-
+            # заглушка именно с этого и начинает. Исключение — явное
+            # «перезвоните»/«наберите»: так робот почти не говорит.
+            if not sess.answers and not is_explicit_callback(answer):
+                log(f"⏭ «{answer}» похоже на просьбу перезвонить, но кандидат ещё "
+                    f"ни на что не ответил — продолжаю сценарий (мог быть робот).")
+            else:
+                log(f"🔁 Кандидат просит перезвонить: «{answer}»")
+                sess.transcript.append({"who": "user", "text": answer})
+                sess.notes["Просьба перезвонить"] = f"услышано: «{answer}»"
+                speak(call, CALLBACK_BYE_TEXT, allow_interrupt=False, voice=voice, rate=rate)
+                result["status"] = "callback_requested"
+                result["answers"] = sess.answers
+                result["notes"] = sess.notes
+                result["transcript"] = sess.transcript
+                _attach_call_quality_note(result["notes"], call_metrics, log)
+                try: call.hangup()
+                except Exception: pass
+                return
 
         # detect_voicemail() проверяет автоответчик/сообщение оператора
         # ТОЛЬКО один раз, до первой фразы бота. Если такое сообщение

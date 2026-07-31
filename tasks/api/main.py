@@ -4745,9 +4745,15 @@ def vc_dispatch_result(req: VCDispatchResultReq, request: Request):
         # ФИНАЛИЗИРУЕТСЯ только рекчеком (или агентом с пометкой «записи
         # нет»). Реальный кейс 17.07: 4 «годен» остались без пере-проверки
         # и стояли как финальные вслепую.
+        # 31.07: в список добавлен callback_requested. Разбор «ВКР Лавка»:
+        # из 6 контактов с этим статусом минимум четыре оказались роботами
+        # («вы говорите с секретарём», «а с кем я сейчас говорю»). Статус
+        # ставился вживую и сразу считался финальным — пере-проверка по
+        # записи не могла его отменить.
         review_state = ("pending"
                         if req.call_session_id and req.status in
-                           ("answered_completed", "hangup_by_candidate", "low_recognition")
+                           ("answered_completed", "hangup_by_candidate", "low_recognition",
+                            "callback_requested")
                         else "final")
         if requeue:
             conn.execute(

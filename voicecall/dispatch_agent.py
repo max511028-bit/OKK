@@ -809,7 +809,25 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
     #    ответах кандидатов; дорожка бота тоже не триггерит), так что
     #    переклассифицируем при любом вердикте.
     from dialog import (is_voicemail_phrase, is_ringback_phrase, is_spamguard_phrase,
-                        count_evasive_markers, EVASIVE_ROBOT_MIN)
+                        count_evasive_markers, EVASIVE_ROBOT_MIN, is_human_refusing_bot)
+
+    # СТОП-КРАН ВЫШЕ ВСЕХ ДЕТЕКТОВ (31.07, контакт 687 «Светлана»): если
+    # в записи звучит «я с ботом разговаривать не буду» — это доказанно
+    # ЖИВОЙ человек, который понял, что перед ним машина. LLM записала её
+    # в автоответчики, и кандидат потерялся. Ни одна ветка ниже не имеет
+    # права переклассифицировать такой контакт в робота; максимум — ⚠.
+    if any(is_human_refusing_bot(t) for t in transcripts):
+        _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
+             json_body={"contact_id": contact_id, "recheck_transcript": combined,
+                        "needs_review": True,
+                        "review_note": "Живой кандидат отказался разговаривать с роботом "
+                                       "(«с ботом разговаривать не буду»). В автоответчики "
+                                       "НЕ переводим — нужен звонок живого рекрутёра."},
+             timeout=15)
+        print(f"🙋 contact_id={contact_id}: живой отказался говорить с ботом — "
+              f"защищён от переклассификации, помечен ⚠.", flush=True)
+        return
+
     if any(is_voicemail_phrase(t) for t in transcripts):
         _rpc(base_url, "POST", "/voicecall/dispatch/recheck-transcript", token=token,
              json_body={"contact_id": contact_id, "recheck_transcript": combined,
@@ -983,6 +1001,13 @@ def _recheck_transcript(base_url: str, token: str, contact_id: int,
                 base_url, scenario, live_answers, combined)
             needs_review = needs_review or crit_review
             notes.extend(crit_notes)
+            # 31.07, контакт 688 «Илья»: запись исправила ответ («реалтайм не
+            # распознал, по записи — да»), комментарий записался, а флаг ⚠ НЕ
+            # поднялся — человек, сказавший «да», уехал в отказ молча. Если
+            # пере-проверка меняет ответ на критичный вопрос, расхождение
+            # обязано быть видно рекрутёру. Без исключений.
+            if corrected:
+                needs_review = True
         except Exception as e:
             print(f"⚠️  Сверка критичных ответов с записью пропущена: {e}", flush=True)
 
