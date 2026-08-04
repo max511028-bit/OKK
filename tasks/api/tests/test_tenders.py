@@ -293,11 +293,14 @@ class TestApi:
         assert client.get("/tenders/summary", params=self.P).status_code == 200
 
     def test_sources_registered_from_code(self, client):
+        """04.08: в списке ровно три площадки — те, с которых реально
+        забираем закупки. Заглушки убраны, ЕИС не регистрируется (работает
+        только из домашней сети, а домашний сборщик владельцу не нужен)."""
         items = client.get("/tenders/sources", params=self.P).json()["items"]
         codes = {s["code"] for s in items}
-        assert {"eis", "b2b_center", "bidzaar"} <= codes
-        eis = next(s for s in items if s["code"] == "eis")
-        assert eis["location"] == "home"
+        assert codes == {"b2b_center", "bidzaar", "etp_gpb"}
+        gpb = next(s for s in items if s["code"] == "etp_gpb")
+        assert gpb["location"] == "vps"   # из дома площадка не открывается
 
     def test_source_password_never_leaves_server(self, client):
         items = client.get("/tenders/sources", params=self.P).json()["items"]
@@ -432,3 +435,149 @@ class TestSearchQueries:
         with tdb.db() as conn:
             dirs = p2._load_directions(conn)
         assert "уборка" not in p2.search_queries_for(dirs, "b2b_center", split_words=True)
+
+
+class TestEtpGpbConnector:
+    """Коннектор ЭТП ГПБ. Образец ответа — с живого API 04.08.2026
+    (`/api/v2/procedures/`, формат JSON:API). Сеть не задействована."""
+
+    SAMPLE = {
+        "data": [
+            {"id": "2014743", "type": "procedure", "attributes": {
+                "registry_number": "0357200029226000178",
+                "title": "КЛОТРИМАЗОЛ, ТАБЛЕТКИ ВАГИНАЛЬНЫЕ 100 мг",
+                "platform_url": "https://gos.etpgpb.ru/front/procedure/view/fb16ad7a",
+                "kind": "fz44",
+                "procedure_type_name": "Электронная закупка у единственного поставщика",
+                "company_name": "ГБУЗ ПО ОСТРОВСКАЯ МБ",
+                "amount": "2477.99", "currency_name": "RUB",
+                "date_published": "2026-08-04T14:53:48.000+03:00",
+                "lot_regions": ["Псковская область"], "stage": "commission"}},
+            {"id": "2014744", "type": "procedure", "attributes": {
+                "registry_number": "ИМ000082",
+                "title": "Предоставление персонала для складского комплекса",
+                "platform_url": "https://torgi.etpgpb.ru/procedure/2",
+                "kind": "price_request",
+                "procedure_type_name": "Запрос цен",
+                "company_name": "АО ПРОМЫШЛЕННАЯ ГРУППА",
+                "amount": "1 639 344,26", "currency_name": "RUB",
+                "date_published": "2026-08-04T10:00:00.000+03:00",
+                "lot_regions": ["Москва", "Московская область"], "stage": "bidding"}},
+            {"id": "2014745", "type": "procedure", "attributes": {
+                "registry_number": "СТАРЫЙ-1",
+                "title": "Давняя закупка вне периода",
+                "platform_url": "https://torgi.etpgpb.ru/procedure/3",
+                "kind": "fz223", "company_name": "АО СТАРОЕ",
+                "amount": None, "date_published": "2020-01-01T00:00:00.000+03:00",
+                "lot_regions": []}},
+        ]
+    }
+
+    def _fetch(self, monkeypatch, since_days=30, settings=None):
+        import datetime as dt
+        from tenders_core.sources import get_source
+        from tenders_core.sources import etp_gpb as mod
+
+        calls = []
+
+        class FakeResponse:
+            status_code = 200
+            def json(self_inner):
+                # вторая страница пустая — иначе листали бы до упора
+                return TestEtpGpbConnector.SAMPLE if len(calls) == 1 else {"data": []}
+
+        class FakeClient:
+            def __enter__(self_inner): return self_inner
+            def __exit__(self_inner, *a): return False
+            def get(self_inner, url, params=None):
+                calls.append((url, params))
+                return FakeResponse()
+
+        monkeypatch.setattr(mod.EtpGpbSource, "new_client",
+                            staticmethod(lambda **kw: FakeClient()))
+        src = get_source("etp_gpb")()
+        since = dt.datetime.now() - dt.timedelta(days=since_days)
+        return list(src.fetch(since=since, settings=settings or {}, queries=None)), calls
+
+    def test_gov_procedures_dropped_by_default(self, monkeypatch):
+        """Владелец 04.08: «гос тендеры не нужны». 44-ФЗ не должен доезжать."""
+        rows, _ = self._fetch(monkeypatch)
+        ids = [r.external_id for r in rows]
+        assert "0357200029226000178" not in ids
+        assert "ИМ000082" in ids
+
+    def test_fields_mapped(self, monkeypatch):
+        rows, _ = self._fetch(monkeypatch)
+        row = next(r for r in rows if r.external_id == "ИМ000082")
+        assert row.title.startswith("Предоставление персонала")
+        assert row.customer == "АО ПРОМЫШЛЕННАЯ ГРУППА"
+        assert row.law == "commercial"
+        assert row.url.startswith("https://")
+
+    def test_price_parsed_from_spaced_string(self, monkeypatch):
+        """Площадка отдаёт «1 639 344,26» — с пробелами и запятой."""
+        rows, _ = self._fetch(monkeypatch)
+        row = next(r for r in rows if r.external_id == "ИМ000082")
+        assert row.price == 1639344.26
+
+    def test_regions_joined(self, monkeypatch):
+        rows, _ = self._fetch(monkeypatch)
+        row = next(r for r in rows if r.external_id == "ИМ000082")
+        assert row.region == "Москва, Московская область"
+
+    def test_published_date_parsed(self, monkeypatch):
+        rows, _ = self._fetch(monkeypatch)
+        row = next(r for r in rows if r.external_id == "ИМ000082")
+        assert row.published_at is not None
+        assert row.published_at.tzinfo is None      # наивный, как ждёт пайплайн
+        assert row.published_at.year == 2026
+
+    def test_old_records_skipped_and_paging_stops(self, monkeypatch):
+        """Лента упорядочена по дате: встретили запись вне периода —
+        дальше листать незачем."""
+        rows, calls = self._fetch(monkeypatch, since_days=30)
+        assert "СТАРЫЙ-1" not in [r.external_id for r in rows]
+        assert len(calls) == 1, f"должны были остановиться на первой странице, а сделали {len(calls)}"
+
+    def test_skip_kinds_configurable(self, monkeypatch):
+        """Если гос всё же понадобится — снимается настройкой, без правки кода."""
+        rows, _ = self._fetch(monkeypatch, settings={"skip_kinds": []})
+        assert "0357200029226000178" in [r.external_id for r in rows]
+
+    def test_registered_as_vps_only(self):
+        from tenders_core.sources import get_source
+        cls = get_source("etp_gpb")
+        assert cls is not None
+        assert cls.location == "vps"      # из дома площадка не открывается
+        assert cls.query_driven is False  # берём ленту, поиск по релевантности бесполезен
+
+
+class TestSourceRegistryCleanup:
+    """04.08: в списке остаются только площадки с рабочим коннектором."""
+
+    def test_only_working_connectors_registered(self):
+        from tenders_core.sources import all_sources
+        assert set(all_sources()) == {"b2b_center", "bidzaar", "etp_gpb"}
+
+    def test_stale_sources_removed_from_db(self, tr):
+        tdb, pipe = tr
+        with tdb.db() as conn:
+            conn.execute("INSERT INTO sources(code, title) VALUES('rts_tender','РТС (заглушка)')")
+        pipe.sync_sources()
+        with tdb.db() as conn:
+            codes = {r["code"] for r in conn.execute("SELECT code FROM sources")}
+        assert "rts_tender" not in codes
+        assert "etp_gpb" in codes
+
+    def test_found_tenders_survive_source_removal(self, tr):
+        """Площадку убрали — найденное ею остаётся: это уже собранные данные."""
+        tdb, pipe = tr
+        with tdb.db() as conn:
+            conn.execute("INSERT INTO sources(code, title) VALUES('rts_tender','РТС')")
+            conn.execute(
+                "INSERT INTO tenders(source_code, external_id, title, first_seen_at, updated_at) "
+                "VALUES('rts_tender','X-1','Старая находка',?,?)", (tdb.now_iso(), tdb.now_iso()))
+        pipe.sync_sources()
+        with tdb.db() as conn:
+            assert conn.execute(
+                "SELECT COUNT(*) FROM tenders WHERE external_id='X-1'").fetchone()[0] == 1

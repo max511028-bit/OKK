@@ -47,9 +47,24 @@ def is_running(code: str) -> bool:
 # Реестр площадок
 # --------------------------------------------------------------------------
 def sync_sources() -> None:
-    """Завести в базе строки под все известные коннекторы. Реестр —
-    источник правды: появился коннектор в коде, появилась строка в админке."""
+    """Привести список площадок в базе в соответствие с кодом.
+
+    Реестр коннекторов — источник правды в обе стороны: появился коннектор —
+    появилась строка в админке, удалили коннектор — строка уходит.
+    Второе добавлено 04.08 вместе с чисткой заглушек: площадка, которая
+    ничего не приносит, только засоряет список.
+
+    Найденные тендеры при этом НЕ трогаем — они уже собраны и остаются
+    в выдаче, даже если площадку потом отключили."""
+    known = set(all_sources())
     with db() as conn:
+        stale = [r["code"] for r in conn.execute("SELECT code FROM sources").fetchall()
+                 if r["code"] not in known]
+        for code in stale:
+            conn.execute("DELETE FROM sources WHERE code=?", (code,))
+        if stale:
+            log.info("Площадки убраны из списка (нет коннектора): %s", ", ".join(stale))
+
         for code, cls in all_sources().items():
             row = conn.execute("SELECT id FROM sources WHERE code=?", (code,)).fetchone()
             location = getattr(cls, "location", "any")
