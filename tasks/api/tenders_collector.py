@@ -51,11 +51,16 @@ def _enabled() -> bool:
         return get_setting(conn, "scan_enabled", "1") == "1"
 
 
-def run_cycle() -> list[dict]:
-    """Один обход всех включённых площадок, доступных из этой точки."""
+def run_cycle(depth_days: int | None = None, triggered_by: str = "scheduler") -> list[dict]:
+    """Один обход всех включённых площадок, доступных из этой точки.
+
+    depth_days — глубина в днях. По умолчанию решает пайплайн: первый
+    обход площадки берёт две недели, последующие три дня. Явное значение
+    нужно для ПЕРВИЧНОГО НАПОЛНЕНИЯ архива: `--once --days 180`."""
     started = _dt.datetime.now()
-    log.info("Обход площадок начат (location=%s)", LOCATION)
-    results = pipeline.run_all(triggered_by="scheduler")
+    log.info("Обход площадок начат (location=%s, глубина=%s)",
+             LOCATION, f"{depth_days} дн." if depth_days else "по умолчанию")
+    results = pipeline.run_all(triggered_by=triggered_by, depth_days=depth_days)
     created = sum(r.get("created", 0) or 0 for r in results)
     fetched = sum(r.get("fetched", 0) or 0 for r in results)
     with db() as conn:
@@ -74,7 +79,12 @@ def run_cycle() -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Сборщик тендеров")
     ap.add_argument("--once", action="store_true", help="один обход и выход")
+    ap.add_argument("--days", type=int, default=None,
+                    help="глубина в днях (для первичного наполнения архива, напр. 180)")
     args = ap.parse_args()
+    if args.days is not None and not args.once:
+        ap.error("--days имеет смысл только с --once: постоянный обход "
+                 "глубину выбирает сам")
 
     logging.basicConfig(
         level=logging.INFO,
@@ -85,7 +95,8 @@ def main() -> None:
     pipeline.sync_sources()
 
     if args.once:
-        run_cycle()
+        run_cycle(depth_days=args.days,
+                  triggered_by="manual" if args.days else "scheduler")
         return
 
     log.info("Сборщик запущен. Интервал берётся из настроек вкладки.")
