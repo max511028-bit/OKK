@@ -581,3 +581,53 @@ class TestSourceRegistryCleanup:
         with tdb.db() as conn:
             assert conn.execute(
                 "SELECT COUNT(*) FROM tenders WHERE external_id='X-1'").fetchone()[0] == 1
+
+
+class TestPhraseGap:
+    """04.08: фразы требовали строгого соседства слов, и закупка
+    «Аутсорсинг ВНЕШНЕГО персонала» терялась — ровно наш профиль, а не
+    находилась из-за одного слова посередине. Разрешён разрыв до двух
+    чужих слов при сохранении порядка."""
+
+    def _hit(self, phrase, text):
+        from tenders_core.matching import phrase_in_stems, stem_phrase, stem_tokens
+        return phrase_in_stems(stem_phrase(phrase), stem_tokens(text))
+
+    def test_the_missed_tender_now_found(self):
+        assert self._hit("аутсорсинг персонала", "Аутсорсинг внешнего персонала")
+
+    def test_live_language_of_customers(self):
+        cases = [
+            ("складской персонал", "Складской и производственный персонал"),
+            ("предоставление персонала", "Предоставление складского персонала"),
+            ("погрузочно-разгрузочные работы",
+             "Погрузочно-разгрузочные и такелажные работы"),
+            ("сборщик заказов", "Сборщик онлайн заказов"),
+        ]
+        for phrase, text in cases:
+            assert self._hit(phrase, text), f"{phrase!r} не нашлось в {text!r}"
+
+    def test_missing_word_still_no_match(self):
+        """Разрыв — не повод склеивать разные мысли: если слова нет вовсе,
+        совпадения быть не должно."""
+        assert not self._hit("аутсорсинг персонала", "Аутсорсинг печати документов")
+        assert not self._hit("аутсорсинг персонала", "Аутсорсинг IT-инфраструктуры")
+
+    def test_word_order_still_matters(self):
+        """Иначе «персонал для склада» совпало бы со «складом для персонала»."""
+        assert not self._hit("аутсорсинг персонала", "Обучение персонала аутсорсингу")
+        assert not self._hit("складской персонал", "Персонал складского комплекса")
+
+    def test_gap_is_bounded(self):
+        """Четыре чужих слова — это уже другая закупка."""
+        assert not self._hit("предоставление персонала",
+                             "Предоставление услуг по уборке силами персонала подрядчика")
+
+    def test_morphology_still_works(self):
+        assert self._hit("аутсорсинг персонала", "Аутсорсингу производственного персонала")
+
+    def test_gap_size_configurable(self):
+        from tenders_core.matching import phrase_in_stems, stem_phrase, stem_tokens
+        ph, tx = stem_phrase("аутсорсинг персонала"), stem_tokens("Аутсорсинг внешнего персонала")
+        assert phrase_in_stems(ph, tx, max_gap=0) is False   # прежнее поведение
+        assert phrase_in_stems(ph, tx, max_gap=2) is True

@@ -185,8 +185,28 @@ def stems_equal(a: str, b: str) -> bool:
     return long.startswith(short)
 
 
-def phrase_in_stems(phrase_stems: Sequence[str], text_stems: Sequence[str]) -> bool:
-    """Есть ли последовательность основ фразы среди основ текста."""
+# Сколько ЧУЖИХ слов разрешено между словами искомой фразы.
+#
+# 04.08: раньше требовалось строгое соседство, и «аутсорсинг персонала» не
+# находил закупку «Аутсорсинг ВНЕШНЕГО персонала» — из-за одного слова
+# посередине терялся тендер ровно нашего профиля. Заказчики пишут живым
+# языком: «складской и производственный персонал», «погрузочно-разгрузочные
+# и такелажные работы».
+#
+# Двух слов достаточно, чтобы покрыть такие вставки, и мало, чтобы склеить
+# разные мысли: «аутсорсинг печати» по-прежнему не совпадёт с «аутсорсинг
+# персонала» (слова «персонал» там просто нет), а «предоставление услуг по
+# уборке силами персонала подрядчика» не совпадёт с «предоставление
+# персонала» — между словами четыре чужих.
+MAX_PHRASE_GAP = 2
+
+
+def phrase_in_stems(phrase_stems: Sequence[str], text_stems: Sequence[str],
+                    max_gap: int = MAX_PHRASE_GAP) -> bool:
+    """Идут ли основы фразы по порядку в тексте, допуская небольшие вставки.
+
+    Порядок слов обязателен — иначе «персонал для склада» совпало бы со
+    «склад для персонала». Ограничен и разрыв: см. MAX_PHRASE_GAP."""
     n, m = len(phrase_stems), len(text_stems)
     if n == 0 or n > m:
         return False
@@ -194,7 +214,18 @@ def phrase_in_stems(phrase_stems: Sequence[str], text_stems: Sequence[str]) -> b
     for i in range(m - n + 1):
         if not stems_equal(text_stems[i], first):
             continue
-        if all(stems_equal(text_stems[i + j], phrase_stems[j]) for j in range(1, n)):
+        pos = i                      # где нашли предыдущее слово фразы
+        matched = True
+        for j in range(1, n):
+            limit = min(m, pos + max_gap + 2)   # +1 соседнее, +max_gap вставок
+            for k in range(pos + 1, limit):
+                if stems_equal(text_stems[k], phrase_stems[j]):
+                    pos = k
+                    break
+            else:
+                matched = False
+                break
+        if matched:
             return True
     return False
 
