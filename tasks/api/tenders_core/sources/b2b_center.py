@@ -65,6 +65,7 @@ class B2BCenterSource(BaseSource):
             return
 
         seen: set[str] = set()
+        pages_ok = 0          # сколько страниц реально пришло
         with self.new_client() as client:
             for query in queries:
                 for page in range(1, int(cfg["max_pages"]) + 1):
@@ -86,6 +87,7 @@ class B2BCenterSource(BaseSource):
                     rows = list(self._parse_rows(response.text))
                     if not rows:
                         break
+                    pages_ok += 1
                     stop = False
                     for tender in rows:
                         if tender.external_id in seen:
@@ -99,6 +101,18 @@ class B2BCenterSource(BaseSource):
                         yield tender
                     if stop:
                         break
+
+        # Ни одна из десятков поисковых фраз не дала НИ ОДНОЙ карточки —
+        # это не «ничего не подошло», а «нас не пустили». 04.08 площадка
+        # начала отвечать 200 OK с пустой выдачей после интенсивных
+        # прогонов, и коннектор бодро отрапортовал «ok, найдено 0» —
+        # молчаливый ноль, неотличимый от честного результата.
+        # Одна пустая фраза — норма, все сразу — сбой.
+        if queries and pages_ok == 0:
+            raise SourceUnavailable(
+                f"B2B-Center: ни одна из {len(queries)} поисковых фраз не вернула "
+                f"результатов. Похоже на ограничение по частоте — обычно снимается "
+                f"за несколько часов.")
 
     # ------------------------------------------------------------------
     def _parse_rows(self, html_text: str) -> Iterator[RawTender]:

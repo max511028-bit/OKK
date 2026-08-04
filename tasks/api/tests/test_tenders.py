@@ -631,3 +631,61 @@ class TestPhraseGap:
         ph, tx = stem_phrase("аутсорсинг персонала"), stem_tokens("Аутсорсинг внешнего персонала")
         assert phrase_in_stems(ph, tx, max_gap=0) is False   # прежнее поведение
         assert phrase_in_stems(ph, tx, max_gap=2) is True
+
+
+class TestBidzaarCoverage:
+    """04.08, замер по API Bidzaar (статус 1 = идёт приём заявок):
+    всего 5463 процедуры — тип 1: 2786, тип 2: 631, тип 3: 2046.
+    Брали только 1 и 3, то есть 4832 из 5463: каждая девятая действующая
+    закупка проходила мимо."""
+
+    def test_all_active_types_taken(self):
+        from tenders_core.sources import get_source
+        types = get_source("bidzaar").default_settings["procedure_types"]
+        assert set(types) == {1, 2, 3}, f"тип 2 (631 закупка) снова потерян: {types}"
+
+    def test_only_open_procedures_by_default(self):
+        """Статусы 2 и 3 — завершённые (14 тыс. и 227 тыс.), заявку туда
+        уже не подать. Для мониторинга они лишние."""
+        from tenders_core.sources import get_source
+        assert get_source("bidzaar").default_settings["statuses"] == [1]
+
+
+class TestB2BSilentZero:
+    """04.08: площадка начала отвечать 200 OK с пустой выдачей после
+    интенсивных прогонов, а коннектор отрапортовал «ok, найдено 0».
+    Молчаливый ноль неотличим от честного «ничего не подошло»."""
+
+    def _run(self, monkeypatch, html):
+        from tenders_core.sources import b2b_center as mod
+
+        class FakeResponse:
+            status_code = 200
+            text = html
+
+        class FakeClient:
+            def __enter__(self_inner): return self_inner
+            def __exit__(self_inner, *a): return False
+            def get(self_inner, url): return FakeResponse()
+
+        monkeypatch.setattr(mod.B2BCenterSource, "new_client",
+                            staticmethod(lambda **kw: FakeClient()))
+        src = mod.B2BCenterSource()
+        return list(src.fetch(since=dt.datetime(2000, 1, 1), settings={},
+                              queries=["персонал", "грузчик", "кладовщик"]))
+
+    def test_block_page_raises_instead_of_empty_ok(self, monkeypatch):
+        from tenders_core.sources.base import SourceUnavailable
+        with pytest.raises(SourceUnavailable) as e:
+            self._run(monkeypatch, "<html><body>ничего похожего на выдачу</body></html>")
+        assert "ограничен" in str(e.value).lower() or "не вернула" in str(e.value).lower()
+
+    def test_real_results_do_not_raise(self, monkeypatch):
+        html = ('<table><tr><td><small>Категория</small></td><td>ООО Ромашка</td>'
+                '<td>01.08.2026</td><td>10.08.2026</td>'
+                '</tr></table>'
+                '<a class="search-results-title" href="/tender-12345">'
+                'Запрос цен № 12345 <span class="search-results-title-desc">'
+                'Предоставление персонала</span></a>')
+        rows = self._run(monkeypatch, html)
+        assert rows and rows[0].external_id == "12345"

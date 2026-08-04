@@ -54,10 +54,19 @@ class BidzaarSource(BaseSource):
         "Коммерческие закупки крупных компаний. Публичный API отдаёт список без "
         "авторизации, но без начальной цены — она видна только участникам."
     )
+    # Замер 04.08 по API (статус 1 = идёт приём заявок): всего 5463
+    # процедуры, из них тип 1 — 2786, тип 2 — 631, тип 3 — 2046. Раньше
+    # брали только 1 и 3, то есть 4832 из 5463: каждая девятая действующая
+    # закупка проходила мимо. Тип 2 добавлен.
+    #
+    # Статусы 2 и 3 (14 тыс. и 227 тыс.) — завершённые процедуры, подать
+    # заявку туда уже нельзя. Для мониторинга они не нужны и берутся
+    # только при явной надобности через настройку `statuses`.
     default_settings: dict[str, Any] = {
         "page_size": 100,
         "max_pages": 25,
-        "procedure_types": [1, 3],
+        "procedure_types": [1, 2, 3],
+        "statuses": [1],
     }
 
     def fetch(
@@ -81,7 +90,8 @@ class BidzaarSource(BaseSource):
                         "logic": "and",
                         "filters[0].operator": "in",
                         "filters[0].field": "status",
-                        "filters[0].value": "[1]",
+                        "filters[0].value": "[%s]" % ",".join(
+                            str(s) for s in (cfg.get("statuses") or [1])),
                         "filters[1].operator": "eq",
                         "filters[1].field": "procedureType",
                         "filters[1].value": str(procedure_type),
