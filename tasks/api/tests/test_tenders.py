@@ -361,3 +361,74 @@ class TestApi:
         r = client.get("/tenders/export", params=self.P)
         assert r.status_code == 200
         assert r.content[:2] == b"PK", "xlsx — это zip-контейнер"
+
+
+class TestSearchQueries:
+    """Подбор поисковых фраз. Замер 04.08 на B2B-Center: «персонал» даёт
+    20 закупок, «аутсорсинг персонала» — НОЛЬ. Их поиск требует точного
+    вхождения всей строки, и длинные фразы сами себе резали выдачу."""
+
+    def _dirs(self, tdb, phrases):
+        import tenders_pipeline as pipe
+        with tdb.db() as conn:
+            cur = conn.execute(
+                "INSERT INTO directions(group_id,name,description,is_active,sort_order,"
+                "min_score,regions,cities,customers,laws,okpd2,source_codes,created_at) "
+                "VALUES(NULL,'Т','',1,0,1,'[]','[]','[]','[]','[]','[]',?)", (tdb.now_iso(),))
+            did = cur.lastrowid
+            for p, w in phrases:
+                conn.execute("INSERT INTO keywords(direction_id,phrase,kind,weight,"
+                             "match_mode,is_active) VALUES(?,?,'include',?,'stem',1)", (did, p, w))
+        with tdb.db() as conn:
+            return pipe._load_directions(conn)
+
+    def test_phrases_kept_whole_by_default(self, tr):
+        tdb, pipe = tr
+        dirs = self._dirs(tdb, [("аутсорсинг персонала", 4)])
+        assert pipe.search_queries_for(dirs, "bidzaar") == ["аутсорсинг персонала"]
+
+    def test_split_into_words_for_query_driven(self, tr):
+        tdb, pipe = tr
+        dirs = self._dirs(tdb, [("аутсорсинг персонала", 4)])
+        got = pipe.search_queries_for(dirs, "b2b_center", split_words=True)
+        assert "персонала" in got and "аутсорсинг" in got
+        assert "аутсорсинг персонала" not in got
+
+    def test_generic_words_dropped(self, tr):
+        """«Услуги» и «работы» есть в половине закупок страны — искать по
+        ним значит получить случайную выдачу."""
+        tdb, pipe = tr
+        dirs = self._dirs(tdb, [("оказание услуг по предоставлению персонала", 4)])
+        got = pipe.search_queries_for(dirs, "b2b_center", split_words=True)
+        assert "персонала" in got
+        for junk in ("услуг", "оказание", "предоставлению"):
+            assert junk not in got, junk
+
+    def test_hyphen_split_into_halves(self, tr):
+        tdb, pipe = tr
+        dirs = self._dirs(tdb, [("погрузочно-разгрузочные работы", 3)])
+        got = pipe.search_queries_for(dirs, "b2b_center", split_words=True)
+        assert "погрузочно" in got and "разгрузочные" in got
+
+    def test_short_words_dropped(self, tr):
+        tdb, pipe = tr
+        dirs = self._dirs(tdb, [("уход за территорией", 2)])
+        got = pipe.search_queries_for(dirs, "b2b_center", split_words=True)
+        assert "за" not in got
+
+    def test_exclude_words_never_searched(self, tr):
+        tdb, pipe = tr
+        import tenders_pipeline as p2
+        with tdb.db() as conn:
+            cur = conn.execute(
+                "INSERT INTO directions(group_id,name,description,is_active,sort_order,"
+                "min_score,regions,cities,customers,laws,okpd2,source_codes,created_at) "
+                "VALUES(NULL,'Т','',1,0,1,'[]','[]','[]','[]','[]','[]',?)", (tdb.now_iso(),))
+            did = cur.lastrowid
+            conn.execute("INSERT INTO keywords(direction_id,phrase,kind,weight,match_mode,"
+                         "is_active) VALUES(?,'персонал','include',2,'stem',1)", (did,))
+            conn.execute("INSERT INTO keywords(direction_id,phrase,kind,weight,match_mode,"
+                         "is_active) VALUES(?,'уборка','exclude',1,'stem',1)", (did,))
+        with tdb.db() as conn:
+            dirs = p2._load_directions(conn)
+        assert "уборка" not in p2.search_queries_for(dirs, "b2b_center", split_words=True)

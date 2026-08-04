@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import re
 import threading
 from types import SimpleNamespace
 from typing import Any
@@ -22,7 +23,7 @@ from tenders_core.config import (
     INCREMENTAL_DEPTH_DAYS,
     LOCATION,
 )
-from tenders_core.matching import match_tender
+from tenders_core.matching import match_tender, stem as _stem
 from tenders_core.sources import all_sources, get_source
 from tenders_core.sources.base import RawTender, SourceRequiresAuth, SourceUnavailable
 from tenders_db import db, dumps, now_iso, row_to_direction
@@ -84,11 +85,41 @@ def _load_directions(conn, only_direction_id: int | None = None) -> list[SimpleN
     return out
 
 
-def search_queries_for(directions, source_code: str, limit: int = 12) -> list[str]:
+# Слова, которые есть в половине закупок страны: искать по ним бессмысленно,
+# выдача будет случайной. Сравниваем ПО ОСНОВЕ, а не по буквам: список
+# точных форм ломался на падежах — «предоставление» в нём было, а
+# «предоставлению» из живой фразы проскакивало в запросы.
+_GENERIC_QUERY_STEMS = {
+    _stem(w) for w in (
+        "работы", "услуги", "оказание", "выполнение", "поставка", "закупка",
+        "предоставление", "организация", "обеспечение", "проведение",
+        "комплекс", "право", "заключение", "договор", "выбор", "предмет",
+    )
+}
+
+
+def search_queries_for(directions, source_code: str, limit: int = 40,
+                       split_words: bool = False) -> list[str]:
     """Поисковые фразы для площадки: берём include/require-слова тех
-    направлений, которые эту площадку не исключили. Площадки ограничивают
-    длину запроса, поэтому берём самые весомые."""
+    направлений, которые эту площадку не исключили.
+
+    split_words — для площадок с поиском по ФРАЗЕ (query_driven). Замер
+    04.08 на B2B-Center: «персонал» находит 20 закупок, а «аутсорсинг
+    персонала» — НОЛЬ, и «погрузочно-разгрузочные работы» тоже ноль. Их
+    поиск требует точного вхождения всей строки. Мы слали длинные фразы и
+    сами себе резали выдачу: 13 карточек вместо 34 по тем же правилам.
+
+    Поэтому таким площадкам отдаём отдельные слова, а точную фразу
+    проверяем уже у себя при отборе — площадка нужна как широкое сито,
+    а не как финальный фильтр."""
     scored: dict[str, float] = {}
+
+    def add(term: str, weight: float) -> None:
+        term = term.strip().lower()
+        if len(term) < 4 or _stem(term) in _GENERIC_QUERY_STEMS:
+            return
+        scored[term] = max(scored.get(term, 0), weight)
+
     for d in directions:
         if d.source_codes and source_code not in d.source_codes:
             continue
@@ -98,7 +129,16 @@ def search_queries_for(directions, source_code: str, limit: int = 12) -> list[st
             phrase = (kw.phrase or "").strip()
             if len(phrase) < 3:
                 continue
-            scored[phrase] = max(scored.get(phrase, 0), kw.weight or 1.0)
+            weight = kw.weight or 1.0
+            if not split_words:
+                scored[phrase] = max(scored.get(phrase, 0), weight)
+                continue
+            for word in re.split(r"[\s,;/]+", phrase):
+                # «погрузочно-разгрузочные» → ищем и по половинкам: площадки
+                # часто пишут через дефис иначе или вовсе раздельно
+                add(word, weight)
+                for part in word.split("-"):
+                    add(part, weight)
     return [p for p, _ in sorted(scored.items(), key=lambda x: -x[1])][:limit]
 
 
@@ -220,7 +260,10 @@ def _run_source_locked(code: str, triggered_by: str, direction_id: int | None,
         run_id = cur.lastrowid
 
     since = _dt.datetime.now() - _dt.timedelta(days=depth_days)
-    queries = search_queries_for(directions, code)
+    cls_for_queries = get_source(code)
+    queries = search_queries_for(
+        directions, code,
+        split_words=bool(getattr(cls_for_queries, "query_driven", False)))
     fetched = created = updated = failed = 0
     status, message = "ok", ""
 

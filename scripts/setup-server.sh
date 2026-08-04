@@ -311,9 +311,36 @@ EnvironmentFile=-/etc/sth-portal.env
 WantedBy=multi-user.target
 TASKS_EOF
 
+  # Сборщик тендеров — ОТДЕЛЬНЫЙ процесс. Разбор чужих HTML не должен
+  # ронять портал: у VPS одно ядро и 960 МБ. Интервал сборщик читает из
+  # базы (правится во вкладке), перезапуск при смене не нужен.
+  cat > /etc/systemd/system/tenders-collector.service << TR_EOF
+[Unit]
+Description=Тендер-радар — сборщик по расписанию
+After=network.target tasks-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$TASKS_DIR
+ExecStart=$VENV/bin/python tenders_collector.py
+Restart=always
+RestartSec=30
+Environment=PYTHONUNBUFFERED=1
+Environment=TR_LOCATION=vps
+# Нежадный к процессору: портал важнее, обход тендеров подождёт
+Nice=10
+EnvironmentFile=-/etc/sth-portal.env
+
+[Install]
+WantedBy=multi-user.target
+TR_EOF
+
   systemctl daemon-reload
   systemctl enable tasks-api
   systemctl restart tasks-api
+  systemctl enable tenders-collector
+  systemctl restart tenders-collector
   sleep 3
 
   echo "[tasks-api] Service status:"
