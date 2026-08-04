@@ -24,6 +24,9 @@ def tr(tmp_path, monkeypatch):
     """Свежая база на каждый тест + перезагруженные модули под неё."""
     monkeypatch.setenv("TR_DB_PATH", str(tmp_path / "tenders.db"))
     monkeypatch.setenv("PORTAL_PASSWORD", "testpass")
+    # Прогрев в фоне держал бы файл предыдущего теста, и следующий
+    # падал на «database is locked» — в тестах он не нужен.
+    monkeypatch.setenv("TR_NO_WARMUP", "1")
     import tenders_core.config as cfg
     importlib.reload(cfg)
     import tenders_db as tdb

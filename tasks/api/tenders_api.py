@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import io
+import os
 import threading
 from typing import Any, Optional
 
@@ -73,7 +74,12 @@ def _warmup() -> None:
     threading.Thread(target=_run, daemon=True, name="tenders-warmup").start()
 
 
-_warmup()
+# TR_NO_WARMUP=1 глушит прогрев. Нужен тестам: там база своя на каждый
+# тест, модуль перезагружается, и фоновый поток от ПРЕДЫДУЩЕЙ загрузки
+# продолжает держать старый файл — следующий тест падал на «database is
+# locked». В бою переменная не выставляется.
+if os.environ.get("TR_NO_WARMUP") != "1":
+    _warmup()
 
 
 def _check_password(request: Request) -> None:
