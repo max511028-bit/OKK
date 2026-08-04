@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>СТХ — Тендер-радар</title>
+<style>
+  :root{
+    --bg:#0f1115; --surface:#171a21; --surface2:#1e222b; --line:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa0ab; --hint:#6b7280;
+    --accent:#3b82f6; --accent-soft:#16243d;
+    --ok:#22c55e; --ok-soft:#13301d; --bad:#ef4444; --bad-soft:#34191a;
+    --warn:#f59e0b; --warn-soft:#332408; --pending:#65d6ff; --pending-soft:#10212b;
+    --radius:12px; --radius-sm:8px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.5;
+    -webkit-font-smoothing:antialiased; padding:16px;
+  }
+  .wrap{max-width:1280px; margin:0 auto}
+  .topnav{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:13px;color:var(--muted);}
+  .topnav a{color:var(--muted);text-decoration:none;}
+  .topnav a:hover{color:var(--text);}
+  h1{font-size:22px; font-weight:600; margin:0 0 4px}
+  .sub{font-size:13px; color:var(--muted); margin:0 0 20px}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:16px}
+  .card h2{font-size:16px; font-weight:600; margin:0 0 14px;}
+
+  button{
+    font-family:inherit; font-size:13px; color:var(--text); background:var(--surface2);
+    border:1px solid var(--line); border-radius:var(--radius-sm); padding:9px 14px; cursor:pointer;
+    transition:background .12s, border-color .12s; display:inline-flex; align-items:center; gap:6px;
+  }
+  button:hover:not(:disabled){background:#262b36; border-color:#3a4150}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover:not(:disabled){background:#2f6fd6}
+  button.danger{background:var(--bad-soft); border-color:#5a2626; color:#f59a9a}
+  button.danger:hover:not(:disabled){background:#3e1818}
+  button.small{font-size:12px; padding:6px 10px}
+  button.tab-active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+
+  input,select,textarea{
+    font-family:inherit; font-size:13px; padding:9px 11px; color:var(--text);
+    background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm); outline:none;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  label.fld{display:flex; flex-direction:column; gap:5px; font-size:12px; color:var(--muted)}
+
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px}
+  .pane{display:none} .pane.on{display:block}
+
+  .stats{display:flex; gap:8px; flex-wrap:wrap; font-size:12px; margin-bottom:16px}
+  .stat{background:var(--surface2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:8px 12px; color:var(--muted)}
+  .stat b{color:var(--text); font-size:15px}
+
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--hint);
+     font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap}
+  td{padding:10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .tbl-scroll{overflow-x:auto}
+
+  .pill{display:inline-block; font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line);
+        background:var(--surface2); color:var(--muted); white-space:nowrap}
+  .pill.ok{background:var(--ok-soft); border-color:#1f4a2d; color:#8fe0a6}
+  .pill.bad{background:var(--bad-soft); border-color:#5a2626; color:#f59a9a}
+  .pill.warn{background:var(--warn-soft); border-color:#5c4310; color:#f5c86a}
+  .pill.acc{background:var(--accent-soft); border-color:#274a7a; color:#8ab6f0}
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px}
+  .grp{border:1px solid var(--line); border-radius:var(--radius-sm); padding:14px; margin-bottom:12px; background:var(--surface2)}
+  .grp-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+  .grp-dot{width:10px;height:10px;border-radius:50%;flex:none}
+  .dir{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:9px 12px; border:1px solid var(--line);
+       border-radius:var(--radius-sm); background:var(--surface); margin-bottom:8px}
+  .dir-name{font-weight:500}
+  .spacer{flex:1}
+
+  .kw-row{display:grid; grid-template-columns:1fr 120px 80px 110px 36px; gap:8px; margin-bottom:8px; align-items:center}
+  .muted{color:var(--muted)} .hint{color:var(--hint); font-size:12px}
+  .err{margin-top:12px; padding:12px 14px; background:var(--bad-soft); border:1px solid #5a2626;
+       border-radius:var(--radius-sm); font-size:13px; color:#f59a9a; display:none; white-space:pre-wrap}
+  .err.show{display:block}
+  .okmsg{margin-top:12px; padding:12px 14px; background:var(--ok-soft); border:1px solid #1f4a2d;
+       border-radius:var(--radius-sm); font-size:13px; color:#a8e2b8; display:none}
+  .okmsg.show{display:block}
+
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-start;
+         justify-content:center; padding:40px 16px; overflow:auto; z-index:50}
+  .modal.on{display:flex}
+  .modal-box{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+             padding:20px; max-width:780px; width:100%}
+  a.link{color:var(--accent); text-decoration:none} a.link:hover{text-decoration:underline}
+  @media (max-width:760px){ .kw-row{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topnav">
+    <a href="/">← Портал СТХ</a> <span>·</span> <span>Тендер-радар</span>
+  </div>
+
+  <h1>🎯 Тендер-радар</h1>
+  <p class="sub">Сам обходит площадки по расписанию, отбирает закупки под ваши направления и складывает сюда. Направления настраиваются здесь же — группами, ключевыми словами и фильтрами.</p>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button id="tab-found" class="tab-active" onclick="showTab('found')">📋 Найденное</button>
+    <button id="tab-dirs" onclick="showTab('dirs')">🧭 Направления</button>
+    <button id="tab-src" onclick="showTab('src')">🛰 Площадки</button>
+    <button id="tab-runs" onclick="showTab('runs')">🕘 Журнал</button>
+  </div>
+
+  <!-- ══════════ НАЙДЕННОЕ ══════════ -->
+  <div id="pane-found" class="pane on">
+    <div class="card">
+      <div class="filters">
+        <label class="fld">Направление
+          <select id="f-dir" onchange="loadTenders()"><option value="">все</option></select></label>
+        <label class="fld">Статус
+          <select id="f-status" onchange="loadTenders()">
+            <option value="">любой</option><option value="new">новый</option>
+            <option value="interesting">интересен</option><option value="in_work">в работе</option>
+            <option value="rejected">отклонён</option></select></label>
+        <label class="fld">Площадка
+          <select id="f-src" onchange="loadTenders()"><option value="">все</option></select></label>
+        <label class="fld">За период
+          <select id="f-days" onchange="loadTenders()">
+            <option value="">всё</option><option value="1">сутки</option>
+            <option value="7">неделя</option><option value="30">месяц</option></select></label>
+        <label class="fld">Поиск по тексту
+          <input id="f-q" placeholder="название или заказчик" onkeydown="if(event.key==='Enter')loadTenders()"></label>
+        <button onclick="loadTenders()">Показать</button>
+        <button onclick="exportXlsx()">⬇ Excel</button>
+      </div>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr>
+            <th>Опубликован</th><th>До</th><th>Название</th><th>Заказчик</th>
+            <th>Регион</th><th>Цена</th><th>Направления</th><th>Статус</th>
+          </tr></thead>
+          <tbody id="t-body"><tr><td colspan="8" class="muted">Загружаю…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="t-more" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ НАПРАВЛЕНИЯ ══════════ -->
+  <div id="pane-dirs" class="pane">
+    <div class="card">
+      <h2>Расписание</h2>
+      <div class="filters">
+        <label class="fld">Проверять каждые (минут)
+          <input id="s-interval" type="number" min="5" step="5" style="width:140px"></label>
+        <label class="fld">Автопоиск
+          <select id="s-enabled"><option value="1">включён</option><option value="0">выключен</option></select></label>
+        <button class="primary" onclick="saveSettings()">Сохранить</button>
+        <span class="spacer"></span>
+        <label class="fld">Ручной поиск за (дней)
+          <input id="s-days" type="number" min="1" max="365" value="7" style="width:110px"></label>
+        <label class="fld">По направлению
+          <select id="s-dir"><option value="">все направления</option></select></label>
+        <button onclick="scanNow()">🔍 Искать сейчас</button>
+      </div>
+      <div class="hint" id="s-info"></div>
+      <div class="okmsg" id="s-ok"></div>
+    </div>
+
+    <div class="card">
+      <h2>Группы и направления</h2>
+      <div class="filters">
+        <label class="fld">Новая группа <input id="g-name" placeholder="например, Клининг"></label>
+        <button onclick="addGroup()">+ Добавить группу</button>
+        <span class="spacer"></span>
+        <button onclick="rematch()">♻ Пересчитать совпадения</button>
+      </div>
+      <div class="hint" style="margin-bottom:12px">После правки слов или фильтров нажми «Пересчитать» — прошлые находки переотберутся по новым правилам. Ничего не теряется: снимешь фильтр — вернутся.</div>
+      <div id="dirs-box"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ ПЛОЩАДКИ ══════════ -->
+  <div id="pane-src" class="pane">
+    <div class="card">
+      <h2>Площадки</h2>
+      <div class="hint" style="margin-bottom:12px">Сети портала и домашнего ПК видят разные площадки. «С портала» — опрашивается автоматически. «Из дома» — нужен сборщик на домашнем компьютере, сейчас он не установлен.</div>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th>Площадка</th><th>Откуда доступна</th><th>Включена</th>
+            <th>Последний обход</th><th>Итог</th><th></th></tr></thead>
+          <tbody id="src-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ ЖУРНАЛ ══════════ -->
+  <div id="pane-runs" class="pane">
+    <div class="card">
+      <h2>Журнал прогонов</h2>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th>Начат</th><th>Площадка</th><th>Кем</th><th>Глубина</th>
+            <th>Скачано</th><th>Подошло</th><th>Новых</th><th>Итог</th></tr></thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="err" id="err"></div>
+</div>
+
+<!-- ══════════ Редактор направления ══════════ -->
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <h2 id="m-title">Направление</h2>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px">
+      <label class="fld">Название <input id="m-name"></label>
+      <label class="fld">Группа <select id="m-group"></select></label>
+      <label class="fld">Порог баллов <input id="m-score" type="number" step="0.5" value="1"></label>
+      <label class="fld">Активно <select id="m-active"><option value="1">да</option><option value="0">нет</option></select></label>
+      <label class="fld">Цена от, ₽ <input id="m-minp" type="number"></label>
+      <label class="fld">Цена до, ₽ <input id="m-maxp" type="number"></label>
+      <label class="fld">Города <input id="m-cities" placeholder="Москва, Пермь"></label>
+      <label class="fld">Заказчики <input id="m-customers" placeholder="Газпром, Магнит"></label>
+      <label class="fld">Регионы <input id="m-regions" placeholder="Московская, Свердловская"></label>
+      <label class="fld">Закон <input id="m-laws" placeholder="44, 223, commercial"></label>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Списки — через запятую, пусто = фильтр не применяется. Город ищется по региону, заказчику и тексту закупки; заказчик — строго по полю заказчика.</div>
+
+    <h2 style="font-size:14px">Ключевые слова</h2>
+    <div class="kw-row hint"><span>Фраза</span><span>Тип</span><span>Вес</span><span>Сравнение</span><span></span></div>
+    <div id="m-kws"></div>
+    <button class="small" onclick="addKw()">+ слово</button>
+    <div class="hint" style="margin-top:10px">
+      <b>плюс</b> — добавляет баллы · <b>минус</b> — отбрасывает закупку · <b>обязательное</b> — без него не берём.<br>
+      «по основе» учитывает русские окончания: «аутсорсинг персонала» найдёт «аутсорсингу персоналом».
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap">
+      <button class="primary" onclick="saveDirection()">Сохранить</button>
+      <button onclick="closeModal()">Отмена</button>
+      <span class="spacer"></span>
+      <button class="danger" id="m-del" onclick="deleteDirection()">Удалить направление</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var API = "/tasks/api/tenders";
+var PWD = null, TREE = {groups:[], orphans:[]}, SOURCES = [], OFFSET = 0, EDIT_ID = null;
+
+function pwd(){
+  if (PWD === null) PWD = localStorage.getItem("tr_pwd") || "";
+  while (!PWD){
+    PWD = prompt("Пароль портала:") || "";
+    if (PWD) localStorage.setItem("tr_pwd", PWD);
+    else return null;
+  }
+  return PWD;
+}
+function qs(extra){
+  var p = new URLSearchParams(extra || {});
+  p.set("password", pwd() || "");
+  return p.toString();
+}
+function showErr(msg){
+  var e = document.getElementById("err");
+  e.textContent = msg; e.classList.add("show");
+  setTimeout(function(){ e.classList.remove("show"); }, 9000);
+}
+async function api(path, opts, params){
+  var r = await fetch(API + path + "?" + qs(params), opts || {});
+  if (r.status === 403){
+    localStorage.removeItem("tr_pwd"); PWD = null;
+    showErr("Пароль не подошёл. Обнови страницу и введи заново.");
+    throw new Error("403");
+  }
+  if (!r.ok){ var t = await r.text(); showErr("Ошибка " + r.status + ": " + t.slice(0,300)); throw new Error(t); }
+  return r;
+}
+async function jget(path, params){ return (await api(path, null, params)).json(); }
+async function jsend(path, method, body, params){
+  return (await api(path, {method: method, headers:{"Content-Type":"application/json"},
+                          body: JSON.stringify(body)}, params)).json();
+}
+function esc(s){ return (s == null ? "" : String(s)).replace(/[&<>"]/g, function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+function money(v){ return v == null ? "—" : Number(v).toLocaleString("ru-RU") + " ₽"; }
+function dt(s){ return s ? String(s).slice(0,10).split("-").reverse().join(".") : "—"; }
+function csv(s){ return (s||"").split(",").map(function(x){return x.trim();}).filter(Boolean); }
+// «44»/«223» — это законы, а «commercial» — коммерческая закупка, и приписывать
+// ей «-ФЗ» неправильно (заметил на живой выдаче: «commercial-ФЗ»).
+function lawRu(law){
+  if (!law) return "";
+  if (law === "44" || law === "223") return " · " + law + "-ФЗ";
+  if (law === "commercial") return " · коммерческая";
+  return " · " + law;
+}
+
+function showTab(name){
+  ["found","dirs","src","runs"].forEach(function(n){
+    document.getElementById("pane-"+n).classList.toggle("on", n === name);
+    document.getElementById("tab-"+n).classList.toggle("tab-active", n === name);
+  });
+  if (name === "src") loadSources();
+  if (name === "runs") loadRuns();
+  if (name === "dirs") loadTree();
+}
+
+// ─────────── Найденное ───────────
+var STATUS_RU = {new:"новый", interesting:"интересен", in_work:"в работе", rejected:"отклонён"};
+var STATUS_CLS = {new:"", interesting:"ok", in_work:"acc", rejected:"bad"};
+
+function tenderFilters(){
+  var f = {limit:100, offset:OFFSET};
+  var d = document.getElementById("f-dir").value; if (d) f.direction_id = d;
+  var s = document.getElementById("f-status").value; if (s) f.status = s;
+  var p = document.getElementById("f-src").value; if (p) f.source_code = p;
+  var days = document.getElementById("f-days").value; if (days) f.days = days;
+  var q = document.getElementById("f-q").value.trim(); if (q) f.q = q;
+  return f;
+}
+async function loadTenders(reset){
+  if (reset !== false) OFFSET = 0;
+  var data = await jget("/list", tenderFilters());
+  var body = document.getElementById("t-body");
+  if (!data.items.length){
+    body.innerHTML = '<tr><td colspan="8" class="muted">Ничего не найдено. Проверь направления и запусти поиск.</td></tr>';
+    document.getElementById("t-more").innerHTML = ""; return;
+  }
+  body.innerHTML = data.items.map(function(t){
+    var dirs = (t.directions||[]).map(function(d){
+      return '<span class="pill acc" title="балл '+d.score+'">'+esc(d.name)+'</span>'; }).join(" ");
+    var opts = Object.keys(STATUS_RU).map(function(k){
+      return '<option value="'+k+'"'+(t.status===k?" selected":"")+'>'+STATUS_RU[k]+'</option>'; }).join("");
+    return '<tr>'
+      + '<td>'+dt(t.published_at)+'</td><td>'+dt(t.deadline_at)+'</td>'
+      + '<td style="max-width:380px"><a class="link" href="'+esc(t.url)+'" target="_blank" rel="noopener">'+esc(t.title||"без названия")+'</a>'
+      + '<div class="hint">'+esc(t.source_code)+lawRu(t.law)+' · балл '+t.best_score+'</div></td>'
+      + '<td style="max-width:200px">'+esc(t.customer)+'</td>'
+      + '<td style="max-width:160px">'+esc(t.region)+'</td>'
+      + '<td>'+money(t.price)+'</td><td>'+dirs+'</td>'
+      + '<td><select class="small" onchange="setStatus('+t.id+',this.value)">'+opts+'</select></td></tr>';
+  }).join("");
+  var shown = OFFSET + data.items.length;
+  document.getElementById("t-more").innerHTML = shown < data.total
+    ? '<button onclick="OFFSET+='+data.items.length+';loadTenders(false)">Показать ещё ('+(data.total-shown)+')</button>'
+    : '<span class="hint">Показано '+shown+' из '+data.total+'</span>';
+}
+async function setStatus(id, status){ await jsend("/item/"+id, "PATCH", {status:status}); loadStats(); }
+function exportXlsx(){
+  var f = tenderFilters(); delete f.limit; delete f.offset; delete f.q; delete f.source_code;
+  window.open(API + "/export?" + qs(f), "_blank");
+}
+
+// ─────────── Направления ───────────
+async function loadTree(){
+  TREE = await jget("/groups");
+  var box = document.getElementById("dirs-box"), html = "";
+  var all = TREE.groups.concat([{id:null, name:"Без группы", color:"#6b7280", directions:TREE.orphans}]);
+  all.forEach(function(g){
+    if (g.id === null && !g.directions.length) return;
+    html += '<div class="grp"><div class="grp-head">'
+      + '<span class="grp-dot" style="background:'+esc(g.color||"#6b7280")+'"></span>'
+      + '<b>'+esc(g.name)+'</b><span class="hint">направлений: '+g.directions.length+'</span>'
+      + '<span class="spacer"></span>'
+      + (g.id ? '<button class="small" onclick="editDirection(null,'+g.id+')">+ направление</button>'
+              + ' <button class="small danger" onclick="delGroup('+g.id+')">Удалить группу</button>' : '')
+      + '</div>';
+    g.directions.forEach(function(d){
+      var filt = [];
+      if ((d.cities||[]).length) filt.push("города: "+d.cities.join(", "));
+      if ((d.customers||[]).length) filt.push("заказчики: "+d.customers.join(", "));
+      if ((d.regions||[]).length) filt.push("регионы: "+d.regions.join(", "));
+      if (d.min_price) filt.push("от "+money(d.min_price));
+      html += '<div class="dir">'
+        + '<span class="dir-name">'+esc(d.name)+'</span>'
+        + (d.is_active ? '' : '<span class="pill">выключено</span>')
+        + '<span class="hint">слов: '+d.keywords_count+' · найдено: '+d.tenders_count+(filt.length?" · "+esc(filt.join(" · ")):"")+'</span>'
+        + '<span class="spacer"></span>'
+        + '<button class="small" onclick="scanNow('+d.id+')">🔍 Искать</button>'
+        + '<button class="small" onclick="editDirection('+d.id+')">Настроить</button>'
+        + '</div>';
+    });
+    html += '</div>';
+  });
+  box.innerHTML = html || '<span class="muted">Пока ничего нет. Создай группу и добавь в неё направление.</span>';
+  var sel = '<option value="">все направления</option>';
+  var selF = '<option value="">все</option>';
+  all.forEach(function(g){ g.directions.forEach(function(d){
+    sel  += '<option value="'+d.id+'">'+esc(g.name+" / "+d.name)+'</option>';
+    selF += '<option value="'+d.id+'">'+esc(g.name+" / "+d.name)+'</option>'; }); });
+  document.getElementById("s-dir").innerHTML = sel;
+  var fd = document.getElementById("f-dir"), keep = fd.value;
+  fd.innerHTML = selF; fd.value = keep;
+}
+async function addGroup(){
+  var n = document.getElementById("g-name").value.trim();
+  if (!n) return showErr("Введи название группы");
+  await jsend("/groups", "POST", {name:n});
+  document.getElementById("g-name").value = ""; loadTree(); loadStats();
+}
+async function delGroup(id){
+  if (!confirm("Удалить группу? Направления внутри останутся — уедут в «Без группы».")) return;
+  await api("/groups/"+id, {method:"DELETE"}); loadTree();
+}
+
+function kwRow(k){
+  k = k || {phrase:"", kind:"include", weight:1, match_mode:"stem", is_active:true};
+  var kinds = {include:"плюс", exclude:"минус", require:"обязательное"};
+  var modes = {stem:"по основе", exact:"точно", regex:"регулярка"};
+  var opt = function(map, cur){ return Object.keys(map).map(function(k2){
+    return '<option value="'+k2+'"'+(cur===k2?" selected":"")+'>'+map[k2]+'</option>'; }).join(""); };
+  var div = document.createElement("div");
+  div.className = "kw-row";
+  div.innerHTML = '<input class="kw-p" value="'+esc(k.phrase)+'" placeholder="фраза">'
+    + '<select class="kw-k">'+opt(kinds, k.kind)+'</select>'
+    + '<input class="kw-w" type="number" step="0.5" value="'+k.weight+'">'
+    + '<select class="kw-m">'+opt(modes, k.match_mode)+'</select>'
+    + '<button class="small danger" onclick="this.parentNode.remove()">×</button>';
+  return div;
+}
+function addKw(k){ document.getElementById("m-kws").appendChild(kwRow(k)); }
+
+async function editDirection(id, groupId){
+  EDIT_ID = id;
+  var groups = TREE.groups.map(function(g){ return '<option value="'+g.id+'">'+esc(g.name)+'</option>'; }).join("");
+  document.getElementById("m-group").innerHTML = '<option value="">Без группы</option>' + groups;
+  document.getElementById("m-kws").innerHTML = "";
+  document.getElementById("m-del").style.display = id ? "" : "none";
+  var d = {name:"", group_id:groupId||"", min_score:1, is_active:true, min_price:"", max_price:"",
+           cities:[], customers:[], regions:[], laws:[], keywords:[]};
+  if (id) d = await jget("/directions/"+id);
+  document.getElementById("m-title").textContent = id ? "Направление: "+d.name : "Новое направление";
+  document.getElementById("m-name").value = d.name;
+  document.getElementById("m-group").value = d.group_id || "";
+  document.getElementById("m-score").value = d.min_score;
+  document.getElementById("m-active").value = d.is_active ? "1" : "0";
+  document.getElementById("m-minp").value = d.min_price == null ? "" : d.min_price;
+  document.getElementById("m-maxp").value = d.max_price == null ? "" : d.max_price;
+  document.getElementById("m-cities").value = (d.cities||[]).join(", ");
+  document.getElementById("m-customers").value = (d.customers||[]).join(", ");
+  document.getElementById("m-regions").value = (d.regions||[]).join(", ");
+  document.getElementById("m-laws").value = (d.laws||[]).join(", ");
+  (d.keywords||[]).forEach(addKw);
+  if (!(d.keywords||[]).length) addKw();
+  document.getElementById("modal").classList.add("on");
+}
+function closeModal(){ document.getElementById("modal").classList.remove("on"); }
+
+async function saveDirection(){
+  var name = document.getElementById("m-name").value.trim();
+  if (!name) return showErr("У направления должно быть название");
+  var num = function(id){ var v = document.getElementById(id).value; return v === "" ? null : Number(v); };
+  var body = {
+    name: name,
+    group_id: document.getElementById("m-group").value || null,
+    min_score: Number(document.getElementById("m-score").value || 1),
+    is_active: document.getElementById("m-active").value === "1",
+    min_price: num("m-minp"), max_price: num("m-maxp"),
+    cities: csv(document.getElementById("m-cities").value),
+    customers: csv(document.getElementById("m-customers").value),
+    regions: csv(document.getElementById("m-regions").value),
+    laws: csv(document.getElementById("m-laws").value),
+    okpd2: [], source_codes: []
+  };
+  var id = EDIT_ID;
+  if (id) await jsend("/directions/"+id, "PUT", body);
+  else id = (await jsend("/directions", "POST", body)).id;
+  var kws = [].slice.call(document.querySelectorAll("#m-kws .kw-row")).map(function(r){
+    return {phrase: r.querySelector(".kw-p").value.trim(),
+            kind: r.querySelector(".kw-k").value,
+            weight: Number(r.querySelector(".kw-w").value || 1),
+            match_mode: r.querySelector(".kw-m").value, is_active: true};
+  }).filter(function(k){ return k.phrase; });
+  await jsend("/directions/"+id+"/keywords", "PUT", kws);
+  closeModal(); loadTree(); loadStats();
+}
+async function deleteDirection(){
+  if (!EDIT_ID || !confirm("Удалить направление вместе со словами?")) return;
+  await api("/directions/"+EDIT_ID, {method:"DELETE"});
+  closeModal(); loadTree(); loadStats();
+}
+
+// ─────────── Расписание и поиск ───────────
+async function loadSettings(){
+  var s = await jget("/settings");
+  document.getElementById("s-interval").value = s.scan_interval_minutes;
+  document.getElementById("s-enabled").value = s.scan_enabled ? "1" : "0";
+  document.getElementById("s-info").textContent = s.last_scan_at
+    ? "Последний автоматический обход: " + s.last_scan_at.replace("T", " ")
+    : "Автоматический обход ещё ни разу не запускался (сборщик по расписанию пока не установлен — поиск работает по кнопке).";
+}
+async function saveSettings(){
+  await jsend("/settings", "PUT", {
+    scan_interval_minutes: Number(document.getElementById("s-interval").value),
+    scan_enabled: document.getElementById("s-enabled").value === "1"});
+  flash("Расписание сохранено");
+}
+function flash(msg){
+  var b = document.getElementById("s-ok");
+  b.textContent = msg; b.classList.add("show");
+  setTimeout(function(){ b.classList.remove("show"); }, 6000);
+}
+async function scanNow(directionId){
+  var body = {days: Number(document.getElementById("s-days").value || 7)};
+  var d = directionId || document.getElementById("s-dir").value;
+  if (d) body.direction_id = Number(d);
+  await jsend("/scan", "POST", body);
+  showTab("runs");
+  flash("Поиск запущен — смотри журнал, площадки отвечают не мгновенно.");
+  setTimeout(loadRuns, 4000); setTimeout(loadRuns, 15000);
+}
+async function rematch(){
+  var r = await jsend("/rematch", "POST", {});
+  flash("Пересчитано. Подходит: " + r.kept + ", больше не подходит: " + r.dropped);
+  loadTree(); loadStats();
+}
+
+// ─────────── Площадки и журнал ───────────
+var LOC_RU = {vps:"с портала", home:"только из дома", any:"отовсюду"};
+async function loadSources(){
+  var data = await jget("/sources");
+  SOURCES = data.items;
+  document.getElementById("src-body").innerHTML = SOURCES.map(function(s){
+    var cls = s.last_status === "ok" ? "ok" : (s.last_status === "error" ? "bad"
+            : (s.last_status === "partial" ? "warn" : ""));
+    var homeOnly = s.location === "home";
+    return '<tr><td><b>'+esc(s.title)+'</b><div class="hint">'+esc(s.code)+'</div></td>'
+      + '<td><span class="pill'+(homeOnly?" warn":"")+'">'+LOC_RU[s.location]+'</span></td>'
+      + '<td><input type="checkbox"'+(s.is_enabled?" checked":"")
+      + ' onchange="toggleSource(\''+s.code+'\',this.checked)"></td>'
+      + '<td>'+(s.last_run_at ? s.last_run_at.replace("T"," ") : "—")+'</td>'
+      + '<td><span class="pill '+cls+'">'+esc(s.last_status||"не опрашивалась")+'</span>'
+      + (s.last_message ? '<div class="hint" style="max-width:340px">'+esc(s.last_message)+'</div>' : '')
+      + '</td>'
+      + '<td><button class="small" onclick="scanSource(\''+s.code+'\')">Опросить</button></td></tr>';
+  }).join("");
+  var sel = '<option value="">все</option>' + SOURCES.map(function(s){
+    return '<option value="'+s.code+'">'+esc(s.title)+'</option>'; }).join("");
+  var fs = document.getElementById("f-src"), keep = fs.value;
+  fs.innerHTML = sel; fs.value = keep;
+}
+async function toggleSource(code, on){ await jsend("/sources/"+code, "PUT", {is_enabled:on}); loadStats(); }
+async function scanSource(code){
+  await jsend("/scan", "POST", {source_code:code, days:Number(document.getElementById("s-days").value||7)});
+  showTab("runs"); setTimeout(loadRuns, 4000); setTimeout(loadRuns, 15000);
+}
+async function loadRuns(){
+  var data = await jget("/runs", {limit:80});
+  document.getElementById("runs-body").innerHTML = data.items.map(function(r){
+    var cls = r.status === "ok" ? "ok" : (r.status === "error" ? "bad"
+            : (r.status === "partial" ? "warn" : ""));
+    return '<tr><td>'+String(r.started_at||"").replace("T"," ")+'</td>'
+      + '<td>'+esc(r.source_code)+'</td>'
+      + '<td>'+(r.triggered_by === "manual" ? "вручную" : "расписание")+'</td>'
+      + '<td>'+(r.depth_days ? r.depth_days + " дн" : "—")+'</td>'
+      + '<td>'+r.fetched+'</td><td>'+r.matched+'</td><td>'+r.created+'</td>'
+      + '<td><span class="pill '+cls+'">'+esc(r.status)+'</span>'
+      + (r.message ? '<div class="hint" style="max-width:340px">'+esc(r.message)+'</div>' : '')
+      + '</td></tr>';
+  }).join("") || '<tr><td colspan="8" class="muted">Прогонов пока не было.</td></tr>';
+}
+
+async function loadStats(){
+  var s = await jget("/summary");
+  var by = s.by_status || {};
+  document.getElementById("stats").innerHTML =
+      '<span class="stat">Всего найдено <b>'+s.total+'</b></span>'
+    + '<span class="stat">Сегодня <b>'+s.today+'</b></span>'
+    + '<span class="stat">Новых <b>'+(by.new||0)+'</b></span>'
+    + '<span class="stat">Интересных <b>'+(by.interesting||0)+'</b></span>'
+    + '<span class="stat">В работе <b>'+(by.in_work||0)+'</b></span>'
+    + '<span class="stat">Направлений <b>'+s.directions_active+'</b></span>'
+    + '<span class="stat">Площадок включено <b>'+s.sources_enabled+'</b></span>';
+}
+
+(async function init(){
+  if (!pwd()) return;
+  try{
+    await loadStats(); await loadSettings(); await loadTree();
+    await loadSources(); await loadTenders();
+  }catch(e){ /* сообщение уже показано */ }
+})();
+</script>
+</body>
+</html>

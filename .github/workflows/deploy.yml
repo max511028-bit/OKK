@@ -30,6 +30,7 @@ jobs:
             --exclude='.github' \
             --exclude='.gitattributes' \
             --exclude='tasks/api/tasks.db' \
+            --exclude='tasks/api/tenders.db*' \
             --exclude='tasks/api/ai_url.json' \
             --exclude='tasks/api/.venv' \
             --exclude='tasks/api/attachments' \

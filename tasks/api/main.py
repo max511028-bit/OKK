@@ -6127,3 +6127,17 @@ def vcs_delete(sid: str, request: Request):
         conn.execute("DELETE FROM voicecall_scripts WHERE id=?", (sid,))
         print(f"[scripts] deleted '{sid}'", flush=True)
     return {"ok": True, "deleted": sid}
+
+
+# ---------------------------------------------------------------------------
+# Тендер-радар (31.07.2026). Отдельным модулем: main.py и без того большой,
+# а это самостоятельный продукт со своей базой (tasks/api/tenders.db).
+# Подробности — docs-internal/11-ТЕНДЕР-РАДАР.md.
+# ---------------------------------------------------------------------------
+try:
+    from tenders_api import router as _tenders_router
+    app.include_router(_tenders_router)
+except Exception as _e:  # noqa: BLE001
+    # Портал не должен падать целиком, если у Тендер-радара не хватает
+    # зависимости (selectolax/lxml ставятся отдельно на VPS).
+    logging.warning("Тендер-радар не подключён: %s", _e)
