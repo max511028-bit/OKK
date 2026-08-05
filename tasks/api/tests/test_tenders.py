@@ -682,7 +682,14 @@ class TestB2BSilentZero:
         from tenders_core.sources.base import SourceUnavailable
         with pytest.raises(SourceUnavailable) as e:
             self._run(monkeypatch, "<html><body>ничего похожего на выдачу</body></html>")
-        assert "ограничен" in str(e.value).lower() or "не вернула" in str(e.value).lower()
+        assert "не вернула" in str(e.value).lower()
+
+    def test_source_disabled_by_default(self):
+        """04.08: площадка прямым текстом сообщила, что её регламент не
+        допускает ботов. Обходить это правило не будем — коннектор выключен
+        до получения официального доступа."""
+        from tenders_core.sources import get_source
+        assert get_source("b2b_center").enabled_by_default is False
 
     def test_real_results_do_not_raise(self, monkeypatch):
         html = ('<table><tr><td><small>Категория</small></td><td>ООО Ромашка</td>'
