@@ -230,21 +230,57 @@ def _normalize_free_answers(base_url: str, scenario: dict, result: dict) -> None
             print(f"✨ Нормализован ответ «{crit}»: {store[crit]}", flush=True)
 
 
+# Пауза между попытками достучаться до модели, секунды. Первый повтор —
+# почти сразу, второй с запасом: если Ollama выгрузила модель, ей нужно
+# несколько секунд на загрузку (замер 04.08: холодный запрос 5.0с,
+# следующие 0.1с).
+_LLM_RETRY_DELAYS = (1.0, 4.0)
+
+
 def _llm_ask(base_url: str, prompt: str, num_predict: int = 12,
-             model: str = "qwen3:1.7b") -> str:
-    """Один короткий запрос к LLM портала. Возвращает строку ответа
-    (lower/strip) или "" при любой ошибке (лучшее старание)."""
-    try:
-        data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False, "think": False,
-            "options": {"temperature": 0.1, "num_predict": num_predict},
-        }, timeout=15)
-        return ((data.get("message") or {}).get("content") or "").strip().lower()
-    except Exception as e:
-        print(f"⚠️  LLM-запрос пропущен: {e}", flush=True)
-        return ""
+             model: str = "qwen3:1.7b", attempts: int = 3) -> str:
+    """Короткий запрос к LLM портала с повторами при временных сбоях.
+
+    Возвращает строку ответа (lower/strip) или "" — «спросить не удалось».
+
+    Повторы добавлены 04.08 после разбора «СТХ НДЗ»: у контакта 766
+    (Валентина) робо-проверка не отработала и вердикт «годен» остался
+    непроверенным. В логе — три сорванных обращения из одиннадцати:
+    два `502 Bad Gateway` и таймаут. Сама Ollama при этом здорова
+    (проверено: отвечает за 0.1с) — сбоит туннель между VPS и ПК, а
+    повтора в коде не было вовсе: сорвалось один раз, и всё.
+
+    Повторяем только то, что чинится само: 5xx, 429 и сетевые обрывы.
+    На 4xx (кроме 429) второй заход бессмыслен — запрос не станет
+    правильнее. Задержки безопасны: сюда попадают ТОЛЬКО фоновые
+    пере-проверки после звонка, кандидата на линии они не задерживают
+    (живой путь — llm_classify/llm_is_robot_live в dialog.py, у них свой
+    короткий таймаут и dead-cache)."""
+    import urllib.error
+
+    last = ""
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            data = _rpc(base_url, "POST", "/ai/proxy/chat", json_body={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False, "think": False,
+                "options": {"temperature": 0.1, "num_predict": num_predict},
+            }, timeout=15)
+            return ((data.get("message") or {}).get("content") or "").strip().lower()
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}"
+            retryable = e.code >= 500 or e.code == 429
+        except Exception as e:  # таймауты и обрывы связи
+            last = f"{type(e).__name__}: {e}"
+            retryable = True
+
+        if not retryable or attempt >= attempts:
+            break
+        time.sleep(_LLM_RETRY_DELAYS[min(attempt - 1, len(_LLM_RETRY_DELAYS) - 1)])
+
+    print(f"⚠️  LLM не ответила после {attempt} попыт(ки/ок): {last}", flush=True)
+    return ""
 
 
 # Минимум слов в дорожке кандидата, чтобы вообще судить «человек/робот» по
@@ -320,8 +356,12 @@ def _llm_robot_verdict(base_url: str, transcript: str,
         return False, True  # слишком мало речи, чтобы судить
     prompt = _robot_check_prompt(transcript)
     robot = human = 0
+    # При голосовании повторов на голос меньше: три голоса сами по себе
+    # запас, и 3×3 запроса на один контакт — перебор для одноядерной
+    # машины, где та же Ollama обслуживает живые звонки.
+    per_vote_attempts = 2 if votes > 1 else 3
     for _ in range(max(1, votes)):
-        ans = _llm_ask(base_url, prompt, num_predict=6)
+        ans = _llm_ask(base_url, prompt, num_predict=6, attempts=per_vote_attempts)
         if not ans:
             continue  # сбой или пустой ответ — не голос
         if "робот" in ans and "человек" not in ans:
